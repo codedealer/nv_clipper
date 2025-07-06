@@ -92,6 +92,7 @@ def getTopazInterpFilter(model: str, genFractor: int, rdt: float | None, device:
 
     return f",tvai_fi=model={model}:slowmo={genFractor}{rdf}:device={device}:vram=1:instances=1"
 
+
 def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
     if mps["minterpMode"] == "VideoFPS":
         logger.warning("Targeting VideoFPS for minterpolation is not supported for now.")
@@ -100,7 +101,7 @@ def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
     genFractor = 0
     if mps["minterpMode"].startswith("x") and mps["minterpMode"].endswith("slow"):
         num_part = mps["minterpMode"][1:-4]
-        if num_part.isdigit():
+        if num_part.isdigit() and int(num_part) > 0:
             genFractor = int(num_part)
         else:
             logger.critical(
@@ -113,7 +114,8 @@ def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
     shouldDedupe = not mps["noDedupe"] and mps["dedupe"]
     dedupeThreshold = 0.01 if shouldDedupe else None
     if mps["minterpProvider"].lower() == "rife":
-        logger.warning("RIFE is not supported in nv_clipper for now.")
+        # RIFE interpolation requires two passes, technically it's not a filter, we return an empty string and a flag in mp array that will be passed to ffmpeg run method
+        mp["__RIFE_pipe"] = True
         return minterpFilter
     if "topaz" in mps["minterpProvider"].lower():
         minterpFilter = getTopazInterpFilter(mps["minterpProvider"], genFractor, dedupeThreshold)

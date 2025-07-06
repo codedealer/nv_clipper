@@ -280,6 +280,29 @@ def getArgParser() -> argparse.ArgumentParser:
         ),
     )
     vfilter_options.add_argument(
+        "--rife-model-path",
+        "-rmp",
+        dest="rifeModelPath",
+        default="",
+        help="Path to the RIFE model file. Required for RIFE interpolation.",
+    )
+    vfilter_options.add_argument(
+        "--rife-worker-threads",
+        "-rwt",
+        dest="rifeWorkerThreads",
+        type=int,
+        default=1,
+        help="Number of worker threads for RIFE interpolation.",
+    )
+    vfilter_options.add_argument(
+        "--gpu-id",
+        "-gid",
+        dest="gpuId",
+        type=int,
+        default=0,
+        help="GPU ID to use for interpolation.",
+    )
+    vfilter_options.add_argument(
         "--topaz-ai-path",
         "-tap",
         dest="topazAIPath",
