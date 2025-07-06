@@ -333,6 +333,13 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         )
         return fastTrimClip(cs, markerPairIndex, mp, mps)
 
+    # lazy load CUDA DLLs if needed
+    if "__RIFE_LOADED" not in settings and mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife":
+        logger.notice("Preloading CUDA/cuDNN DLLs for RIFE interpolation provider.")
+        import onnxruntime as ort
+        ort.preload_dlls(cuda=True, cudnn=True, msvc=True, directory=None)
+        settings["__RIFE_LOADED"] = True
+
     inputs = ""
     audio_filter = ""
     video_filter = ""
@@ -1263,18 +1270,6 @@ def makeClips(cs: ClipperState) -> None:
         logger.report(
             f"Processing the following set of marker pairs: {printableMarkerPairQueue}",
         )
-
-
-    usesRIFE = False
-    for markerPairIndex in markerPairQueue:
-        _mp, mps = getMarkerPairSettings(cs, markerPairIndex)
-        if mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife":
-            usesRIFE = True
-            break
-    if usesRIFE:
-        logger.notice("RIFE interpolation provider is used in at least one of the marker pairs. Preloading DLLs.")
-        import onnxruntime as ort
-        ort.preload_dlls(cuda=True, cudnn=True, msvc=True, directory=None)
 
     for markerPairIndex, _marker in enumerate(settings["markerPairs"]):
         if markerPairIndex in markerPairQueue:
