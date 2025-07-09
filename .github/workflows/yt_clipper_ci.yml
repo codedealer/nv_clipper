@@ -11,7 +11,7 @@ on:
 
 env:
   NAME: nv_clipper
-  VERSION: '5.32.0'
+  VERSION: '6.0.0'
 
 jobs:
   build:
