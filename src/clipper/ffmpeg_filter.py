@@ -115,7 +115,11 @@ def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
     dedupeThreshold = 0.01 if shouldDedupe else None
     if mps["minterpProvider"].lower() == "rife":
         # RIFE interpolation requires two passes, technically it's not a filter, we return an empty string and a flag in mp array that will be passed to ffmpeg run method
-        mp["__RIFE_pipe"] = True
+        mp["__RIFE_pipe"] = {
+            "generationFactor": genFractor,
+            "dedupeThreshold": dedupeThreshold,
+            "slowmo": mps["minterpMode"].endswith("slow"),
+        }
         return minterpFilter
     if "topaz" in mps["minterpProvider"].lower():
         minterpFilter = getTopazInterpFilter(mps["minterpProvider"], genFractor, dedupeThreshold)
@@ -567,13 +571,13 @@ def videoStabilizationGammaFixFilter(filter_to_wrap: str) -> str:
     return wrapped_filter
 
 
-def wrapVideoFilterForHardwareAcceleration(videoCodec: str, video_filter: str) -> str:
-    if "nvenc" in videoCodec:
-        # Frame data is in VRAM assuming cuda is used for decoding
-        # We convert it to yuv444 pixel format in VRAM, download to system mem, and ensure we remain in yuv444p to avoid chroma subsampling artifacts
-        return f"scale_cuda=format=yuv444p,hwdownload,format=yuv444p,{video_filter},hwupload_cuda"
-
-    return f"format=yuv444p,{video_filter},format=nv12,hwupload"
+def wrapVideoFilterForHardwareAcceleration(video_filter: str, pix_fmt: str = "yuv444p", do_not_download: bool = False, do_not_upload: bool = False) -> str:
+    """
+    Wraps a given FFmpeg video filter string with hardware acceleration steps for CUDA.
+    """
+    download = f"scale_cuda=format={pix_fmt},hwdownload,format={pix_fmt}," if not do_not_download else ""
+    upload = ",hwupload_cuda" if not do_not_upload else ""
+    return f"{download}{video_filter}{upload}"
 
 
 def isHardwareAcceleratedVideoCodec(codec: str) -> bool:

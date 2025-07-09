@@ -1,4 +1,5 @@
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import PIPE, Popen
@@ -17,13 +18,10 @@ from numpy import squeeze as numpy_squeeze
 @dataclass
 class InterpolationConfig:
     """Configuration for frame interpolation process"""
-    input_videos: List[str]
-    output_dir: str
     ai_model_path: str
     generation_factor: int = 2
     gpu_id: int = 0
     parallel_videos: int = 1
-    slowmo: bool = False
     use_iobinding: bool = False
     workers: int = 4
 
@@ -37,7 +35,7 @@ class AIInterpolation:
       frame_gen_factor: int,
       gpu_id: int = 0,
       use_iobinding: bool = True,
-    ):
+    ) -> None:
       self.ai_model_path = Path(ai_model_path)
       self.frame_gen_factor = frame_gen_factor
       self.gpu_id = gpu_id
@@ -281,7 +279,7 @@ class AIInterpolation:
         }
         return cache_info
 
-def extract_video_frames(ffmpeg_cmd) -> List[numpy_ndarray]:
+def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
     process = Popen(ffmpeg_cmd, stdout=PIPE, bufsize=10**8)
     frames = []
     frame_count = 0
@@ -327,5 +325,87 @@ def extract_video_frames(ffmpeg_cmd) -> List[numpy_ndarray]:
     process.wait()
     return frames
 
-def run_rife_interpolation(frames: List[numpy_ndarray]) -> List[numpy_ndarray]:
-    return []
+def pipe_frames_to_ffmpeg(
+    frames: List[numpy_ndarray],
+    ffmpeg_cmd: str,
+) -> int:
+    if not frames:
+        raise ValueError("No frames to encode.")
+
+    # Get frame size and format
+    height, width, channels = frames[0].shape
+    assert channels == 3, "Frames must be 3-channel (BGR or RGB)"
+    # Replace <__RIFE_placeholder> in ffmpeg_cmd with required params
+    if "<__RIFE_placeholder>" in ffmpeg_cmd:
+        ffmpeg_cmd = ffmpeg_cmd.replace(
+            "<__RIFE_placeholder>",
+            f"-f rawvideo -vcodec rawvideo -pix_fmt bgr24 -s {width}x{height}",
+        )
+
+    process = Popen(ffmpeg_cmd, stdin=PIPE)
+    if process.stdin is None:
+        raise RuntimeError("Failed to open ffmpeg stdin pipe.")
+
+    for _, frame in enumerate(frames):
+        # Ensure frame is contiguous and correct dtype
+        frame_arr = numpy_ascontiguousarray(frame, dtype=uint8)
+        process.stdin.write(frame_arr.tobytes())
+
+    process.stdin.close()
+    process.wait()
+
+    return process.returncode
+
+
+def run_rife_interpolation(
+    config: InterpolationConfig,
+    frames: List[numpy_ndarray],
+    encodeCmd: str = "",
+) -> int:
+    # Prepare interpolation pairs from frames
+    if len(frames) < config.generation_factor + 1:
+        raise ValueError(
+            f"Not enough frames for interpolation: {len(frames)} frames provided, "
+            f"but {config.generation_factor + 1} are required.",
+        )
+
+    frame_pairs = [(i, i + 1) for i in range(len(frames) - 1)]
+    output_frames = []
+    total_pairs = len(frame_pairs)
+
+    interpolation_results = [[] for _ in range(total_pairs)]
+
+    ai_instance = AIInterpolation(
+        ai_model_path=config.ai_model_path,
+        frame_gen_factor=config.generation_factor,
+        gpu_id=config.gpu_id,
+        use_iobinding=config.use_iobinding,
+    )
+
+    if config.workers <= 1:
+        for idx, (i1, i2) in enumerate(frame_pairs):
+            frame1 = frames[i1]
+            frame2 = frames[i2]
+            interpolation_results[idx] = ai_instance.interpolate_frames(frame1, frame2)
+    else:
+        with ThreadPoolExecutor(max_workers=config.workers) as executor:
+            future_to_index = {
+                executor.submit(ai_instance.interpolate_frames, frames[i1], frames[i2]): idx
+                for idx, (i1, i2) in enumerate(frame_pairs)
+            }
+
+            for future in as_completed(future_to_index):
+                idx = future_to_index[future]
+                interpolation_results[idx] = future.result()
+
+    for idx, (i1, i2) in enumerate(frame_pairs):
+        frame1 = frames[i1]
+        frame2 = frames[i2]
+        generated = interpolation_results[idx]
+
+        output_frames.append(frame1)
+        output_frames.extend(generated)
+        if idx == total_pairs - 1:
+            output_frames.append(frame2)
+
+    return pipe_frames_to_ffmpeg(output_frames, encodeCmd)

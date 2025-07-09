@@ -4,6 +4,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Set, Tuple
@@ -36,7 +37,11 @@ from clipper.ffmpeg_filter import (
     wrapVideoFilterForHardwareAcceleration,
 )
 from clipper.platforms import getFfmpegHeaders
-from clipper.rife_interpolation import extract_video_frames, run_rife_interpolation
+from clipper.rife_interpolation import (
+    InterpolationConfig,
+    extract_video_frames,
+    run_rife_interpolation,
+)
 from clipper.util import escapeSingleQuotesFFmpeg, getTrimmedBase64Hash
 from clipper.ytc_logger import logger
 
@@ -334,7 +339,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         return fastTrimClip(cs, markerPairIndex, mp, mps)
 
     # lazy load CUDA DLLs if needed
-    if "__RIFE_LOADED" not in settings and mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife":
+    is_rife_used = mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife"
+    if "__RIFE_LOADED" not in settings and is_rife_used:
         logger.notice("Preloading CUDA/cuDNN DLLs for RIFE interpolation provider.")
         import onnxruntime as ort
         ort.preload_dlls(cuda=True, cudnn=True, msvc=True, directory=None)
@@ -344,7 +350,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     audio_filter = ""
     video_filter = ""
 
-    if mp["isVariableSpeed"] or mps["loop"] != "none":
+    if mp["isVariableSpeed"] or mps["loop"] != "none" or is_rife_used:
         mps["audio"] = False
 
     if mps["audio"]:
@@ -403,16 +409,21 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             + f'({mps["targetSize"]} MB / ~{round(mp["outputDuration"],3)} s).',
         )
 
-    ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
-        audio_filter,
-        cbr,
-        cp,
-        inputs,
-        mp,
-        mps,
-        qmax,
-        qmin,
-    )
+    if is_rife_used:
+        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)
+        pix_fmt = "yuv420p" # Encode is done on CPU so we don't have to use 4:4:4
+    else:
+        ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
+            audio_filter,
+            cbr,
+            cp,
+            inputs,
+            mp,
+            mps,
+            qmax,
+            qmin,
+        )
+        pix_fmt = "yuv444p"
 
     if not mps["preview"]:
         video_filter += f'trim=0:{mp["duration"]}'
@@ -551,7 +562,9 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             mps,
         )
 
-    ffmpegCommands = []
+    ffmpegCommands: List[str] = []
+    rifeCommands: List[str] = []
+    is_cuvid = getDecoderArgs(mps) != ""
 
     MAX_VFILTER_SIZE = 10_000
     filterPathPass1 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass1.txt"
@@ -596,29 +609,36 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             + f""":roll={rollingShutter}:reduce={jitteryMotionPasses}:device=0:vram=1:instances=1"""
         )
 
-        if "minterpMode" in mps and mps["minterpMode"] != "None":
+        if "minterpMode" in mps and mps["minterpMode"].lower() != "none":
             minterpFilter = getMinterpFilter(mp, mps)
         else:
             minterpFilter = ""
 
-        # every time tvai filter is engaged, we need to convert back to yuv444p because Topaz's native format is 10 bit which is not supported by h264_nvenc
+        # every time tvai filter is engaged, we need to convert back to specified pixel format because Topaz's native format is 10 bit which is not supported by h264_nvenc
         if mps.get("__needsTopazFormatFix"):
             vidstabtransformFilter += minterpFilter
-            vidstabtransformFilter += ",format=yuv444p"
+            vidstabtransformFilter += f",format={pix_fmt}"
         else:
             # interpolation filter does not require a format conversion so we only convert transform filter
-            vidstabtransformFilter += ",format=yuv444p"
+            vidstabtransformFilter += f",format={pix_fmt}"
             vidstabtransformFilter += minterpFilter
 
         if mps["loop"] != "none":
             vidstabdetectFilter += loop_filter
             vidstabtransformFilter += loop_filter
 
-        if isHardwareAcceleratedVideoCodec(mps["videoCodec"]):
-            vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
-                mps["videoCodec"],
-                vidstabtransformFilter,
-            )
+        vidstabdetectFilter = wrapVideoFilterForHardwareAcceleration(
+            vidstabdetectFilter,
+            pix_fmt,
+            not is_cuvid,
+            True,
+        )
+        vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
+            vidstabtransformFilter,
+            pix_fmt,
+            not is_cuvid,
+            is_rife_used,
+        )
 
         if len(video_filter) > MAX_VFILTER_SIZE:
             logger.info(f"Video filter is larger than {MAX_VFILTER_SIZE} characters.")
@@ -638,35 +658,41 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         ffmpegVidstabdetect += f" -y "
         ffmpegVidstabtransform += overwriteArg
 
-        if mps["twoPass"]:
-            ffmpegVidstabdetect += f" -pass 1"
-            ffmpegVidstabtransform += f" -pass 2"
-        else:
-            ffmpegVidstabdetect += f" -speed 5"
-
-        # Remove "-hwaccel_output_format cuda" from vidstabdetect filter string if present
-        # ffmpegVidstabdetect = ffmpegVidstabdetect.replace("-hwaccel_output_format cuda", "")
-        # ffmpegVidstabdetect = ffmpegVidstabdetect.replace(f"-c:v {mps["videoCodec"]}", "")
         ffmpegVidstabdetect += f' -f null "-"'
-        ffmpegVidstabtransform += f' "{mp["filePath"]}"'
-        ffmpegCommands: List[str] = [ffmpegVidstabdetect, ffmpegVidstabtransform]
+        if is_rife_used:
+            ffmpegCommands = [ffmpegVidstabdetect]
+            rifePass1 = ffmpegVidstabtransform + "-"
+            rifePass2 = getRIFEFfmpegEncodeCommand(
+                cbr,
+                cp,
+                mp,
+                mps,
+                qmax,
+                qmin,
+            )
+            rifePass2 += overwriteArg
+            rifeCommands = [rifePass1, rifePass2]
+        else:
+            ffmpegVidstabtransform += f' "{mp["filePath"]}"'
+            ffmpegCommands: List[str] = [ffmpegVidstabdetect, ffmpegVidstabtransform]
 
     if not vidstabEnabled:
-        if "minterpMode" in mps and mps["minterpMode"] != "None":
+        if "minterpMode" in mps and mps["minterpMode"].lower() != "none":
             video_filter += getMinterpFilter(mp, mps)
 
         if "__needsTopazFormatFix" in mps:
-            video_filter += ",format=yuv444p"
+            video_filter += f",format={pix_fmt}"
+
 
         if mps["loop"] != "none":
             video_filter += loop_filter
 
-        #video_filter = wrapVideoFilterForHardwareAcceleration(mps["videoCodec"], video_filter)
-        if mp.get("__RIFE_pipe"):
-            # don't upload the video filter to CUDA since we will be using CPU encode
-            if video_filter.endswith(",hwupload_cuda"):
-                video_filter = video_filter[: -len(",hwupload_cuda")]
-            ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)
+        video_filter = wrapVideoFilterForHardwareAcceleration(
+            video_filter,
+            pix_fmt,
+            not is_cuvid,
+            is_rife_used,
+        )
 
         if len(video_filter) > MAX_VFILTER_SIZE:
             logger.info(f"Video filter is larger than {MAX_VFILTER_SIZE} characters.")
@@ -677,48 +703,31 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         else:
             ffmpegCommand += f' -vf "{video_filter}" '
 
-        if not mps["twoPass"]:
-            if mp.get("__RIFE_pipe"):
-                ffmpegPass1 = ffmpegCommand + "-"
-                ffmpegPass2 = getRIFEFfmpegEncodeCommand(
-                    cbr,
-                    cp,
-                    mp,
-                    mps,
-                    qmax,
-                    qmin,
-                )
-
-                ffmpegPass2 += overwriteArg
-                ffmpegCommands = [ffmpegPass1, ffmpegPass2]
-            else:
-                ffmpegCommand += overwriteArg
-                ffmpegCommand += f' "{mp["filePath"]}"'
-                ffmpegCommands = [ffmpegCommand]
-        else:
-            if mp.get("__RIFE_pipe"):
-                logger.error(
-                    "RIFE interpolation does not support two-pass encoding. "
-                    + "Please disable two-pass encoding in the settings.\n",
-                )
-                fileName = rich.markup.escape(mp["fileName"])
-                logger.error(f"Failed to generate: {fileName}\n")
-                return {**(settings["markerPairs"][markerPairIndex])}
-            ffmpegPass1 = ffmpegCommand + f" -y -pass 1 {os.devnull}"
-            ffmpegPass2 = (
-                ffmpegCommand
-                + f' {overwriteArg} -pass 2 "{mp["filePath"]}"'
+        if is_rife_used:
+            ffmpegPass1 = ffmpegCommand + "-"
+            ffmpegPass2 = getRIFEFfmpegEncodeCommand(
+                cbr,
+                cp,
+                mp,
+                mps,
+                qmax,
+                qmin,
             )
 
-            ffmpegCommands = [ffmpegPass1, ffmpegPass2]
+            ffmpegPass2 += overwriteArg
+            rifeCommands = [ffmpegPass1, ffmpegPass2]
+        else:
+            ffmpegCommand += overwriteArg
+            ffmpegCommand += f' "{mp["filePath"]}"'
+            ffmpegCommands = [ffmpegCommand]
 
-    if not (1 <= len(ffmpegCommands) <= 2):  # pylint: disable=superfluous-parens
+    if len(ffmpegCommands) < 1 and len(rifeCommands) < 1:
         logger.error(f"ffmpeg command could not be built.\n")
         fileName = rich.markup.escape(mp["fileName"])
         logger.error(f"Failed to generate: {fileName}\n")
         return {**(settings["markerPairs"][markerPairIndex])}
 
-    return runffmpegCommand(settings, ffmpegCommands, markerPairIndex, mp)
+    return runffmpegCommand(settings, ffmpegCommands, markerPairIndex, mp, rifeCommands)
 
 
 def getFfmpegCommandWithoutVideoFilter(
@@ -776,17 +785,31 @@ def getFfmpegCommandWithoutVideoFilter(
     )
 
 
+def getDecoderArgs(
+    mps: DictStrAny,
+) -> str:
+    codec = None
+    if mps.get("codec_name"):
+        if mps["codec_name"].lower() == "vp9":
+            codec = "vp9_cuvid"
+        elif mps["codec_name"].lower() == "h264":
+            codec = "h264_cuvid"
+    decoder_args = f"-hwaccel cuvid -hwaccel_output_format cuda -c:v {codec}" if codec else ""
+    return decoder_args
+
 def getFfmpegCommandVidstab(
     cp: ClipperPaths,
     inputs: str,
     mp: DictStrAny,
     mps: DictStrAny,
 ) -> str:
+    decoder_args = getDecoderArgs(mps)
     return " ".join(
         (
             cp.ffmpegPath,
             f"-hide_banner",
             getFfmpegHeaders(mps["platform"]),
+            decoder_args,
             inputs,
             f"-benchmark",
             f'{mps["extraFfmpegArgs"]}',
@@ -801,19 +824,23 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     mp: DictStrAny,
     mps: DictStrAny,
 ) -> str:
+    decoder_args = getDecoderArgs(mps)
     return " ".join(
         (
             cp.ffmpegPath,
             f"-hide_banner",
             getFfmpegHeaders(mps["platform"]),
-            #"-hwaccel cuvid", # decode with CUDA
+            decoder_args,
+            # "-thread_queue_size 512",
             inputs,
             f"-benchmark",
             "-f image2pipe",
             "-an",
             "-vcodec mjpeg",
             "-q:v 1",
-            "-pix_fmt bgr24",
+            "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
+            "-color_range pc", # full range for mjpeg
+            # "-threads 3",
             f"-r {mps['minterpFPS']}",
             f'{mps["extraFfmpegArgs"]}',
             " ",
@@ -844,8 +871,10 @@ def getRIFEFfmpegEncodeCommand(
             f"-hide_banner",
             getFfmpegHeaders(mps["platform"]),
             video_codec_input_args,
+            "<__RIFE_placeholder>", # some of the flags will be determined by RIFE
             "-i -",  # read from stdin
-            #f"-vf format=yuv444p",
+            # f'-vf "scale=in_range=full:out_range=limited,format=yuv444p,hwupload_cuda"',
+            f'-vf "scale=in_range=full:out_range=limited,format=yuv420p,hwupload_cuda"',
             f"-benchmark",
             video_codec_args,
             (
@@ -854,6 +883,7 @@ def getRIFEFfmpegEncodeCommand(
                 else "-map_metadata -1"
             ),
             video_codec_output_args,
+            "-color_range tv",
             f'{mps["extraFfmpegArgs"]}',
             f'"{mp["filePath"]}"',
         ),
@@ -890,77 +920,122 @@ def getFfmpegCommandFastTrim(
     )
 
 
+def run_rife_pipe(
+    rife_commands: List[str],
+    printable_commands: List[str],
+    mp: DictStrAny,
+    settings: Settings,
+) -> int:
+    """
+    Run RIFE interpolation in a pipe mode.
+    This function expects exactly two commands in the `rife_commands` list.
+    The first command is expected to read frames from stdin and the second command
+    is expected to write frames to stdout.
+    Returns 0 on success
+    """
+    if len(rife_commands) != 2 or len(printable_commands) != 2 or "__RIFE_pipe" not in mp:
+        logger.error("RIFE pipe commands or configuration is missing.")
+        return 1
+
+    frames = []
+    try:
+        logger.verbose(
+            f"RIFE: extracting frames with command: {printable_commands[0]}",
+        )
+        frames = extract_video_frames(
+            rife_commands[0],
+        )
+    except Exception as e:
+        logger.error(f"Failed to extract video frames: {e!s}")
+        return 100
+
+    if len(frames) == 0:
+        logger.error("No frames extracted from the first pass. Skipping RIFE interpolation.")
+        return 101
+    try:
+        logger.verbose(
+            f"RIFE: running interpolation with command: {printable_commands[1]}",
+        )
+        rife_config = InterpolationConfig(
+            ai_model_path=settings["rifeModelPath"],
+            gpu_id=settings["gpuId"],
+            workers=max(1, int(settings["rifeWorkerThreads"])),
+            generation_factor= mp["__RIFE_pipe"]["generationFactor"],
+        )
+        return run_rife_interpolation(
+            rife_config,
+            frames,
+            rife_commands[1],
+        )
+    except Exception as e:
+        logger.error(f"Failed to run RIFE on frames: {e!s}")
+        return 102
+
+
 def runffmpegCommand(
     settings: Settings,
     ffmpegCommands: List[str],
     markerPairIndex: int,
     mp: DictStrAny,
+    rifeCommands: Optional[List[str]] = None,
 ) -> DictStrAny:
-    ffmpegPass1 = ffmpegCommands[0]
     if len(ffmpegCommands) == 2:
         logger.info("Running first pass...")
 
+    t0 = time.perf_counter()
+
     input_redaction_pattern = r"(-i[\s]+\".*?\"[\s]+)+"
-    nInputs = len(re.findall(input_redaction_pattern, ffmpegPass1))
 
-    printablePass1 = re.sub(
-        input_redaction_pattern,
-        r"-i ... ",
-        ffmpegPass1,
-        count=nInputs,
-    )
-
-    logger.verbose(f"Using ffmpeg command: {printablePass1}\n")
-
-    firstPassResult: Dict[str, Any] = {
-        "returncode": 99,
-    }
-    if mp.get("__RIFE_pipe"):
-        # Pipe the output of ffmpeg to RIFE
-        try:
-            firstPassResult["frames"] = extract_video_frames(
-                ffmpegPass1,
+    # Redact input paths in all ffmpegCommands and rifeCommands
+    printableFfmpegCommands = [
+        re.sub(
+            input_redaction_pattern,
+            r"-i ... ",
+            cmd,
+            count=len(re.findall(input_redaction_pattern, cmd)),
+        )
+        for cmd in ffmpegCommands
+    ]
+    printableRifeCommands = []
+    if rifeCommands:
+        printableRifeCommands = [
+            re.sub(
+                input_redaction_pattern,
+                r"-i ... ",
+                cmd,
+                count=len(re.findall(input_redaction_pattern, cmd)),
             )
-        except Exception as e:
-            logger.error(f"Failed to extract video frames: {e!s}")
-            firstPassResult["returncode"] = 100
-    else:
+            for cmd in rifeCommands
+        ]
+
+    if len(ffmpegCommands) > 0:
+        ffmpegPass1 = ffmpegCommands[0]
+        printablePass1 = printableFfmpegCommands[0] if printableFfmpegCommands else ""
+
+        logger.verbose(f"Using ffmpeg command: {printablePass1}\n")
+
         ffmpegProcess = subprocess.run(shlex.split(ffmpegPass1), check=False, cwd=Path.cwd())
         mp["returncode"] = ffmpegProcess.returncode
 
-    if len(ffmpegCommands) == 2:
-        ffmpegPass2 = ffmpegCommands[1]
+        if len(ffmpegCommands) == 2:
+            ffmpegPass2 = ffmpegCommands[1]
 
-        printablePass2 = re.sub(
-            input_redaction_pattern,
-            r"-i ... ",
-            ffmpegPass2,
-            count=nInputs,
-        )
+            printablePass2 = printableFfmpegCommands[1] if printableFfmpegCommands else ""
 
-        logger.info("Running second pass...")
-        logger.verbose(f"Using ffmpeg command: {printablePass2}\n")
-        if mp.get("__RIFE_pipe"):
-            if "frames" in firstPassResult:
-                # Pipe the frames to RIFE
-                try:
-                    frames = run_rife_interpolation(
-                        firstPassResult["frames"],
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to run RIFE on frames: {e!s}")
-                    mp["returncode"] = 101
-            else:
-                logger.error("No frames extracted from the first pass. Skipping second pass.")
-                mp["returncode"] = 102
-        else:
+            logger.info("Running second pass...")
+            logger.verbose(f"Using ffmpeg command: {printablePass2}\n")
             ffmpegProcess = subprocess.run(shlex.split(ffmpegPass2), check=False)
             mp["returncode"] = ffmpegProcess.returncode
 
-    fileName = rich.markup.escape(mp["fileName"])
+    if rifeCommands and "__RIFE_pipe" in mp:
+        logger.info("Running RIFE interpolation in pipe mode...")
+        mp["returncode"] = run_rife_pipe(rifeCommands, printableRifeCommands, mp, settings)
 
+    t1 = time.perf_counter()
+    elapsed = t1 - t0
+    fileName = rich.markup.escape(mp["fileName"])
     if mp["returncode"] == 0:
-        logger.success(f'Successfuly generated: "{fileName}"')
+        logger.success(f'Successfuly generated: "{fileName}" in {elapsed:.1f}s')
     else:
         logger.error(
             f'Failed to generate: "{fileName}" (error code: {mp["returncode"]}).',
