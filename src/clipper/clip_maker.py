@@ -521,6 +521,10 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     if mps["extraVideoFilters"]:
         video_filter += f',{mps["extraVideoFilters"]}'
 
+    # Since we will be encoding with mjpeg, ensure square pixels (assumes the source has SAR=1)
+    if is_rife_used:
+        video_filter += ",setsar=1"
+
     loop_filter = ""
     if mps["loop"] != "fwrev":
         video_filter += f',{mp["speedFilter"]}'
@@ -860,6 +864,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
             "-an",
             "-vcodec mjpeg",
             "-q:v 1",
+            "-aspect 1:1", # force square pixels
             "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
             "-color_range pc", # full range for mjpeg
             # "-threads 3",
