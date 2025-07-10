@@ -343,8 +343,30 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     if "__RIFE_LOADED" not in settings and is_rife_used:
         logger.notice("Preloading CUDA/cuDNN DLLs for RIFE interpolation provider.")
         import onnxruntime as ort
-        ort.preload_dlls(cuda=True, cudnn=True, msvc=True, directory=None)
-        settings["__RIFE_LOADED"] = True
+
+        # Determine DLL directory based on execution context
+        dll_directory = None
+        if getattr(sys, 'frozen', False):
+            # Running as executable - look for DLLs in lib-cuda subfolder
+            exe_dir = Path(sys.executable).parent
+            dll_directory = exe_dir / "lib-cuda"
+            if not dll_directory.exists():
+                logger.error(f"CUDA DLL directory not found: {dll_directory}")
+                logger.error("GPU acceleration will not be available for RIFE interpolation.")
+                sys.exit(1)
+            dll_directory = str(dll_directory)
+            logger.info(f"Loading CUDA DLLs from: {dll_directory}")
+        else:
+            # Running as Python script - use system search
+            logger.info("Loading CUDA DLLs from system PATH")
+
+        try:
+            ort.preload_dlls(cuda=True, cudnn=True, msvc=False, directory=dll_directory)
+            settings["__RIFE_LOADED"] = True
+        except Exception as e:
+            logger.error(f"Failed to preload CUDA DLLs: {e}")
+            logger.error("GPU acceleration will not be available for RIFE interpolation.")
+            sys.exit(1)
 
     inputs = ""
     audio_filter = ""

@@ -40,15 +40,37 @@ build-ts-ne:
 build-ts-p:
   run-s -c build-ts pretty
 
+# Build single-file executable (standard approach, ~2GB)
 build-py $UV_PREVIEW="1":
-  $SITEPACKAGES = (uv pip list --format json | ConvertFrom-Json | Where-Object { $_.name -eq 'numpy' }).location
-  uv run pyinstaller ./src/clipper/yt_clipper.py ` \
-    --icon=../../../assets/image/pepe-clipper.gif ` \
-    -F ` \
-    --workpath ./dist/py/work/ ` \
-    --distpath ./dist/py/ ` \
-    --specpath ./dist/py/spec ` \
-    --additional-hooks-dir ./hooks
+  uv run pyinstaller ./src/clipper/yt_clipper.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/py/work/ --distpath ./dist/py/ --specpath ./dist/py/spec --additional-hooks-dir ./hooks --noconfirm
+  just _copy-cuda-libs "./dist/py"
+
+# Build single-file with runtime GPU loading (small executable + separate DLLs, ~300MB + 1.9GB)
+build-py-runtime $UV_PREVIEW="1":
+  if (-not (Test-Path "./cache/gpu-libs/.cache_complete")) { Write-Host "Creating GPU library cache..."; just cache-gpu-libs; }
+  $env:RUNTIME_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/yt_clipper.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/py/work/ --distpath ./dist/py/ --specpath ./dist/py/spec --additional-hooks-dir ./hooks --noconfirm
+
+# Build single-file with cached libraries (~2.6GB)
+build-py-cached $UV_PREVIEW="1":
+  if (-not (Test-Path "./cache/gpu-libs/.cache_complete")) { Write-Host "Creating GPU library cache..."; just cache-gpu-libs; }
+  $env:CACHED_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/yt_clipper.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/py/work/ --distpath ./dist/py/ --specpath ./dist/py/spec --additional-hooks-dir ./hooks --noconfirm
+
+# Build CPU-only version for users without NVIDIA GPUs (~30MB)
+build-py-cpu-fast $UV_PREVIEW="1":
+  $env:SKIP_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/yt_clipper.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/py/work-cpu/ --distpath ./dist/py-cpu/ --specpath ./dist/py/spec-cpu --additional-hooks-dir ./hooks --exclude-module onnxruntime --noconfirm
+
+# Cache NVIDIA libraries separately for reuse across builds
+cache-gpu-libs:
+  $env:CACHED_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/yt_clipper.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/py/work-cache/ --distpath ./dist/py-cache/ --specpath ./dist/py/spec-cache --additional-hooks-dir ./hooks --name yt_clipper-cache --noconfirm
+
+# Create deployment package (uses runtime loading for small executable)
+package-release:
+  just build-py-runtime
+  Write-Host "Created yt_clipper.exe (~73MB) + lib-cuda/ folder with GPU DLLs"
+
+# Clean the GPU library cache
+clean-cache:
+  if (Test-Path "./cache/gpu-libs") { Remove-Item "./cache/gpu-libs" -Recurse -Force; }
 
 build-all:
   run-s -c build-ts-p build-py
@@ -72,3 +94,7 @@ version-major:
   npx commit-and-tag-version -r major && uv run bumpit -p major || true
 pigar:
   pigar -P ./src/clipper -p ./src/clipper/requirements.txt --without-referenced-comments
+
+# Internal helper: Copy CUDA DLLs to deployment directory
+_copy-cuda-libs target_dir:
+  if (Test-Path "./cache/gpu-libs") { $lib_cuda_dir = "{{target_dir}}/lib-cuda"; if (-not (Test-Path $lib_cuda_dir)) { New-Item -ItemType Directory -Path $lib_cuda_dir -Force | Out-Null }; Get-ChildItem "./cache/gpu-libs" -Recurse -Filter "*.dll" | Copy-Item -Destination $lib_cuda_dir -Force; $dll_count = (Get-ChildItem $lib_cuda_dir -Filter "*.dll").Count; Write-Host "Copied $dll_count required CUDA DLLs to $lib_cuda_dir" } else { Write-Host "Warning: No GPU library cache found. Run 'just cache-gpu-libs' first for GPU support." }
