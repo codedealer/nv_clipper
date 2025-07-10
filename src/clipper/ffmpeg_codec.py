@@ -18,6 +18,21 @@ def getFfmpegVideoCodecArgs(
     raise ValueError(f"Only h264_nvenc is supported in nv_clipper: {videoCodec} was supplied")
 
 
+def getExpectedFrameRate(
+    mp: DictStrAny,
+    mps: DictStrAny,
+) -> Optional[Fraction]:
+    """
+    Get the expected frame rate for the video processing.
+    If the input is variable speed, return None.
+    Otherwise, return the frame rate as a Fraction.
+    """
+    if mps["minterpFPS"] is not None:
+        return Fraction(mps["minterpFPS"])
+    if mp["isVariableSpeed"]:
+        return None
+    return Fraction(mps["r_frame_rate"]) * mp["speed"]
+
 def getFfmpegVideoCodecH264Nvenc(
     cbr: Optional[int],
     mp: DictStrAny,
@@ -27,10 +42,8 @@ def getFfmpegVideoCodecH264Nvenc(
 ) -> Tuple[str, str, str]:
     fps_arg = ""
     if not mps["h264DisableReduceStutter"]:
-        if mps["minterpFPS"] is not None:
-            fps_arg = f'-r {mps["minterpFPS"]}'
-        elif not mp["isVariableSpeed"]:
-            fps_arg = f'-r ({mps["r_frame_rate"]}*{mp["speed"]})'
+        frame_rate = getExpectedFrameRate(mp, mps)
+        fps_arg = "-fps_mode vfr" if frame_rate is None else f"-r {frame_rate}"
 
     if mp["isVariableSpeed"]:
         fps_arg = "-fps_mode vfr"

@@ -21,7 +21,7 @@ from clipper.clipper_types import (
     MissingMergeInput,
     Settings,
 )
-from clipper.ffmpeg_codec import getFfmpegVideoCodecArgs
+from clipper.ffmpeg_codec import getExpectedFrameRate, getFfmpegVideoCodecArgs
 from clipper.ffmpeg_filter import (
     autoScaleCropMap,
     getAutoScaledCropComponents,
@@ -886,6 +886,7 @@ def getRIFEFfmpegEncodeCommand(
         qmax=qmax,
         qmin=qmin,
     )
+    frame_rate = getExpectedFrameRate(mp, mps)
 
     return " ".join(
         (
@@ -893,6 +894,7 @@ def getRIFEFfmpegEncodeCommand(
             f"-hide_banner",
             getFfmpegHeaders(mps["platform"]),
             video_codec_input_args,
+            f"-framerate {frame_rate}" if frame_rate is not None else "",
             "<__RIFE_placeholder>", # some of the flags will be determined by RIFE
             "-i -",  # read from stdin
             # f'-vf "scale=in_range=full:out_range=limited,format=yuv444p,hwupload_cuda"',
