@@ -864,7 +864,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
             "-an",
             "-vcodec mjpeg",
             "-q:v 1",
-            "-aspect 1:1", # force square pixels
+            # "-aspect 1:1", # force square pixels
             "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
             "-color_range pc", # full range for mjpeg
             # "-threads 3",
