@@ -189,7 +189,7 @@ def getMarkerPairSettings(  # noqa: PLR0912
     bitrateCropFactor = min(1, bitrateCropFactor**bitrateCropRelaxationFactor)
 
     bitrateSpeedFactor = mp["averageSpeed"]
-    mps["minterpFPS"] = getMinterpFPS(mps, mp["speedMap"])
+    mps["minterpFPS"] = getMinterpFPS(mps, mp)
     if mps["minterpFPS"] is not None:
         bitrateSpeedFactor = mps["minterpFPS"] / (
             mp["averageSpeed"] * Fraction(mps["r_frame_rate"])

@@ -28,10 +28,10 @@ def getExpectedFrameRate(
     Otherwise, return the frame rate as a Fraction.
     """
     if mps["minterpFPS"] is not None:
-        return Fraction(mps["minterpFPS"])
+        return mps["minterpFPS"]
     if mp["isVariableSpeed"]:
         return None
-    return Fraction(mps["r_frame_rate"]) * mp["speed"]
+    return Fraction(mps["r_frame_rate"]) * Fraction.from_float(mp["speed"])
 
 def getFfmpegVideoCodecH264Nvenc(
     cbr: Optional[int],

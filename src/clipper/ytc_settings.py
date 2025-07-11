@@ -15,7 +15,6 @@ from clipper.clipper_types import (
     KnownPlatform,
     Settings,
 )
-from clipper.ffmpeg_filter import getMinterpFPS
 from clipper.ffprobe import ffprobeVideoProperties
 from clipper.platforms import getVideoPageURL
 from clipper.ytc_logger import logger, printToLogFile
@@ -434,7 +433,6 @@ def getGlobalSettings(cs: ClipperState) -> None:
         if "targetMaxBitrate" in encodeSettings
         else "Auto"
     )
-    minterpFPSMsg = f"Target FPS: {getMinterpFPS(settings, None)}, "
     logger.info(
         f'Global Encoding Settings: Video Codec: {settings["videoCodec"]}, CRF: {encodeSettings["crf"]} (0-63), '
         + f'Detected Bitrate: {settings["bit_rate"]}kbps, '
@@ -446,7 +444,6 @@ def getGlobalSettings(cs: ClipperState) -> None:
         + f'HDR (High Dynamic Range) Output Enabled: {settings["enableHDR"]}, '
         + f'Speed Maps Enabled: {settings["enableSpeedMaps"]}, '
         + f'Minterpolation Mode: {settings["minterpMode"]}, '
-        + minterpFPSMsg
         + f'Special Looping: {settings["loop"]}, '
         + (f'Fade Duration: {settings["fadeDuration"]}, ' if settings["loop"] == "fade" else "")
         + f'Video Stabilization Strength: {settings["videoStabilization"]["desc"]}, '

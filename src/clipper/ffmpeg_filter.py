@@ -136,17 +136,21 @@ def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
 
 def getMinterpFPS(
     mps: DictStrAny,
-    speedMap: Union[SpeedMap, None],
+    mp: DictStrAny,
 ) -> Union[ExtendedRealNumber, None]:
     minterpMode = mps["minterpMode"]
     if mps["r_frame_rate"] is None:
         return None
     videoFPS = Fraction(mps["r_frame_rate"])
 
+    if mp["isVariableSpeed"]:
+        logger.warning("Support for interpolation with variable speed is unreliable!")
+
     # maxSpeed = getMaxSpeed(speedMap)
     # maxFPS = maxSpeed * videoFPS
+    avg_speed = mp["averageSpeed"] if mp["averageSpeed"] is not None else 0
 
-    return videoFPS if (minterpMode is not None and minterpMode != "None") else None
+    return videoFPS * Fraction.from_float(max(avg_speed, 0.0625)) if (minterpMode is not None and minterpMode.lower() != "none") else None
 
 
 def getMaxSpeed(speedMap: Union[SpeedMap, None]) -> float:
