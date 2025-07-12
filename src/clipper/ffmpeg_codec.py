@@ -70,7 +70,7 @@ def getFfmpegVideoCodecH264Nvenc(
             f"-qmin 3 -qmax {qmax}" if mps["targetSize"] <= 0 else "",
             f'-b:v {mps["targetMaxBitrate"]}k' if cbr is None else f"-b:v {cbr}MB",
             f'-maxrate {mps["targetMaxBitrate"]*2}k' if cbr is None else f"-maxrate {cbr*2}MB",
-            f'-force_key_frames 1 -g {mp["averageSpeed"] * Fraction(mps["r_frame_rate"])}',
+            f'-force_key_frames 1 -g {Fraction.from_float(mp["averageSpeed"]) * Fraction(mps["r_frame_rate"])}',
             # video_track_timescale = 2^4 * 3^2 * 5^2 * 7 * 11 * 13 * 23, max is ~2E9
             f" -video_track_timescale 82882800",
             "-qcomp 0.9",
