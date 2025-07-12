@@ -851,6 +851,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     mps: DictStrAny,
 ) -> str:
     decoder_args = getDecoderArgs(mps)
+    color_space = mps.get("color_space", "bt709")
     return " ".join(
         (
             cp.ffmpegPath,
@@ -867,7 +868,9 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
             # "-aspect 1:1", # force square pixels
             "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
             "-color_range pc", # full range for mjpeg
+            f"-colorspace {color_space}",
             # "-threads 3",
+            "-video_track_timescale 82882800",
             f"-r {mps['minterpFPS']}",
             f'{mps["extraFfmpegArgs"]}',
             " ",
@@ -903,7 +906,8 @@ def getRIFEFfmpegEncodeCommand(
             "<__RIFE_placeholder>", # some of the flags will be determined by RIFE
             "-i -",  # read from stdin
             # f'-vf "scale=in_range=full:out_range=limited,format=yuv444p,hwupload_cuda"',
-            f'-vf "scale=in_range=full:out_range=limited,format=yuv420p,hwupload_cuda"',
+            # f'-vf "scale=in_range=full:out_range=limited,format=yuv420p,hwupload_cuda"',
+            f'-vf "format=yuv420p,hwupload_cuda"',
             f"-benchmark",
             video_codec_args,
             (
@@ -912,7 +916,7 @@ def getRIFEFfmpegEncodeCommand(
                 else "-map_metadata -1"
             ),
             video_codec_output_args,
-            "-color_range tv",
+            "-color_range pc",
             f'{mps["extraFfmpegArgs"]}',
             f'"{mp["filePath"]}"',
         ),
