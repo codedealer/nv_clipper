@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [6.0.1](https://github.com/exwm/yt_clipper/compare/v6.0.0...v6.0.1) (2025-07-13)
+
+
+### Features
+
+* **clipper:** add explicit colorspace for frame extraction ([6e2ff49](https://github.com/exwm/yt_clipper/commit/6e2ff49f7b3bb36dae06d05f4b4b68167683d4e0))
+
+
+### Bug Fixes
+
+* **clipper:** color range in RIFE pipe ([6f5ec63](https://github.com/exwm/yt_clipper/commit/6f5ec63eaeb6f3e2d83ef7e610ec1c30515afe17))
+* **clipper:** don't set DAR on mjpeg encode ([dfdc7bb](https://github.com/exwm/yt_clipper/commit/dfdc7bb38f7699b8186764ad16fec70e52f1c961))
+* **clipper:** force aspect ratio when extracting frames to mjpeg ([ad71326](https://github.com/exwm/yt_clipper/commit/ad713268be6954e710a948c7efaa24ff48325f6f))
+* **clipper:** GOP fraction cast ([0d82644](https://github.com/exwm/yt_clipper/commit/0d82644557184c0c62fd7e13fac807eb4fc9602e))
+* **clipper:** imprecise trimming when extracting frames for RIFE pipe ([c332828](https://github.com/exwm/yt_clipper/commit/c332828807d9d7f9b2f6190f40ddce0e321934f6))
+* **clipper:** interpolation framerate ([8665050](https://github.com/exwm/yt_clipper/commit/86650509b064132a714eb26b862810270ee9d235))
+* **clipper:** set framerate before ingesting frames from stdin ([a1a7958](https://github.com/exwm/yt_clipper/commit/a1a79581b2201cb0bf152284955a604ae7acd8bc))
+
+
+### Documentation Updates
+
+* remove notes ([02f79d5](https://github.com/exwm/yt_clipper/commit/02f79d50398733bdc82bd09dead438810f332b58))
+
 ## 6.0.0 (2025-07-09)
 
 
