@@ -117,27 +117,14 @@ jobs:
       - name: Run clipper tests
         run: just test-py
 
-      - name: Generate executable (CPU-only for PRs)
-        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/heads/release') && !startsWith(github.ref, 'refs/tags/v')
+      - name: Generate executable (CPU-only for all builds)
         run: just build-py-cpu-fast
-
-      - name: Generate executable (ONNX without CUDA libs for release branches)
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release')
-        run: just build-py
-
-      - name: Generate executable (Runtime loading for version tags)
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        run: |
-          # Cache is already available from the previous step
-          export RUNTIME_GPU_LIBS=1
-          just build-py-runtime
 
       # Done with uv
       - name: Minimize uv cache
         run: uv cache prune --ci
 
       - name: Copy artifacts (CPU-only build)
-        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/heads/release') && !startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           mv ./bindeps/ffmpeg/bin/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
@@ -150,47 +137,8 @@ jobs:
           cp -R ./src/clipper/yt-dlp-plugins/ytc/ ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/yt-dlp-plugins/
           cp ./dist/py-cpu/yt_clipper* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
 
-      - name: Copy artifacts (ONNX build without CUDA libs)
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release')
-        shell: bash
-        run: |
-          mv ./bindeps/ffmpeg/bin/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
-          mv ./bindeps/ffmpeg/*.txt ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
-          mv ./bindeps/yt-dlp/bin/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
-
-          cp ./src/clipper/include/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-          cp ./src/clipper/win_helpers/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-          mkdir -p ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/yt-dlp-plugins/ytc
-          cp -R ./src/clipper/yt-dlp-plugins/ytc/ ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/yt-dlp-plugins/
-          cp ./dist/py/yt_clipper* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-
-      - name: Copy artifacts (Runtime loading build with lib-cuda)
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          mv ./bindeps/ffmpeg/bin/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
-          mv ./bindeps/ffmpeg/*.txt ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
-          mv ./bindeps/yt-dlp/bin/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
-
-          cp ./src/clipper/include/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-          cp ./src/clipper/win_helpers/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-          mkdir -p ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/yt-dlp-plugins/ytc
-          cp -R ./src/clipper/yt-dlp-plugins/ytc/ ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/yt-dlp-plugins/
-          cp ./dist/py/yt_clipper* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-          # Copy lib-cuda folder with CUDA DLLs for runtime loading
-          if [ -d "./dist/py/lib-cuda" ]; then
-            cp -R ./dist/py/lib-cuda ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
-          fi
-
       - name: Print clipper install version (windows)
-        run: |
-          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" == "true" ]; then
-            ./dist/py/yt_clipper.exe --version
-          elif [ "${{ startsWith(github.ref, 'refs/heads/release') }}" == "true" ]; then
-            ./dist/py/yt_clipper.exe --version
-          else
-            ./dist/py-cpu/yt_clipper.exe --version
-          fi
+        run: ./dist/py-cpu/yt_clipper.exe --version
 
       - name: Zip artifacts on windows
         shell: powershell
@@ -202,21 +150,6 @@ jobs:
         with:
           name: ${{ env.NAME }}_win_${{ env.VERSION }}
           path: ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}.zip
-
-      - name: Create lib-cuda artifact for version tags
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        shell: powershell
-        run: |
-          if (Test-Path "./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/lib-cuda") {
-            Compress-Archive ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/lib-cuda/ ./artifact/py/lib-cuda_${{ env.VERSION }}.zip
-          }
-
-      - name: Upload lib-cuda artifact for version tags
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: lib-cuda_${{ env.VERSION }}
-          path: ./artifact/py/lib-cuda_${{ env.VERSION }}.zip
 
       - name: Rename JS bundle for artifact upload
         run: cp ./dist/js/yt_clipper.js ./dist/js/${{ env.NAME }}_${{ env.VERSION }}.js
@@ -249,10 +182,7 @@ jobs:
           name: ${{ env.NAME }}_win_${{ env.VERSION }}
           path: ./
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: lib-cuda_${{ env.VERSION }}
-          path: ./
+
 
       - uses: actions/download-artifact@v4
         with:
@@ -292,13 +222,4 @@ jobs:
           asset_name: ${{ env.NAME }}_${{ env.VERSION }}.js
           asset_content_type: text/javascript
 
-      - name: Upload release asset (lib-cuda)
-        id: upload-release-asset-lib-cuda
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: lib-cuda_${{ env.VERSION }}.zip
-          asset_name: lib-cuda_${{ env.VERSION }}.zip
-          asset_content_type: application/zip
+
