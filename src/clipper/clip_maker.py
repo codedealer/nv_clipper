@@ -37,13 +37,15 @@ from clipper.ffmpeg_filter import (
     wrapVideoFilterForHardwareAcceleration,
 )
 from clipper.platforms import getFfmpegHeaders
-from clipper.rife_interpolation import (
-    InterpolationConfig,
-    extract_video_frames,
-    run_rife_interpolation,
-)
 from clipper.util import escapeSingleQuotesFFmpeg, getTrimmedBase64Hash
 from clipper.ytc_logger import logger
+
+# Module-level cache for RIFE symbols
+_RIFE_CACHE: Dict[str, Any] = {
+    "InterpolationConfig": None,
+    "extract_video_frames": None,
+    "run_rife_interpolation": None,
+}
 
 
 def getMarkerPairSettings(  # noqa: PLR0912
@@ -340,7 +342,24 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
     # lazy load CUDA DLLs if needed
     is_rife_used = mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife"
-    if "__RIFE_LOADED" not in settings and is_rife_used:
+    if is_rife_used and "__RIFE_LOADED" not in settings:
+        # Use a module-level cache to dynamically import and cache RIFE-related symbols for later use,
+        # as these are only needed if RIFE interpolation is enabled at runtime.
+        if _RIFE_CACHE["InterpolationConfig"] is None:
+            try:
+                from clipper.rife_interpolation import (
+                    InterpolationConfig,
+                    extract_video_frames,
+                    run_rife_interpolation,
+                )
+                _RIFE_CACHE["InterpolationConfig"] = InterpolationConfig
+                _RIFE_CACHE["extract_video_frames"] = extract_video_frames
+                _RIFE_CACHE["run_rife_interpolation"] = run_rife_interpolation
+            except ImportError as e:
+                logger.error("RIFE interpolation is enabled but required dependencies are missing: %s", e)
+                logger.error("Please install onnxruntime and ensure all RIFE dependencies are available, or disable RIFE interpolation.")
+                sys.exit(1)
+
         logger.notice("Preloading CUDA/cuDNN DLLs for RIFE interpolation provider.")
         import onnxruntime as ort
 
@@ -367,6 +386,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             logger.error(f"Failed to preload CUDA DLLs: {e}")
             logger.error("GPU acceleration will not be available for RIFE interpolation.")
             sys.exit(1)
+
+    # Use cached symbols below instead of globals
+    InterpolationConfig = _RIFE_CACHE["InterpolationConfig"]
+    extract_video_frames = _RIFE_CACHE["extract_video_frames"]
+    run_rife_interpolation = _RIFE_CACHE["run_rife_interpolation"]
 
     inputs = ""
     audio_filter = ""
@@ -979,6 +1003,12 @@ def run_rife_pipe(
     is expected to write frames to stdout.
     Returns 0 on success
     """
+    InterpolationConfig = _RIFE_CACHE["InterpolationConfig"]
+    extract_video_frames = _RIFE_CACHE["extract_video_frames"]
+    run_rife_interpolation = _RIFE_CACHE["run_rife_interpolation"]
+    if extract_video_frames is None or run_rife_interpolation is None or InterpolationConfig is None:
+        logger.error("RIFE interpolation functions are not available. Ensure you have a RIFE enabled build and ONNX/CUDA dependencies are installed.")
+        return 1
     if len(rife_commands) != 2 or len(printable_commands) != 2 or "__RIFE_pipe" not in mp:
         logger.error("RIFE pipe commands or configuration is missing.")
         return 1
