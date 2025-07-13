@@ -653,6 +653,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             vidstabdetectFilter += loop_filter
             vidstabtransformFilter += loop_filter
 
+         # mjpeg encoding requires full range pixel format
+        if is_rife_used:
+            vidstabdetectFilter = f"scale=in_range=tv:out_range=pc,{vidstabdetectFilter}"
+            vidstabtransformFilter = f"scale=in_range=tv:out_range=pc,{vidstabtransformFilter}"
+
         vidstabdetectFilter = wrapVideoFilterForHardwareAcceleration(
             vidstabdetectFilter,
             pix_fmt,
@@ -712,6 +717,10 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
         if mps["loop"] != "none":
             video_filter += loop_filter
+
+        # mjpeg encoding requires full range pixel format
+        if is_rife_used:
+            video_filter = f"scale=in_range=tv:out_range=pc,{video_filter}"
 
         video_filter = wrapVideoFilterForHardwareAcceleration(
             video_filter,
