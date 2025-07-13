@@ -1,9 +1,66 @@
-# yt_clipper
+# nv_clipper (yt_clipper fork)
+
+**nv_clipper** is a fork of yt_clipper with the following key differences:
+
+- **Only uses NVENC for encoding:** Your hardware must support NVIDIA CUDA (NVIDIA GPU required).
+- **Motion Interpolation is AI-only:**
+  - You must either use a RIFE-enabled build (see instructions below), or have Topaz Video AI installed and pass the required arguments to enable it.
+  - No traditional (non-AI) interpolation is available.
+- **Video stabilization is Topaz-only:**
+  - Video stabilization requires Topaz Video AI. If Topaz support is not enabled via arguments, stabilization will not work.
+
+If you need ONNX/CUDA engine builds, you must build them yourself locally. This fork does not provide prebuilt ONNX/CUDA binaries because of the dependencies size.
+
+By default we provide a small binary with Topaz Video AI support (Topaz must be installed separately and activated via arguments like `--topaz-ai-path`, see help message for more info).
+---
 
 yt_clipper is a relatively simple way to clip videos from popular platforms (for now YouTube, WeVerse, Naver TV, and AfreecaTV).
 It provides a graphical UI for video editing that creates instructions in `json` format for clipping the video.
 These instruction files are small and in plain text so they can be easily read, modified, and shared with others.
 The `clipper script` component provides a way to process these instructions and generate the clips you want.
+
+# Building a RIFE-enabled nv_clipper locally
+
+To build a RIFE-enabled version of nv_clipper (for AI motion interpolation):
+
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/codedealer/nv_clipper.git
+   cd nv_clipper
+   ```
+2. **Install Python and dependencies:**
+   - Install [Python 3.12+](https://www.python.org/downloads/)
+   - Install [uv](https://github.com/astral-sh/uv):
+     ```sh
+     pip install uv
+     ```
+   - Sync dependencies:
+     ```sh
+     uv sync --all-extras --dev
+     ```
+3. **Download the RIFE model:**
+   - Specify path to your RIFE ONNX model (default `RIFE_fp32_cuda.opt.onnx` model is provided in the `assets/` folder) with the `--rife-model-path` argument.
+4. **Build the executable:**
+   - For a RIFE-enabled build (with GPU support):
+     ```sh
+     just build-py
+     ```
+   - For a CPU-only build (no CUDA, no ONNX):
+     ```sh
+     just build-py-cpu-fast
+     ```
+   - For a runtime GPU loading build (small exe + separate DLLs):
+     ```sh
+     just build-py-runtime
+     ```
+5. **Run the executable:**
+   - Use the `--minterp-mode` and `--minterp-provider` arguments to enable RIFE interpolation.
+   - Example:
+     ```sh
+     ./dist/py/yt_clipper.exe --minterp-mode x2slow --minterp-provider RIFE --rife-model-path RIFE_fp32_cuda.opt.onnx ...
+     ```
+
+---
 
 # Video Quick Start
 
