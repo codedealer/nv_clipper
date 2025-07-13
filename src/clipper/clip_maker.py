@@ -431,8 +431,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             + f'({mps["targetSize"]} MB / ~{round(mp["outputDuration"],3)} s).',
         )
 
+    decoder_args = getDecoderArgs(mps)
     if is_rife_used:
-        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)
+        # Use software decoding here, because cuvid is too imprecise with timestamps causing issues on short enough clips
+        decoder_args = ""
+        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps, decoder_args)
         pix_fmt = "yuv420p" # Encode is done on CPU so we don't have to use 4:4:4
     else:
         ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
@@ -446,6 +449,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             qmin,
         )
         pix_fmt = "yuv444p"
+
+    is_cuvid = decoder_args != ""
 
     if not mps["preview"]:
         video_filter += f'trim=0:{mp["duration"]}'
@@ -590,7 +595,6 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
     ffmpegCommands: List[str] = []
     rifeCommands: List[str] = []
-    is_cuvid = getDecoderArgs(mps) != ""
 
     MAX_VFILTER_SIZE = 10_000
     filterPathPass1 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass1.txt"
@@ -858,8 +862,8 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     inputs: str,
     mp: DictStrAny,
     mps: DictStrAny,
+    decoder_args: str = "",
 ) -> str:
-    decoder_args = getDecoderArgs(mps)
     color_space = mps.get("color_space", "bt709")
     return " ".join(
         (
