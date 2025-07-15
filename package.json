@@ -1,14 +1,14 @@
 {
   "name": "yt_clipper",
   "description": "Mark up YouTube videos and quickly generate clipped webms.",
-  "author": "exwm",
-  "version": "6.0.1",
+  "author": "codedealer",
+  "version": "6.0.3",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/exwm/yt_clipper"
+    "url": "https://github.com/codedealer/nv_clipper"
   },
-  "homepage": "https://openuserjs.org/scripts/elwm/yt_clipper",
+  "homepage": "",
   "source": "src/markup/yt_clipper.ts",
   "targets": {
     "userscript": {
