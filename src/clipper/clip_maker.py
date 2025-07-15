@@ -457,10 +457,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
     decoder_args = getDecoderArgs(mps)
     if is_rife_used:
-        # Use software decoding here, because cuvid is too imprecise with timestamps causing issues on short enough clips
-        decoder_args = ""
         ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps, decoder_args)
-        pix_fmt = "yuv420p" # Encode is done on CPU so we don't have to use 4:4:4
+        pix_fmt = "yuv420p" # mjpeg encode is done on CPU so we don't have to use 4:4:4 for filters
     else:
         ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
             audio_filter,
@@ -694,7 +692,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         )
         vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
             vidstabtransformFilter,
-            pix_fmt,
+            pix_fmt if not is_rife_used else "yuv444p",  # mjpeg requires 4:4:4
             not is_cuvid,
             is_rife_used,
         )
@@ -752,7 +750,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
         video_filter = wrapVideoFilterForHardwareAcceleration(
             video_filter,
-            pix_fmt,
+            pix_fmt if not is_rife_used else "yuv444p",  # mjpeg requires 4:4:4
             not is_cuvid,
             is_rife_used,
         )
@@ -852,6 +850,10 @@ def getDecoderArgs(
     mps: DictStrAny,
 ) -> str:
     codec = None
+    is_rife_used = mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife"
+    # if RIFE is used, we do not use cuvid decoder as it is too imprecise with timestamps
+    if is_rife_used:
+        return ""
     if mps.get("codec_name"):
         if mps["codec_name"].lower() == "vp9":
             codec = "vp9_cuvid"
