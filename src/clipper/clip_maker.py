@@ -890,7 +890,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     mps: DictStrAny,
     decoder_args: str = "",
 ) -> str:
-    color_space = mps.get("color_space", "bt709")
+    color_space = mps.get("color_space")
     return " ".join(
         (
             cp.ffmpegPath,
@@ -907,7 +907,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
             # "-aspect 1:1", # force square pixels
             "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
             "-color_range pc", # full range for mjpeg
-            f"-colorspace {color_space}",
+            f"-colorspace {color_space}" if color_space else "",
             # "-threads 3",
             "-video_track_timescale 82882800",
             f"-r {mps['minterpFPS']}",
