@@ -32,6 +32,16 @@ interface Settings {
   minterpFPS?: number;
   loop?: Loop;
   fadeDuration?: number;
+  videoEnhancementEnabled?: boolean;
+  videoEnhancementModel: VideoEnhancement['model'];
+  videoEnhancementCompression: VideoEnhancement['compression'];
+  videoEnhancementDetails: VideoEnhancement['details'];
+  videoEnhancementBlur: VideoEnhancement['blur'];
+  videoEnhancementNoise: VideoEnhancement['noise'];
+  videoEnhancementHalo: VideoEnhancement['halo'];
+  videoEnhancementPreblur: VideoEnhancement['preblur'];
+  videoEnhancementBlend: VideoEnhancement['blend'];
+  videoEnhancementPrenoise: VideoEnhancement['prenoise'];
 }
 
 interface MarkerPair {
@@ -146,4 +156,17 @@ interface ChartInput {
   maxBound: number;
   chartLoopKey: 'speedChartLoop' | 'cropChartLoop';
   dataMapKey: 'speedMap' | 'cropMap';
+}
+
+interface VideoEnhancement {
+  enabled: boolean;
+  model: 'Proteus' | 'Iris'
+  compression: number; // fix compression
+  details: number; // improve details
+  blur: number; // sharpen (Topaz idiosyncrasy)
+  noise: number; // reduce noise
+  halo: number; // reduce halo
+  preblur: number; // can be negative Anti-alias/deblur
+  blend: number; // recover details from the original frame
+  prenoise: number; // add digital noise on top of the original frame 0.01 - 0.1
 }
