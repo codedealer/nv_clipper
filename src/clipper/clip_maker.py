@@ -684,12 +684,6 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             vidstabdetectFilter = f"scale=in_range=tv:out_range=pc,{vidstabdetectFilter}"
             vidstabtransformFilter = f"scale=in_range=tv:out_range=pc,{vidstabtransformFilter}"
 
-        vidstabdetectFilter = wrapVideoFilterForHardwareAcceleration(
-            vidstabdetectFilter,
-            pix_fmt,
-            not is_cuvid,
-            True,
-        )
         vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
             vidstabtransformFilter,
             pix_fmt if not is_rife_used else "yuv444p",  # mjpeg requires 4:4:4
@@ -868,7 +862,8 @@ def getFfmpegCommandVidstab(
     mp: DictStrAny,
     mps: DictStrAny,
 ) -> str:
-    decoder_args = getDecoderArgs(mps)
+    # Do not use cuvid decoder for video stabilization as it is too imprecise with timestamps
+    decoder_args = "" # getDecoderArgs(mps)
     return " ".join(
         (
             cp.ffmpegPath,
@@ -877,6 +872,7 @@ def getFfmpegCommandVidstab(
             decoder_args,
             inputs,
             f"-benchmark",
+            "-an",
             f'{mps["extraFfmpegArgs"]}',
             " ",
         ),
