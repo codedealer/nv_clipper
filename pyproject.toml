@@ -41,6 +41,19 @@ test = [
     "syrupy>=4.7.1,<5",
 ]
 
+cpu = [
+    "yt-dlp==2025.06.09",
+    "coloredlogs>=15.0.1,<16",
+    "notify-py>=0.3.3,<0.4",
+    "verboselogs~=1.7",
+    "webvtt-py>=0.4.6,<0.5",
+    "certifi>=2024.7.4",
+    "rich>=13.9.1,<14",
+    "rich-argparse>=1.5.2,<2",
+    "numpy==2.2.6",
+    "opencv-python==4.11.0.86"
+]
+
 [tool.uv]
 default-groups = [
     "dev",

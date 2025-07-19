@@ -74,6 +74,18 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+cpu = [
+    { name = "certifi" },
+    { name = "coloredlogs" },
+    { name = "notify-py" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "rich" },
+    { name = "rich-argparse" },
+    { name = "verboselogs" },
+    { name = "webvtt-py" },
+    { name = "yt-dlp" },
+]
 dev = [
     { name = "bumpit" },
     { name = "pillow" },
@@ -107,6 +119,18 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+cpu = [
+    { name = "certifi", specifier = ">=2024.7.4" },
+    { name = "coloredlogs", specifier = ">=15.0.1,<16" },
+    { name = "notify-py", specifier = ">=0.3.3,<0.4" },
+    { name = "numpy", specifier = "==2.2.6" },
+    { name = "opencv-python", specifier = "==4.11.0.86" },
+    { name = "rich", specifier = ">=13.9.1,<14" },
+    { name = "rich-argparse", specifier = ">=1.5.2,<2" },
+    { name = "verboselogs", specifier = "~=1.7" },
+    { name = "webvtt-py", specifier = ">=0.4.6,<0.5" },
+    { name = "yt-dlp", specifier = "==2025.6.9" },
+]
 dev = [
     { name = "bumpit", specifier = ">=0.8.0,<0.9" },
     { name = "pillow", specifier = ">=10.4.0,<11" },

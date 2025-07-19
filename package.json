@@ -20,14 +20,8 @@
   },
   "scripts": {
     "lint:py": "just lint-py-fix",
-    "test:py": "just test-py",
-    "precommit-msg": "echo 'Pre-commit checks...' && exit 0"
+    "test:py": "just test-py"
   },
-  "pre-commit": [
-    "precommit-msg",
-    "lint:py",
-    "test:py"
-  ],
   "dependencies": {
     "common-tags": "^1.8.2",
     "d3-drag": "^1.2.5",
