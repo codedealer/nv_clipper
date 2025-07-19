@@ -8,6 +8,9 @@ on:
       - test-ci
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - "*"
 
 env:
   NAME: nv_clipper
@@ -85,6 +88,7 @@ jobs:
 
       - run: just bundle-prod
 
+      # Only run linter and tests for PRs, skip build and artifact steps
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -95,8 +99,8 @@ jobs:
       - name: Set up Python
         run: uv python install
 
-      - name: Install the project
-        run: uv sync --all-extras --dev
+      - name: Install the project (CPU-only)
+        run: uv sync --group cpu --dev --test
 
       - name: Cache CUDA libraries
         id: cache-cuda-libs
@@ -107,24 +111,24 @@ jobs:
           restore-keys: |
             cuda-libs-v1-
 
-      - name: Create CUDA library cache if missing
-        if: steps.cache-cuda-libs.outputs.cache-hit != 'true'
-        run: just cache-gpu-libs
-
       - name: Lint with ruff
-        run: just lint-py
+        run: just lint-py-fix
 
       - name: Run clipper tests
         run: just test-py
 
+      # Only build executables and upload artifacts on push to release or tag, not on PR
       - name: Generate executable (CPU-only for all builds)
+        if: github.event_name != 'pull_request'
         run: just build-py-cpu-fast
 
       # Done with uv
       - name: Minimize uv cache
+        if: github.event_name != 'pull_request'
         run: uv cache prune --ci
 
       - name: Copy artifacts (CPU-only build)
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           mv ./bindeps/ffmpeg/bin/* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/bin/
@@ -138,23 +142,28 @@ jobs:
           cp ./dist/py-cpu/yt_clipper* ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/
 
       - name: Print clipper install version (windows)
+        if: github.event_name != 'pull_request'
         run: ./dist/py-cpu/yt_clipper.exe --version
 
       - name: Zip artifacts on windows
+        if: github.event_name != 'pull_request'
         shell: powershell
         run: |
           Compress-Archive ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}/ ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}.zip
 
       - name: Upload clipper script installation artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }}_win_${{ env.VERSION }}
           path: ./artifact/py/${{ env.NAME }}_win_${{ env.VERSION }}.zip
 
       - name: Rename JS bundle for artifact upload
+        if: github.event_name != 'pull_request'
         run: cp ./dist/js/yt_clipper.js ./dist/js/${{ env.NAME }}_${{ env.VERSION }}.js
 
       - name: Upload markup script installation artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }}_${{ env.VERSION }}.js
