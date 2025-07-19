@@ -108,6 +108,16 @@ interface MarkerPairOverrides {
   minterpProvider?: string;
   loop?: Loop;
   fadeDuration?: number;
+  videoEnhancementEnabled?: boolean;
+  videoEnhancementModel?: VideoEnhancement['model'];
+  videoEnhancementCompression?: VideoEnhancement['compression'];
+  videoEnhancementDetails?: VideoEnhancement['details'];
+  videoEnhancementBlur?: VideoEnhancement['blur'];
+  videoEnhancementNoise?: VideoEnhancement['noise'];
+  videoEnhancementHalo?: VideoEnhancement['halo'];
+  videoEnhancementPreblur?: VideoEnhancement['preblur'];
+  videoEnhancementBlend?: VideoEnhancement['blend'];
+  videoEnhancementPrenoise?: VideoEnhancement['prenoise'];
 }
 
 interface ChartLoop {
