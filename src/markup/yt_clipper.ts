@@ -2676,6 +2676,18 @@ async function loadytClipper() {
     const videoStabilizationJitteryMotion = overrides.videoStabilizationJitteryMotion ?? settings.videoStabilizationJitteryMotion;
     const minterpMode = overrides.minterpMode ?? settings.minterpMode;
     const minterpProvider = overrides.minterpProvider ?? settings.minterpProvider;
+
+    const videoEnhancementEnabled = overrides.videoEnhancementEnabled ?? settings.videoEnhancementEnabled;
+    const videoEnhancementModel = overrides.videoEnhancementModel ?? settings.videoEnhancementModel;
+    const videoEnhancementCompression = overrides.videoEnhancementCompression ?? settings.videoEnhancementCompression;
+    const videoEnhancementDetails = overrides.videoEnhancementDetails ?? settings.videoEnhancementDetails;
+    const videoEnhancementBlur = overrides.videoEnhancementBlur ?? settings.videoEnhancementBlur;
+    const videoEnhancementNoise = overrides.videoEnhancementNoise ?? settings.videoEnhancementNoise;
+    const videoEnhancementHalo = overrides.videoEnhancementHalo ?? settings.videoEnhancementHalo;
+    const videoEnhancementPreblur = overrides.videoEnhancementPreblur ?? settings.videoEnhancementPreblur;
+    const videoEnhancementBlend = overrides.videoEnhancementBlend ?? settings.videoEnhancementBlend;
+    const videoEnhancementPrenoise = overrides.videoEnhancementPrenoise ?? settings.videoEnhancementPrenoise;
+
     const overridesEditorDisplay = isExtraSettingsEditorEnabled ? 'block' : 'none';
     createCropOverlay(crop);
 
@@ -2729,128 +2741,195 @@ async function loadytClipper() {
       </fieldset>
       <fieldset id="marker-pair-overrides" class="settings-editor-panel marker-pair-settings-editor-highlighted-div" style="display:${overridesEditorDisplay}">
         <legend class="marker-pair-settings-editor-highlighted-label">Overrides</legend>
-        <div class="settings-editor-input-div" title="${Tooltips.audioTooltip}">
-          <span>Audio</span>
-          <select id="audio-input">
-            <option value="Default" ${overrides.audio == null ? 'selected' : ''}>${ternaryToString(
-              settings.audio
-            )}</option>
-            <option ${overrides.audio === false ? 'selected' : ''}>Disabled</option>
-            <option ${overrides.audio ? 'selected' : ''}>Enabled</option>
-          </select>
+        <div id="marker-pair-overrides-general-options" style="display:contents">
+          <div class="settings-editor-input-div" title="${Tooltips.audioTooltip}">
+            <span>Audio</span>
+            <select id="audio-input">
+              <option value="Default" ${overrides.audio == null ? 'selected' : ''}>${ternaryToString(
+                settings.audio
+              )}</option>
+              <option ${overrides.audio === false ? 'selected' : ''}>Disabled</option>
+              <option ${overrides.audio ? 'selected' : ''}>Enabled</option>
+            </select>
+          </div>
+          <div class="settings-editor-input-div" title="${Tooltips.hdrTooltip}" style="display:none">
+            <span>Enable HDR</span>
+            <select id="enable-hdr-input">
+              <option value="Default" ${overrides.enableHDR == null ? 'selected' : ''}>
+                ${ternaryToString(settings.enableHDR)}
+              </option>
+              <option ${overrides.enableHDR === false ? 'selected' : ''}>Disabled</option>
+              <option ${overrides.enableHDR ? 'selected' : ''}>Enabled</option>
+            </select>
+          </div>
+              <!--  </div>  ??? -->
+          <div class="settings-editor-input-div">
+            <div title="${Tooltips.minterpModeTooltip}">
+              <span>Minterpolation</span>
+              <select id="minterp-mode-input">
+                <option ${minterpMode === 'None' ? 'selected' : ''}>None</option>
+                <option value="VideoFPS" ${
+                  minterpMode == 'VideoFPS' ? 'selected' : ''
+                }>Target FPS</option>
+                <option value="x2slow" ${
+                  minterpMode == 'x2slow' ? 'selected' : ''
+                }>x2 Slowmo</option>
+                <option value="x4slow" ${
+                  minterpMode == 'x4slow' ? 'selected' : ''
+                }>x4 Slowmo</option>
+                <option value="x6slow" ${
+                  minterpMode == 'x6slow' ? 'selected' : ''
+                }>x6 Slowmo</option>
+                <option value="x8slow" ${
+                  minterpMode == 'x8slow' ? 'selected' : ''
+                }>x8 Slowmo</option>
+              </select>
+            </div>
+            <div>
+              <span>Provider</span>
+              <select id="minterp-provider-input">
+                <option value="RIFE" ${minterpProvider === 'RIFE' ? 'selected' : ''}>RIFE</option>
+                <option value="TopazCHF" ${minterpProvider === 'TopazCHF' ? 'selected' : ''}>TopazCHF</option>
+                <option value="TopazApollo" ${minterpProvider === 'TopazApollo' ? 'selected' : ''}>TopazApollo</option>
+                <option value="TopazAion" ${minterpProvider === 'TopazAion' ? 'selected' : ''}>TopazAion</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-editor-input-div multi-input-div" title="${Tooltips.vidstabTooltip}">
+            <div>
+              <span>Stabilization</span>
+              <select id="video-stabilization-input">
+                <option value="Inherit" ${
+                  vidstabDesc == null ? 'selected' : ''
+                }>${vidstabDescGlobal}</option>
+                <option value="Disabled" ${
+                  vidstabDesc == 'Disabled' ? 'selected' : ''
+                }>Disabled</option>
+                <option ${vidstabDesc === 'Very Weak' ? 'selected' : ''}>Very Weak</option>
+                <option ${vidstabDesc === 'Weak' ? 'selected' : ''}>Weak</option>
+                <option ${vidstabDesc === 'Medium' ? 'selected' : ''}>Medium</option>
+                <option ${vidstabDesc === 'Strong' ? 'selected' : ''}>Strong</option>
+                <option ${vidstabDesc === 'Very Strong' ? 'selected' : ''}>Very Strong</option>
+              </select>
+            </div>
+            <div title="${Tooltips.vidstabRollingShutterTooltip}">
+              <span>Rolling Shutter</span>
+              <select id="video-stabilization-rolling-shutter-input">
+                <option value="Default" ${videoStabilizationRollingShutter == null ? 'selected' : ''}>${
+                  ternaryToString(settings.videoStabilizationRollingShutter)
+                }</option>
+                <option ${videoStabilizationRollingShutter === false ? 'selected' : ''}>Disabled</option>
+                <option ${videoStabilizationRollingShutter === true ? 'selected' : ''}>Enabled</option>
+              </select>
+            </div>
+            <div title="${Tooltips.vidstabJitteryMotionTooltip}">
+              <span>Jittery Motion</span>
+              <select id="video-stabilization-jittery-motion-input">
+                <option value="Default" ${videoStabilizationJitteryMotion == null ? 'selected' : ''}>${
+                  ternaryToString(settings.videoStabilizationJitteryMotion)
+                }</option>
+                <option ${videoStabilizationJitteryMotion === false ? 'selected' : ''}>Disabled</option>
+                <option ${videoStabilizationJitteryMotion === true ? 'selected' : ''}>Enabled</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-editor-input-div multi-input-div" title="${Tooltips.loopTooltip}">
+            <div>
+              <span>Loop</span>
+              <select id="loop-input">
+                <option value="Default" ${overrides.loop == null ? 'selected' : ''}>${
+                  settings.loop != null ? `(${settings.loop})` : '(none)'
+                }</option>
+                <option ${overrides.loop === 'none' ? 'selected' : ''}>none</option>
+                <option ${overrides.loop === 'fwrev' ? 'selected' : ''}>fwrev</option>
+                <option ${overrides.loop === 'fade' ? 'selected' : ''}>fade</option>
+              </select>
+            </div>
+            <div title="${Tooltips.fadeDurationTooltip}" style="display:none;">
+              <span>Fade Duration</span>
+              <input id="fade-duration-input" type="number" min="0.1" step="0.1" value="${
+                overrides.fadeDuration != null ? overrides.fadeDuration : ''
+              }" placeholder="${
+                settings.fadeDuration != null ? settings.fadeDuration : '0.7'
+              }" style="width:7em"></input>
+            </div>
+          </div>
+          <div class="settings-editor-input-div" title="${Tooltips.enableZoomPanTooltip}">
+            <span>ZoomPan</span>
+              <select id="enable-zoom-pan-input">
+                <option ${!markerPair.enableZoomPan ? 'selected' : ''}>Disabled</option>
+                <option ${markerPair.enableZoomPan ? 'selected' : ''}>Enabled</option>
+              </select>
+          </div>
+        </div>
+        <div id="marker-pair-overrides-enhancement-options" style="display:none">
+          <div class="settings-editor-input-div">
+            <span>AI Enhance</span>
+            <select id="video-enhancement-input">
+              <option value="Default" ${videoEnhancementEnabled == null ? 'selected' : ''}>(Disabled)</option>
+              <option ${videoEnhancementEnabled === false ? 'selected' : ''}>Disabled</option>
+              <option ${videoEnhancementEnabled ? 'selected' : ''}>Enabled</option>
+            </select>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Model</span>
+            <select id="video-enhancement-model-input">
+              <option value="Proteus" ${videoEnhancementModel == null ? 'selected' : ''}>(Proteus)</option>
+              <option value="Proteus" ${videoEnhancementModel === 'Proteus' ? 'selected' : ''}>Proteus</option>
+              <option value="Iris" ${videoEnhancementModel === 'Iris' ? 'selected' : ''}>Iris</option>
+            </select>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Fix Compression</span>
+            <input id="video-enhancement-compression-input" type="range" min="0" max="1" step="0.01"
+              value="${videoEnhancementCompression ?? 0}" style="width:10em">
+            <output>${videoEnhancementCompression ?? 0}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Improve Detail</span>
+            <input id="video-enhancement-details-input" type="range" min="0" max="1" step="0.01"
+              value="${videoEnhancementDetails ?? 0}" style="width:10em">
+            <output>${videoEnhancementDetails ?? 0}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Sharpen</span>
+            <input id="video-enhancement-blur-input" type="range" min="0" max="1" step="0.01"
+              value="${videoEnhancementBlur ?? 0}" style="width:10em">
+            <output>${videoEnhancementBlur ?? 0}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Reduce Noise</span>
+            <input id="video-enhancement-noise-input" type="range" min="0" max="1" step="0.01"
+              value="${videoEnhancementNoise ?? 0}" style="width:10em">
+            <output>${videoEnhancementNoise ?? 0}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Dehalo</span>
+            <input id="video-enhancement-halo-input" type="range" min="0" max="1" step="0.01"
+              value="${videoEnhancementHalo ?? 0}" style="width:10em">
+            <output>${videoEnhancementHalo ?? 0}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Anti-alias/Deblur</span>
+            <input id="video-enhancement-preblur-input" type="range" min="-1" max="1" step="0.1"
+              value="${videoEnhancementPreblur ?? 0}" style="width:10em">
+            <output>${videoEnhancementPreblur ?? 0}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Recover detail</span>
+            <input id="video-enhancement-blend-input" type="range" min="0" max="1" step="0.01"
+              value="${videoEnhancementBlend ?? 0.2}" style="width:10em">
+            <output>${videoEnhancementBlend ?? 0.2}</output>
+          </div>
+          <div class="settings-editor-input-div">
+            <span>Add Noise</span>
+            <input id="video-enhancement-prenoise-input" type="range" min="0" max="0.1" step="0.01"
+              value="${videoEnhancementPrenoise ?? 0}" style="width:10em">
+            <output>${videoEnhancementPrenoise ?? 0}</output>
+          </div>
         </div>
 
-      <div class="settings-editor-input-div" title="${Tooltips.hdrTooltip}">
-        <span>Enable HDR</span>
-        <select id="enable-hdr-input">
-          <option value="Default" ${overrides.enableHDR == null ? 'selected' : ''}>
-            ${ternaryToString(settings.enableHDR)}
-          </option>
-          <option ${overrides.enableHDR === false ? 'selected' : ''}>Disabled</option>
-          <option ${overrides.enableHDR ? 'selected' : ''}>Enabled</option>
-        </select>
-      </div>
-
-      </div>
-
-        <div class="settings-editor-input-div">
-          <div title="${Tooltips.minterpModeTooltip}">
-            <span>Minterpolation</span>
-            <select id="minterp-mode-input">
-              <option ${minterpMode === 'None' ? 'selected' : ''}>None</option>
-              <option value="VideoFPS" ${
-                minterpMode == 'VideoFPS' ? 'selected' : ''
-              }>Target FPS</option>
-              <option value="x2slow" ${
-                minterpMode == 'x2slow' ? 'selected' : ''
-              }>x2 Slowmo</option>
-              <option value="x4slow" ${
-                minterpMode == 'x4slow' ? 'selected' : ''
-              }>x4 Slowmo</option>
-              <option value="x6slow" ${
-                minterpMode == 'x6slow' ? 'selected' : ''
-              }>x6 Slowmo</option>
-              <option value="x8slow" ${
-                minterpMode == 'x8slow' ? 'selected' : ''
-              }>x8 Slowmo</option>
-            </select>
-          </div>
-          <div>
-            <span>Provider</span>
-            <select id="minterp-provider-input">
-              <option value="RIFE" ${minterpProvider === 'RIFE' ? 'selected' : ''}>RIFE</option>
-              <option value="TopazCHF" ${minterpProvider === 'TopazCHF' ? 'selected' : ''}>TopazCHF</option>
-              <option value="TopazApollo" ${minterpProvider === 'TopazApollo' ? 'selected' : ''}>TopazApollo</option>
-              <option value="TopazAion" ${minterpProvider === 'TopazAion' ? 'selected' : ''}>TopazAion</option>
-            </select>
-        </div>
-        </div>
-        <div class="settings-editor-input-div multi-input-div" title="${Tooltips.vidstabTooltip}">
-          <div>
-            <span>Stabilization</span>
-            <select id="video-stabilization-input">
-              <option value="Inherit" ${
-                vidstabDesc == null ? 'selected' : ''
-              }>${vidstabDescGlobal}</option>
-              <option value="Disabled" ${
-                vidstabDesc == 'Disabled' ? 'selected' : ''
-              }>Disabled</option>
-              <option ${vidstabDesc === 'Very Weak' ? 'selected' : ''}>Very Weak</option>
-              <option ${vidstabDesc === 'Weak' ? 'selected' : ''}>Weak</option>
-              <option ${vidstabDesc === 'Medium' ? 'selected' : ''}>Medium</option>
-              <option ${vidstabDesc === 'Strong' ? 'selected' : ''}>Strong</option>
-              <option ${vidstabDesc === 'Very Strong' ? 'selected' : ''}>Very Strong</option>
-            </select>
-          </div>
-          <div title="${Tooltips.vidstabRollingShutterTooltip}">
-            <span>Rolling Shutter</span>
-            <select id="video-stabilization-rolling-shutter-input">
-              <option value="Default" ${videoStabilizationRollingShutter == null ? 'selected' : ''}>${
-                ternaryToString(settings.videoStabilizationRollingShutter)
-              }</option>
-              <option ${videoStabilizationRollingShutter === false ? 'selected' : ''}>Disabled</option>
-              <option ${videoStabilizationRollingShutter === true ? 'selected' : ''}>Enabled</option>
-            </select>
-          </div>
-          <div title="${Tooltips.vidstabJitteryMotionTooltip}">
-            <span>Jittery Motion</span>
-            <select id="video-stabilization-jittery-motion-input">
-              <option value="Default" ${videoStabilizationJitteryMotion == null ? 'selected' : ''}>${
-                ternaryToString(settings.videoStabilizationJitteryMotion)
-              }</option>
-              <option ${videoStabilizationJitteryMotion === false ? 'selected' : ''}>Disabled</option>
-              <option ${videoStabilizationJitteryMotion === true ? 'selected' : ''}>Enabled</option>
-            </select>
-          </div>
-        </div>
-        <div class="settings-editor-input-div multi-input-div" title="${Tooltips.loopTooltip}">
-          <div>
-            <span>Loop</span>
-            <select id="loop-input">
-              <option value="Default" ${overrides.loop == null ? 'selected' : ''}>${
-                settings.loop != null ? `(${settings.loop})` : '(none)'
-              }</option>
-              <option ${overrides.loop === 'none' ? 'selected' : ''}>none</option>
-              <option ${overrides.loop === 'fwrev' ? 'selected' : ''}>fwrev</option>
-              <option ${overrides.loop === 'fade' ? 'selected' : ''}>fade</option>
-            </select>
-          </div>
-          <div title="${Tooltips.fadeDurationTooltip}">
-            <span>Fade Duration</span>
-            <input id="fade-duration-input" type="number" min="0.1" step="0.1" value="${
-              overrides.fadeDuration != null ? overrides.fadeDuration : ''
-            }" placeholder="${
-              settings.fadeDuration != null ? settings.fadeDuration : '0.7'
-            }" style="width:7em"></input>
-          </div>
-        </div>
-        <div class="settings-editor-input-div" title="${Tooltips.enableZoomPanTooltip}">
-          <span>ZoomPan</span>
-            <select id="enable-zoom-pan-input">
-              <option ${!markerPair.enableZoomPan ? 'selected' : ''}>Disabled</option>
-              <option ${markerPair.enableZoomPan ? 'selected' : ''}>Enabled</option>
-            </select>
-        </div>
+        <button id="marker-pair-toggle-enhancement-options" class="settings-editor-button">AI Enhance</button>
       </fieldset>
       `
     );
@@ -2875,6 +2954,16 @@ async function loadytClipper() {
       ['video-stabilization-jittery-motion-input', 'videoStabilizationJitteryMotion', 'ternary'],
       ['loop-input', 'loop', 'inheritableString'],
       ['fade-duration-input', 'fadeDuration', 'number'],
+      ['video-enhancement-input', 'videoEnhancementEnabled', 'ternary'],
+      ['video-enhancement-model-input', 'videoEnhancementModel', 'string'],
+      ['video-enhancement-compression-input', 'videoEnhancementCompression', 'number'],
+      ['video-enhancement-details-input', 'videoEnhancementDetails', 'number'],
+      ['video-enhancement-blur-input', 'videoEnhancementBlur', 'number'],
+      ['video-enhancement-noise-input', 'videoEnhancementNoise', 'number'],
+      ['video-enhancement-halo-input', 'videoEnhancementHalo', 'number'],
+      ['video-enhancement-preblur-input', 'videoEnhancementPreblur', 'number'],
+      ['video-enhancement-blend-input', 'videoEnhancementBlend', 'number'],
+      ['video-enhancement-prenoise-input', 'videoEnhancementPrenoise', 'number'],
     ];
     addSettingsInputListeners(overrideInputConfigs, markerPair.overrides, true);
     markerPairNumberInput = document.getElementById('marker-pair-number-input') as HTMLInputElement;
@@ -2896,6 +2985,40 @@ async function loadytClipper() {
 
     // update the duration with account for interpolation speed
     updateMarkerPairDuration(markerPair);
+
+    // toggle the visibility of the ai enhancement options
+    settingsEditorDiv.addEventListener('click', e => {
+      if (e.target instanceof HTMLElement && e.target?.id === 'marker-pair-toggle-enhancement-options') {
+        const enhancementOptionsContainer = document.getElementById('marker-pair-overrides-enhancement-options');
+        const generalOptionsContainer = document.getElementById('marker-pair-overrides-general-options');
+        if (enhancementOptionsContainer && generalOptionsContainer) {
+          if (enhancementOptionsContainer.style.display === 'none') {
+            enhancementOptionsContainer.style.display = 'block';
+            generalOptionsContainer.style.display = 'none';
+            e.target.textContent = 'General Options';
+            e.target.style.color = 'initial';
+          } else {
+            enhancementOptionsContainer.style.display = 'none';
+            generalOptionsContainer.style.display = 'contents';
+            const isEnhancementEnabled = !!videoEnhancementEnabled;
+            e.target.style.color = isEnhancementEnabled ? 'crimson' : 'initial';
+            e.target.textContent = `${isEnhancementEnabled ? '(!) ' : ''}AI Enhance`;
+          }
+        }
+      }
+    })
+    // update output for the sliders
+    const enhancementOptionsContainer = document.getElementById('marker-pair-overrides-enhancement-options');
+    if (enhancementOptionsContainer) {
+      enhancementOptionsContainer.addEventListener('input', e => {
+        if (e.target instanceof HTMLInputElement && e.target.type === 'range') {
+          const outputElem = e.target.nextElementSibling as HTMLOutputElement;
+          if (outputElem) {
+            outputElem.textContent = e.target.value;
+          }
+        }
+      });
+    }
   }
 
   function markerPairNumberInputHandler(e: Event) {
