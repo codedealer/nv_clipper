@@ -100,7 +100,7 @@ jobs:
         run: uv python install
 
       - name: Install the project (CPU-only)
-        run: uv sync --group cpu --group dev --group test
+        run: uv sync --group cpu --dev --test
 
       - name: Cache CUDA libraries
         id: cache-cuda-libs
@@ -124,6 +124,7 @@ jobs:
 
       # Done with uv
       - name: Minimize uv cache
+        if: github.event_name != 'pull_request'
         run: uv cache prune --ci
 
       - name: Copy artifacts (CPU-only build)
