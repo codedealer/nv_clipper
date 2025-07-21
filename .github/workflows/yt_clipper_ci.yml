@@ -124,7 +124,6 @@ jobs:
 
       # Done with uv
       - name: Minimize uv cache
-        if: github.event_name != 'pull_request'
         run: uv cache prune --ci
 
       - name: Copy artifacts (CPU-only build)
