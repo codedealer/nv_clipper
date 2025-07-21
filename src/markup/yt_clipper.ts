@@ -2326,7 +2326,7 @@ async function loadytClipper() {
         </div>
       </div>
 
-      <button id="toggle-enhancement-options" class="settings-editor-button">AI Enhance Options</button>
+      <button id="toggle-enhancement-options" class="settings-editor-button"${videoEnhancementEnabled ? ' style="color:crimson"' : ''}>${videoEnhancementEnabled ? '(!) ' : ''}AI Enhance Options</button>
     </fieldset>
     `
     );
@@ -2762,7 +2762,6 @@ async function loadytClipper() {
               <option ${overrides.enableHDR ? 'selected' : ''}>Enabled</option>
             </select>
           </div>
-              <!--  </div>  ??? -->
           <div class="settings-editor-input-div">
             <div title="${Tooltips.minterpModeTooltip}">
               <span>Minterpolation</span>
@@ -2929,7 +2928,7 @@ async function loadytClipper() {
           </div>
         </div>
 
-        <button id="marker-pair-toggle-enhancement-options" class="settings-editor-button">AI Enhance</button>
+        <button id="marker-pair-toggle-enhancement-options" class="settings-editor-button"${videoEnhancementEnabled ? ' style="color:crimson"' : ''}>${videoEnhancementEnabled ? '(!) ' : ''}AI Enhance</button>
       </fieldset>
       `
     );
@@ -3000,7 +2999,7 @@ async function loadytClipper() {
           } else {
             enhancementOptionsContainer.style.display = 'none';
             generalOptionsContainer.style.display = 'contents';
-            const isEnhancementEnabled = !!videoEnhancementEnabled;
+            const isEnhancementEnabled = markerPair.overrides?.videoEnhancementEnabled ?? settings.videoEnhancementEnabled;
             e.target.style.color = isEnhancementEnabled ? 'crimson' : 'initial';
             e.target.textContent = `${isEnhancementEnabled ? '(!) ' : ''}AI Enhance`;
           }
