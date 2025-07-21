@@ -1,3 +1,4 @@
+from typing import TypedDict, Literal
 import enum
 import io
 from dataclasses import dataclass, field
@@ -11,6 +12,19 @@ ExtendedRealNumber = Union[int, float, Fraction]
 SpeedMap = List[DictStrAny]
 CropMap = List[DictStrAny]
 Settings = Dict[str, Any]
+
+
+class VideoEnhancementDict(TypedDict):
+    enabled: bool
+    model: Literal["Proteus", "Iris"]
+    compression: float
+    details: float
+    blur: float
+    noise: float
+    halo: float
+    preblur: float
+    blend: float
+    prenoise: float
 
 
 @dataclass()
