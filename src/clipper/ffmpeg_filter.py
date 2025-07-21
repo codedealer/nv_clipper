@@ -13,6 +13,7 @@ from clipper.clipper_types import (
     ExtendedRealNumber,
     Settings,
     SpeedMap,
+    VideoEnhancementDict,
 )
 from clipper.ytc_logger import logger
 
@@ -75,6 +76,24 @@ def getCropComponents(
     }
     return cropComponentsDict
 
+def getVideoEnhancementFilter(mp: DictStrAny, mps: DictStrAny) -> str:
+    video_enhancement: VideoEnhancementDict = mps["videoEnhancement"]
+    if not video_enhancement["enabled"]:
+        return ""
+    model = video_enhancement["model"].lower()
+    if model == "proteus":
+        model = "prob-4"
+    elif model == "iris":
+        model = "iris-2" # iris-2 is for medium quality, iris-3 is for low quality sources
+    else:
+        logger.critical(f"Unknown video enhancement model {model}.")
+        sys.exit(1)
+
+    filter = f",tvai_up=model={model}:scale=0:preblur={video_enhancement['preblur']}:noise={video_enhancement['noise']}:details={video_enhancement['details']}:halo={video_enhancement['halo']}:blur={video_enhancement['blur']}:compression={video_enhancement['compression']}:blend={video_enhancement['blend']}:device=0:vram=1:instances=1"
+
+    mps["__needsTopazFormatFix"] = True
+
+    return filter
 
 def getTopazInterpFilter(model: str, genFractor: int, rdt: float | None, device: int = 0) -> str:
     model_lower = model.lower()
