@@ -89,11 +89,11 @@ def getVideoEnhancementFilter(mp: DictStrAny, mps: DictStrAny) -> str:
         logger.critical(f"Unknown video enhancement model {model}.")
         sys.exit(1)
 
-    filter = f",tvai_up=model={model}:scale=0:preblur={video_enhancement['preblur']}:noise={video_enhancement['noise']}:details={video_enhancement['details']}:halo={video_enhancement['halo']}:blur={video_enhancement['blur']}:compression={video_enhancement['compression']}:blend={video_enhancement['blend']}:device=0:vram=1:instances=1"
+    enhance_filter = f",tvai_up=model={model}:scale=0:preblur={video_enhancement['preblur']}:noise={video_enhancement['noise']}:details={video_enhancement['details']}:halo={video_enhancement['halo']}:blur={video_enhancement['blur']}:compression={video_enhancement['compression']}:blend={video_enhancement['blend']}:device=0:vram=1:instances=1"
 
     mps["__needsTopazFormatFix"] = True
 
-    return filter
+    return enhance_filter
 
 def getTopazInterpFilter(model: str, genFractor: int, rdt: float | None, device: int = 0) -> str:
     model_lower = model.lower()

@@ -270,7 +270,7 @@ def getMarkerPairSettings(  # noqa: PLR0912
     minterpMsg = f'AI Interpolation Mode: {mps["minterpMode"]} ({mps["minterpProvider"]}), ' if mps["minterpMode"] != "None" else ""
     minterpFPSMsg = f'Target FPS: {mps["minterpFPS"]}, '
     enhancementMsg = (
-        f'Enhancement Mode: {mps["videoEnhancement"]["model"]}, ' if mps.get("videoEnhancement") != None and "enabled" in mps["videoEnhancement"] and mps["videoEnhancement"]["enabled"] else ""
+        f'Enhancement Mode: {mps["videoEnhancement"]["model"]}, ' if mps.get("videoEnhancement") is not None and "enabled" in mps["videoEnhancement"] and mps["videoEnhancement"]["enabled"] else ""
     )
     logger.info(
         f"Marker Pair {markerPairIndex + 1} Settings: {titlePrefixLogMsg}, "
