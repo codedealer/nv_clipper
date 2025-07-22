@@ -20,6 +20,7 @@ from clipper.clipper_types import (
     MissingMarkerPairFilePath,
     MissingMergeInput,
     Settings,
+    VideoEnhancementDict,
 )
 from clipper.ffmpeg_codec import getExpectedFrameRate, getFfmpegVideoCodecArgs
 from clipper.ffmpeg_filter import (
@@ -32,6 +33,7 @@ from clipper.ffmpeg_filter import (
     getMinterpFPS,
     getSpeedFilterAndDuration,
     getSubsFilter,
+    getVideoEnhancementFilter,
     getZoomPanFilter,
     isHardwareAcceleratedVideoCodec,
     wrapVideoFilterForHardwareAcceleration,
@@ -61,6 +63,52 @@ def getMarkerPairSettings(  # noqa: PLR0912
 
     # marker pair settings
     mps: Dict[str, Any] = {**settings, **(mp["overrides"])}
+
+    # organize video enhancement settings
+    if "videoEnhancementEnabled" in mps:
+        # VideoEnhancement interface defaults from yt_clipper.d.ts
+        video_enhancement_defaults = {
+            "enabled": False,
+            "model": "Proteus",
+            "compression": 0.0,
+            "details": 0.0,
+            "blur": 0.0,
+            "noise": 0.0,
+            "halo": 0.0,
+            "preblur": 0.0,
+            "blend": 0.2,
+            "prenoise": 0.0,
+        }
+        key_map = {
+            "videoEnhancementEnabled": "enabled",
+            "videoEnhancementModel": "model",
+            "videoEnhancementCompression": "compression",
+            "videoEnhancementDetails": "details",
+            "videoEnhancementBlur": "blur",
+            "videoEnhancementNoise": "noise",
+            "videoEnhancementHalo": "halo",
+            "videoEnhancementPreblur": "preblur",
+            "videoEnhancementBlend": "blend",
+            "videoEnhancementPrenoise": "prenoise",
+        }
+
+        ve_dict: VideoEnhancementDict = {
+            "enabled": video_enhancement_defaults["enabled"],
+            "model": video_enhancement_defaults["model"],
+            "compression": video_enhancement_defaults["compression"],
+            "details": video_enhancement_defaults["details"],
+            "blur": video_enhancement_defaults["blur"],
+            "noise": video_enhancement_defaults["noise"],
+            "halo": video_enhancement_defaults["halo"],
+            "preblur": video_enhancement_defaults["preblur"],
+            "blend": video_enhancement_defaults["blend"],
+            "prenoise": video_enhancement_defaults["prenoise"],
+        }
+        for mps_key, nested_key in key_map.items():
+            if mps_key in mps:
+                ve_dict[nested_key] = mps[mps_key]
+                del mps[mps_key]
+        mps["videoEnhancement"] = ve_dict
 
     mp["exists"] = False
     if not mps["preview"]:
@@ -221,6 +269,9 @@ def getMarkerPairSettings(  # noqa: PLR0912
     logger.info("-" * 80)
     minterpMsg = f'AI Interpolation Mode: {mps["minterpMode"]} ({mps["minterpProvider"]}), ' if mps["minterpMode"] != "None" else ""
     minterpFPSMsg = f'Target FPS: {mps["minterpFPS"]}, '
+    enhancementMsg = (
+        f'Enhancement Mode: {mps["videoEnhancement"]["model"]}, ' if mps.get("videoEnhancement") is not None and "enabled" in mps["videoEnhancement"] and mps["videoEnhancement"]["enabled"] else ""
+    )
     logger.info(
         f"Marker Pair {markerPairIndex + 1} Settings: {titlePrefixLogMsg}, "
         + f'Video Codec: {mps["videoCodec"]}, CRF: {mps["crf"]} (0-63), Target Bitrate: {mps["targetMaxBitrate"]}, '
@@ -249,7 +300,8 @@ def getMarkerPairSettings(  # noqa: PLR0912
             if mps["videoStabilizationMaxShift"] >= 0
             else "Unlimited, "
         )
-        + f'Video Stabilization Dynamic Zoom: {mps["videoStabilizationDynamicZoom"]}',
+        + f'Video Stabilization Dynamic Zoom: {mps["videoStabilizationDynamicZoom"]} '
+        + f"{enhancementMsg}",
     )
     logger.info("-" * 80)
 
@@ -622,6 +674,20 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     filterPathPass1 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass1.txt"
     filterPathPass2 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass2.txt"
 
+    if "minterpMode" in mps and mps["minterpMode"].lower() != "none":
+        minterpFilter = getMinterpFilter(mp, mps)
+    else:
+        minterpFilter = ""
+
+    if "videoEnhancement" in mps and mps["videoEnhancement"].get("enabled", False):
+        enhanceFilter = getVideoEnhancementFilter(mp, mps)
+    else:
+        enhanceFilter = ""
+
+    # because upscale is not supported, for performance reasons we enhance first, then interpolate
+    # if later upscale is introduced, the filters should be reordered to minimize VRAM usage
+    postprocess_filter = enhanceFilter + minterpFilter
+
     overwriteArg = " -y " if mps["overwrite"] else " -n "
     vidstabEnabled = mps["videoStabilization"]["enabled"]
     if vidstabEnabled:
@@ -661,19 +727,14 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             + f""":roll={rollingShutter}:reduce={jitteryMotionPasses}:device=0:vram=1:instances=1"""
         )
 
-        if "minterpMode" in mps and mps["minterpMode"].lower() != "none":
-            minterpFilter = getMinterpFilter(mp, mps)
-        else:
-            minterpFilter = ""
-
         # every time tvai filter is engaged, we need to convert back to specified pixel format because Topaz's native format is 10 bit which is not supported by h264_nvenc
         if mps.get("__needsTopazFormatFix"):
-            vidstabtransformFilter += minterpFilter
+            vidstabtransformFilter += postprocess_filter
             vidstabtransformFilter += f",format={pix_fmt}"
         else:
-            # interpolation filter does not require a format conversion so we only convert transform filter
+            # interpolation or enhance filter does not require a format conversion so we only convert transform filter
             vidstabtransformFilter += f",format={pix_fmt}"
-            vidstabtransformFilter += minterpFilter
+            vidstabtransformFilter += postprocess_filter
 
         if mps["loop"] != "none":
             vidstabdetectFilter += loop_filter
@@ -728,8 +789,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             ffmpegCommands: List[str] = [ffmpegVidstabdetect, ffmpegVidstabtransform]
 
     if not vidstabEnabled:
-        if "minterpMode" in mps and mps["minterpMode"].lower() != "none":
-            video_filter += getMinterpFilter(mp, mps)
+        video_filter += postprocess_filter
 
         if "__needsTopazFormatFix" in mps:
             video_filter += f",format={pix_fmt}"
