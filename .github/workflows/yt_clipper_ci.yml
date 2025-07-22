@@ -100,16 +100,7 @@ jobs:
         run: uv python install
 
       - name: Install the project (CPU-only)
-        run: uv sync --group cpu --group dev --group test
-
-      - name: Cache CUDA libraries
-        id: cache-cuda-libs
-        uses: actions/cache@v3
-        with:
-          path: ./cache/gpu-libs
-          key: cuda-libs-v1-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            cuda-libs-v1-
+        run: uv sync --only-group cpu --only-group dev --only-group test
 
       - name: Lint with ruff
         run: just lint-py-fix
