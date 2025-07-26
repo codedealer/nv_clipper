@@ -25,36 +25,19 @@ from clipper.ytdl import ytdl_bin_get_version
 class ClipperEngine:
     """Core clipper engine that can be reused between CLI and GUI."""
 
+    # Class-level persistent cache for RIFE dependencies
+    _PERSISTENT_RIFE_CACHE: Dict[str, Any] = {
+        "__RIFE_LOADED": False
+    }
+
     def __init__(self):
-        """Initialize the clipper engine with GPU dependencies."""
-        self.is_initialized = False
+        """Initialize the clipper engine - ready to use immediately."""
+        self.is_initialized = True  # Always ready since we do minimal initialization
         self.cs: Optional[ClipperState] = None
         self.logger = logging.getLogger(__name__)
 
-    def initialize(self) -> Dict[str, Any]:
-        """Initialize the clipper engine (GPU dependencies, etc.)"""
-        try:
-            print("DEBUG: Starting minimal engine initialization...")
-
-            # Just do the absolute minimum needed for the GUI
-            # We'll do the full initialization when processing files
-            self.is_initialized = True
-            print("DEBUG: Minimal engine initialization completed successfully")
-            return {"status": "success", "message": "Engine ready for processing"}
-
-        except Exception as e:
-            error_msg = f"Failed to initialize engine: {e}"
-            print(f"DEBUG ERROR: {error_msg}")
-            import traceback
-            traceback.print_exc()
-            self.logger.error(error_msg)
-            return {"status": "error", "message": str(e)}
-
     def process_files(self, markup_path: str, video_path: Optional[str] = None) -> Dict[str, Any]:
         """Process markup and optionally video files using exact CLI logic."""
-        if not self.is_initialized:
-            return {"status": "error", "message": "Engine not initialized"}
-
         try:
             print(f"DEBUG: Starting file processing with CLI-identical logic...")
 
@@ -91,6 +74,12 @@ class ClipperEngine:
                 args, unknown, argsFromArgFiles, argFiles, argsFromArgFilesMap = argparser.getArgs()
 
                 self.cs.settings.update({"color_space": None, **args})
+
+                # Preserve persistent RIFE cache across processing sessions
+                if self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"]:
+                    self.cs.settings["__RIFE_LOADED"] = True
+                    print("DEBUG: Using persistent RIFE cache from previous session")
+
                 ytc_settings.loadSettings(self.cs.settings)
 
                 # Import the setup functions from the main CLI module
@@ -101,6 +90,9 @@ class ClipperEngine:
                 ytc_logger.setUpLogger(self.cs)
 
                 print("DEBUG: Completed CLI-identical initialization")
+
+                # Inject persistent RIFE cache into clip_maker module before processing
+                self._inject_rife_cache()
 
                 # Get input video and global settings (CLI flow)
                 ytc_settings.getInputVideo(self.cs)
@@ -115,6 +107,9 @@ class ClipperEngine:
                 else:
                     clip_maker.previewClips(self.cs)
                     message = "Preview completed successfully"
+
+                # Update persistent cache after processing (preserve RIFE loaded state)
+                self._update_persistent_cache()
 
             finally:
                 # Restore original argv
@@ -145,6 +140,23 @@ class ClipperEngine:
             "engine_ready": self.is_initialized,
             "version": __version__
         }
+
+    def _inject_rife_cache(self) -> None:
+        """Inject persistent RIFE cache into clip_maker module."""
+        # Only inject if we have previously loaded RIFE dependencies and have a valid clipper state
+        if self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"] and self.cs:
+            # Set the RIFE loaded flag in the current session settings
+            # This prevents re-initialization of RIFE dependencies
+            self.cs.settings["__RIFE_LOADED"] = True
+            print("DEBUG: Injected persistent RIFE loaded state - skipping RIFE initialization")
+
+    def _update_persistent_cache(self) -> None:
+        """Update persistent cache with RIFE loaded state only."""
+        # Only preserve the RIFE loaded state since the cache itself doesn't mutate
+        # The main issue was garbage collection between processes, not cache mutation
+        if self.cs and "__RIFE_LOADED" in self.cs.settings:
+            self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"] = self.cs.settings["__RIFE_LOADED"]
+            print(f"DEBUG: Updated persistent RIFE loaded state: {self._PERSISTENT_RIFE_CACHE['__RIFE_LOADED']}")
 
     def _setupDepPaths(self, cs: ClipperState) -> None:
         """Setup dependency paths (copied from yt_clipper.py)."""
