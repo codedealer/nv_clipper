@@ -6,6 +6,8 @@ import webview
 from pathlib import Path
 from typing import Optional
 import logging
+import time
+import uuid
 
 from .engine import ClipperEngine
 
@@ -17,15 +19,106 @@ class ClipperGUI:
         self.engine = ClipperEngine()  # Initialize immediately
         self.is_initialized = True     # Always ready since initialization is minimal
         self.logger = logging.getLogger(__name__)
+        self.processing_jobs = {}      # Track processing jobs by ID
+        self.job_lock = threading.Lock()
 
     def process_files(self, markup_path: str, video_path: Optional[str] = None):
-        """Process files using the engine"""
-        try:
-            result = self.engine.process_files(markup_path, video_path)
-            return result
-        except Exception as e:
-            self.logger.error(f"Processing failed: {e}")
-            return {"status": "error", "message": str(e)}
+        """Process files using the engine in a separate thread"""
+        # Create a unique job ID
+        job_id = str(uuid.uuid4())
+
+        # Initialize job status
+        with self.job_lock:
+            self.processing_jobs[job_id] = {
+                "status": "starting",
+                "message": "Initializing processing...",
+                "result": None,
+                "started_at": time.time()
+            }
+
+        # Start processing in a separate thread
+        def process_worker():
+            try:
+                self.logger.info(f"Starting processing job {job_id}")
+
+                # Update status to processing
+                with self.job_lock:
+                    self.processing_jobs[job_id].update({
+                        "status": "processing",
+                        "message": "Processing files..."
+                    })
+
+                # Call the engine processing
+                result = self.engine.process_files(markup_path, video_path)
+
+                # Update with final result
+                with self.job_lock:
+                    self.processing_jobs[job_id].update({
+                        "status": "completed",
+                        "result": result,
+                        "completed_at": time.time()
+                    })
+
+                self.logger.info(f"Completed processing job {job_id}: {result['status']}")
+
+            except Exception as e:
+                self.logger.error(f"Processing job {job_id} failed: {e}")
+
+                # Update with error result
+                with self.job_lock:
+                    self.processing_jobs[job_id].update({
+                        "status": "completed",
+                        "result": {"status": "error", "message": str(e)},
+                        "completed_at": time.time()
+                    })
+
+        # Start the worker thread
+        thread = threading.Thread(target=process_worker, daemon=True)
+        thread.start()
+
+        # Return job ID for status tracking
+        return {"status": "accepted", "job_id": job_id, "message": "Processing started"}
+
+    def get_job_status(self, job_id: str):
+        """Get the status of a processing job"""
+        with self.job_lock:
+            if job_id not in self.processing_jobs:
+                return {"status": "error", "message": "Job not found"}
+
+            job = self.processing_jobs[job_id].copy()
+
+            # If job is completed, return the result and clean up after some time
+            if job["status"] == "completed":
+                result = job["result"]
+
+                # Clean up old completed jobs (older than 10 minutes)
+                current_time = time.time()
+                if current_time - job.get("completed_at", current_time) > 600:
+                    del self.processing_jobs[job_id]
+
+                return result
+
+            # Return current status for ongoing jobs
+            return {
+                "status": job["status"],
+                "message": job["message"],
+                "job_id": job_id
+            }
+
+    def cleanup_old_jobs(self):
+        """Clean up old completed jobs to prevent memory leaks"""
+        current_time = time.time()
+        with self.job_lock:
+            job_ids_to_remove = []
+            for job_id, job in self.processing_jobs.items():
+                if (job["status"] == "completed" and
+                    current_time - job.get("completed_at", current_time) > 600):
+                    job_ids_to_remove.append(job_id)
+
+            for job_id in job_ids_to_remove:
+                del self.processing_jobs[job_id]
+
+        return {"cleaned": len(job_ids_to_remove)}
 
     def get_status(self):
         """Get current status of the application"""
@@ -277,29 +370,82 @@ def create_app():
                 }
 
                 const processingStatus = document.getElementById('processingStatus');
-                processingStatus.innerHTML = '<div class="status info"><div class="spinner"></div>Processing files...</div>';
+                const selectBtn = document.getElementById('selectBtn');
+
+                selectBtn.disabled = true;
+                processingStatus.innerHTML = '<div class="status info"><div class="spinner"></div>Starting processing...</div>';
 
                 try {
-                    const result = await pywebview.api.process_files(selectedFiles.markup, selectedFiles.video);
+                    // Start processing (non-blocking)
+                    console.log('DEBUG: Starting file processing...');
+                    const startResult = await pywebview.api.process_files(
+                        selectedFiles.markup,
+                        selectedFiles.video
+                    );
 
-                    if (result.status === 'success') {
-                        let html = '<div class="status success">✅ ' + result.message;
-                        if (result.output_path) {
-                            html += '<br>Output saved to: ' + result.output_path;
-                        }
-                        html += '</div>';
+                    console.log('DEBUG: Process start result:', startResult);
 
-                        if (result.report) {
-                            html += '<div class="processing-output">' + result.report + '</div>';
-                        }
+                    if (startResult.status === 'accepted') {
+                        // Start polling for job status
+                        const jobId = startResult.job_id;
+                        processingStatus.innerHTML = '<div class="status info"><div class="spinner"></div>Processing files...</div>';
 
-                        processingStatus.innerHTML = html;
+                        await pollJobStatus(jobId, processingStatus);
                     } else {
-                        processingStatus.innerHTML = '<div class="status error">❌ ' + result.message + '</div>';
+                        throw new Error(startResult.message || 'Failed to start processing');
                     }
                 } catch (error) {
+                    console.error('DEBUG: Processing error:', error);
                     processingStatus.innerHTML = '<div class="status error">❌ Processing failed: ' + error + '</div>';
+                } finally {
+                    selectBtn.disabled = false;
                 }
+            }
+
+            async function pollJobStatus(jobId, statusElement) {
+                const pollInterval = 1000; // Poll every 1 second
+                let attempts = 0;
+                const maxAttempts = 300; // 5 minutes max
+
+                while (attempts < maxAttempts) {
+                    try {
+                        const statusResult = await pywebview.api.get_job_status(jobId);
+                        console.log('DEBUG: Job status:', statusResult);
+
+                        if (statusResult.status === 'processing') {
+                            statusElement.innerHTML = '<div class="status info"><div class="spinner"></div>' + (statusResult.message || 'Processing...') + '</div>';
+                        } else if (statusResult.status === 'success') {
+                            const message = statusResult.message || 'Processing completed';
+                            let html = '<div class="status success">✅ ' + message;
+                            if (statusResult.output_path) {
+                                html += '<br>Output saved to: ' + statusResult.output_path;
+                            }
+                            html += '</div>';
+
+                            if (statusResult.report) {
+                                html += '<div class="processing-output">' + statusResult.report + '</div>';
+                            }
+
+                            statusElement.innerHTML = html;
+                            return; // Job completed successfully
+                        } else if (statusResult.status === 'error') {
+                            statusElement.innerHTML = '<div class="status error">❌ ' + (statusResult.message || 'Processing failed') + '</div>';
+                            return; // Job completed with error
+                        }
+
+                        // Wait before next poll
+                        await new Promise(resolve => setTimeout(resolve, pollInterval));
+                        attempts++;
+
+                    } catch (error) {
+                        console.error('DEBUG: Status polling error:', error);
+                        statusElement.innerHTML = '<div class="status error">❌ Failed to get job status: ' + error + '</div>';
+                        return;
+                    }
+                }
+
+                // Timeout reached
+                statusElement.innerHTML = '<div class="status error">❌ Processing timeout - job may still be running</div>';
             }
         </script>
     </body>
