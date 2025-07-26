@@ -14,27 +14,12 @@ class ClipperGUI:
     """GUI API class for pywebview."""
 
     def __init__(self):
-        self.engine: Optional[ClipperEngine] = None
-        self.is_initialized = False
+        self.engine = ClipperEngine()  # Initialize immediately
+        self.is_initialized = True     # Always ready since initialization is minimal
         self.logger = logging.getLogger(__name__)
 
-    def initialize_engine(self):
-        """Initialize the clipper engine (GPU dependencies, etc.)"""
-        try:
-            self.engine = ClipperEngine()
-            result = self.engine.initialize()
-            if result["status"] == "success":
-                self.is_initialized = True
-            return result
-        except Exception as e:
-            self.logger.error(f"Failed to initialize engine: {e}")
-            return {"status": "error", "message": str(e)}
-
     def process_files(self, markup_path: str, video_path: Optional[str] = None):
-        """Process files using the initialized engine"""
-        if not self.is_initialized or not self.engine:
-            return {"status": "error", "message": "Engine not initialized"}
-
+        """Process files using the engine"""
         try:
             result = self.engine.process_files(markup_path, video_path)
             return result
@@ -44,12 +29,7 @@ class ClipperGUI:
 
     def get_status(self):
         """Get current status of the application"""
-        if self.engine:
-            return self.engine.get_status()
-        return {
-            "initialized": self.is_initialized,
-            "engine_ready": False
-        }
+        return self.engine.get_status()
 
     def select_files(self):
         """Open file dialog to select files"""
@@ -200,12 +180,11 @@ def create_app():
             <h1>🎬 YT Clipper GUI</h1>
 
             <div id="status" class="status info">
-                Ready to initialize engine...
+                ✅ Ready to process files! Drop a JSON markup file or use the file picker below.
             </div>
 
             <div class="button-group">
-                <button id="initBtn" onclick="initializeEngine()">Initialize Engine</button>
-                <button id="selectBtn" onclick="selectFiles()" disabled>Select Files</button>
+                <button id="selectBtn" onclick="selectFiles()">Select Files</button>
             </div>
 
             <div class="drop-zone" id="dropZone">
@@ -219,55 +198,12 @@ def create_app():
         </div>
 
         <script>
-            let engineInitialized = false;
             let selectedFiles = {
                 markup: null,
                 video: null
             };
 
-            async function initializeEngine() {
-                const btn = document.getElementById('initBtn');
-                const selectBtn = document.getElementById('selectBtn');
-                const status = document.getElementById('status');
-
-                btn.disabled = true;
-                btn.innerHTML = '<div class="spinner"></div>Initializing...';
-                status.innerHTML = 'Initializing engine (loading GPU dependencies, this may take a while)...';
-                status.className = 'status info';
-
-                try {
-                    console.log('DEBUG: Calling initialize_engine...');
-                    const result = await pywebview.api.initialize_engine();
-                    console.log('DEBUG: initialize_engine result:', result);
-
-                    if (result.status === 'success') {
-                        engineInitialized = true;
-                        status.innerHTML = '✅ ' + result.message;
-                        status.className = 'status success';
-                        btn.innerHTML = '✅ Engine Ready';
-                        selectBtn.disabled = false;
-                        document.getElementById('dropZone').classList.remove('disabled');
-                    } else {
-                        status.innerHTML = '❌ ' + result.message;
-                        status.className = 'status error';
-                        btn.disabled = false;
-                        btn.innerHTML = '🔄 Retry Initialization';
-                    }
-                } catch (error) {
-                    console.error('DEBUG: initialization error:', error);
-                    status.innerHTML = '❌ Failed to initialize: ' + error;
-                    status.className = 'status error';
-                    btn.disabled = false;
-                    btn.innerHTML = '🔄 Retry Initialization';
-                }
-            }
-
             async function selectFiles() {
-                if (!engineInitialized) {
-                    alert('Please initialize the engine first');
-                    return;
-                }
-
                 try {
                     const files = await pywebview.api.select_files();
                     if (files && files.length > 0) {
@@ -318,9 +254,7 @@ def create_app():
 
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                if (engineInitialized) {
-                    dropZone.classList.add('dragover');
-                }
+                dropZone.classList.add('dragover');
             });
 
             dropZone.addEventListener('dragleave', () => {
@@ -330,11 +264,6 @@ def create_app():
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('dragover');
-
-                if (!engineInitialized) {
-                    alert('Please initialize the engine first');
-                    return;
-                }
 
                 const files = Array.from(e.dataTransfer.files);
                 const filePaths = files.map(f => f.path || f.name);
@@ -372,10 +301,6 @@ def create_app():
                     processingStatus.innerHTML = '<div class="status error">❌ Processing failed: ' + error + '</div>';
                 }
             }
-
-            // Initialize disabled state
-            document.getElementById('dropZone').classList.add('disabled');
-            document.getElementById('selectBtn').disabled = true;
         </script>
     </body>
     </html>
