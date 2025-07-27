@@ -1,124 +1,301 @@
 <template>
-  <div class="clipper-gui">
-    <header class="header">
-      <h1>🎬 YT Clipper GUI</h1>
-    </header>
-
-    <div class="container">
-      <!-- Status Section -->
-      <div class="status-section">
-        <h2>📊 Status</h2>
-        <div
-          :class="['status', getStatusClass()]"
-          v-text="getStatusMessage()"
-        />
-      </div>
-
-      <!-- File Selection -->
-      <div class="file-section">
-        <h2>📁 File Selection</h2>
-
-        <div class="button-group">
-          <button
-            @click="handleSelectFiles"
-            :disabled="isProcessing"
-            class="select-btn"
+  <el-container class="clipper-app">
+    <!-- Header -->
+    <el-header height="60px" class="app-header">
+      <div class="header-content">
+        <h1 class="app-title">🎬 YT Clipper GUI</h1>
+        <div class="status-indicator">
+          <el-tag
+            :type="getStatusType()"
+            :icon="getStatusIcon()"
+            size="large"
           >
-            Select Files
-          </button>
-        </div>
-
-        <!-- Drop Zone -->
-        <div
-          class="drop-zone"
-          :class="{ 'dragover': isDragOver }"
-          @dragover.prevent="handleDragOver"
-          @dragleave="handleDragLeave"
-          @drop.prevent="handleDrop"
-        >
-          <div class="drop-content">
-            <span class="drop-icon">📁</span>
-            <p>Drop JSON markup file here</p>
-            <p class="drop-hint">Optionally include a video file</p>
-          </div>
-        </div>
-
-        <!-- Selected Files Display -->
-        <div v-if="hasMarkupFile || hasVideoFile" class="file-info">
-          <h3>Selected Files:</h3>
-          <div v-if="selectedFiles.markup" class="file-item">
-            <span class="file-type">📄 Markup:</span>
-            <span class="file-path">{{ getFileName(selectedFiles.markup) }}</span>
-          </div>
-          <div v-if="selectedFiles.video" class="file-item">
-            <span class="file-type">🎥 Video:</span>
-            <span class="file-path">{{ getFileName(selectedFiles.video) }}</span>
-          </div>
+            {{ getStatusMessage() }}
+          </el-tag>
         </div>
       </div>
+    </el-header>
 
-      <!-- Processing Section -->
-      <div class="processing-section">
-        <h2>⚙️ Processing</h2>
+    <!-- Main Content -->
+    <el-container>
+      <!-- Left Sidebar: File Operations -->
+      <el-aside width="350px" class="sidebar">
+        <el-scrollbar height="100%">
+          <div class="sidebar-content">
 
-        <div class="button-group">
-          <button
-            @click="handleProcessFiles"
-            :disabled="!canProcess"
-            class="process-btn"
-            :class="{ 'processing': isProcessing }"
+            <!-- File Upload Section -->
+            <el-card class="section-card" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <el-icon><FolderOpened /></el-icon>
+                  <span>File Selection</span>
+                </div>
+              </template>
+
+              <!-- File Selection Buttons -->
+              <div class="button-group">
+                <el-button
+                  @click="handleSelectFiles"
+                  :loading="isProcessing"
+                  type="primary"
+                  :icon="FolderOpened"
+                  style="width: 100%; margin-bottom: 8px;"
+                >
+                  Select Files
+                </el-button>
+
+                <el-button
+                  @click="showVideoCache = true"
+                  type="default"
+                  :icon="VideoCamera"
+                  style="width: 100%;"
+                  plain
+                >
+                  Video Cache
+                </el-button>
+              </div>
+
+              <!-- Drop Zone -->
+              <el-upload
+                ref="uploadRef"
+                class="upload-drop-zone"
+                drag
+                :auto-upload="false"
+                :on-change="handleFileChange"
+                :show-file-list="false"
+                multiple
+                accept=".json,.mp4,.webm,.avi,.mkv,.mov"
+              >
+                <el-icon class="upload-icon"><UploadFilled /></el-icon>
+                <div class="upload-text">
+                  <p>Drop JSON markup here</p>
+                  <p class="upload-hint">Optionally include video file</p>
+                </div>
+              </el-upload>
+
+              <!-- Selected Files Display -->
+              <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
+                <el-divider content-position="left">Selected Files</el-divider>
+
+                <el-space direction="vertical" style="width: 100%;" size="small">
+                  <div v-if="selectedFiles.markup" class="file-item">
+                    <el-tag type="warning" :icon="Document" closable @close="selectedFiles.markup = null">
+                      {{ getFileName(selectedFiles.markup) }}
+                    </el-tag>
+                  </div>
+
+                  <div v-if="selectedFiles.video" class="file-item">
+                    <el-tag type="danger" :icon="VideoCamera" closable @close="selectedFiles.video = null">
+                      {{ getFileName(selectedFiles.video) }}
+                    </el-tag>
+                  </div>
+                </el-space>
+              </div>
+            </el-card>
+
+            <!-- Clip Selection Section -->
+            <el-card v-if="parsedClips.length > 0" class="section-card" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <el-icon><VideoPlay /></el-icon>
+                  <span>Clips ({{ selectedClips.length }}/{{ parsedClips.length }})</span>
+                </div>
+              </template>
+
+              <div class="clip-selection">
+                <el-checkbox
+                  v-model="selectAllClips"
+                  @change="handleSelectAllClips"
+                  :indeterminate="isIndeterminate"
+                  style="margin-bottom: 12px;"
+                >
+                  Select All
+                </el-checkbox>
+
+                <el-scrollbar max-height="300px">
+                  <el-checkbox-group v-model="selectedClips" size="small">
+                    <div
+                      v-for="(clip, index) in parsedClips"
+                      :key="index"
+                      class="clip-item"
+                    >
+                      <el-checkbox :value="index">
+                        <div class="clip-info">
+                          <div class="clip-title">{{ clip.title || `Clip ${clip.number || index + 1}` }}</div>
+                          <div class="clip-duration">{{ formatDuration(clip) }}</div>
+                        </div>
+                      </el-checkbox>
+                    </div>
+                  </el-checkbox-group>
+                </el-scrollbar>
+              </div>
+            </el-card>
+
+            <!-- Processing Controls -->
+            <el-card class="section-card" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <el-icon><Tools /></el-icon>
+                  <span>Processing</span>
+                </div>
+              </template>
+
+              <el-space direction="vertical" style="width: 100%;">
+                <el-checkbox v-model="overwriteFiles" size="large">
+                  Overwrite existing files (-ow)
+                </el-checkbox>
+
+                <el-button
+                  @click="handleProcessFiles"
+                  :loading="isProcessing"
+                  :disabled="!canProcess"
+                  type="success"
+                  :icon="VideoPlay"
+                  size="large"
+                  style="width: 100%;"
+                >
+                  {{ isProcessing ? 'Processing...' : 'Start Processing' }}
+                </el-button>
+
+                <!-- Processing Progress -->
+                <div v-if="isProcessing" class="processing-progress">
+                  <el-progress
+                    :percentage="100"
+                    :indeterminate="true"
+                    :show-text="false"
+                  />
+                  <div class="progress-text">{{ processingStatus }}</div>
+                </div>
+
+                <!-- Processing Result -->
+                <el-alert
+                  v-if="processingResult"
+                  :title="processingResult.message"
+                  :type="processingResult.status === 'success' ? 'success' : 'error'"
+                  :icon="processingResult.status === 'success' ? SuccessFilled : CircleCloseFilled"
+                  show-icon
+                  :closable="false"
+                />
+              </el-space>
+            </el-card>
+
+          </div>
+        </el-scrollbar>
+      </el-aside>
+
+      <!-- Main Content Area -->
+      <el-main class="main-content">
+        <div v-if="!hasMarkupFile" class="welcome-area">
+          <el-empty
+            image-size="120"
+            description="Drop a JSON markup file to get started"
           >
-            <span v-if="!isProcessing">Process Files</span>
-            <span v-else class="processing-text">
-              <span class="spinner"></span>
-              Processing...
-            </span>
-          </button>
+            <template #image>
+              <el-icon size="120"><Document /></el-icon>
+            </template>
+          </el-empty>
         </div>
 
-        <!-- Processing Status -->
-        <div v-if="processingStatus" class="processing-status">
-          <div
-            :class="['status', getProcessingStatusClass()]"
-            v-text="processingStatus"
-          />
-        </div>
+        <div v-else class="content-area">
+          <!-- Future: Video Preview Area -->
+          <el-card v-if="hasVideoFile" class="preview-card" shadow="hover">
+            <template #header>
+              <div class="card-header">
+                <el-icon><Monitor /></el-icon>
+                <span>Video Preview</span>
+              </div>
+            </template>
 
-        <!-- Processing Result -->
-        <div v-if="processingResult" class="processing-result">
-          <div v-if="processingResult.output_path" class="output-info">
-            <strong>Output saved to:</strong> {{ processingResult.output_path }}
-          </div>
+            <div class="video-preview-placeholder">
+              <el-icon size="60"><VideoCamera /></el-icon>
+              <p>Video preview coming soon...</p>
+              <p class="preview-filename">{{ getFileName(selectedFiles.video || '') }}</p>
+            </div>
+          </el-card>
 
-          <div v-if="processingResult.report" class="report">
-            <details>
-              <summary>Processing Report</summary>
-              <pre>{{ processingResult.report }}</pre>
-            </details>
-          </div>
+          <!-- Future: Timeline Area -->
+          <el-card v-if="parsedClips.length > 0" class="timeline-card" shadow="hover">
+            <template #header>
+              <div class="card-header">
+                <el-icon><Timer /></el-icon>
+                <span>Timeline</span>
+              </div>
+            </template>
+
+            <div class="timeline-placeholder">
+              <el-icon size="60"><Timer /></el-icon>
+              <p>Timeline view coming soon...</p>
+              <p>{{ parsedClips.length }} clips loaded</p>
+            </div>
+          </el-card>
         </div>
+      </el-main>
+    </el-container>
+
+    <!-- Video Cache Dialog -->
+    <el-dialog
+      v-model="showVideoCache"
+      title="Video Cache Management"
+      width="600px"
+      :before-close="handleCloseCacheDialog"
+    >
+      <div class="cache-content">
+        <el-empty description="Video cache management coming soon..." />
       </div>
-    </div>
-  </div>
+
+      <template #footer>
+        <el-button @click="showVideoCache = false">Close</el-button>
+        <el-button type="primary" disabled>Manage Cache</el-button>
+      </template>
+    </el-dialog>
+  </el-container>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import {
+  FolderOpened,
+  VideoCamera,
+  UploadFilled,
+  Document,
+  VideoPlay,
+  Tools,
+  Monitor,
+  Timer,
+  SuccessFilled,
+  CircleCloseFilled
+} from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
-import { storeToRefs } from 'pinia'
 
+// Store
 const clipperStore = useClipperStore()
-const {
-  selectedFiles,
-  isProcessing,
-  processingStatus,
-  processingResult,
-  hasMarkupFile,
-  hasVideoFile,
-  canProcess
-} = storeToRefs(clipperStore)
 
-const isDragOver = ref(false)
+// Local state
+const showVideoCache = ref(false)
+const overwriteFiles = ref(false)
+const parsedClips = ref<any[]>([])
+const selectedClips = ref<number[]>([])
+const selectAllClips = ref(true)
+
+// Computed properties from store
+const selectedFiles = computed(() => clipperStore.selectedFiles)
+const isProcessing = computed(() => clipperStore.isProcessing)
+const processingStatus = computed(() => clipperStore.processingStatus)
+const processingResult = computed(() => clipperStore.processingResult)
+const engineStatus = computed(() => clipperStore.engineStatus)
+const hasMarkupFile = computed(() => clipperStore.hasMarkupFile)
+const hasVideoFile = computed(() => clipperStore.hasVideoFile)
+
+// Local computed properties
+const canProcess = computed(() =>
+  hasMarkupFile.value && selectedClips.value.length > 0 && !isProcessing.value
+)
+
+const isIndeterminate = computed(() =>
+  selectedClips.value.length > 0 && selectedClips.value.length < parsedClips.value.length
+)
 
 // Initialize engine status on mount
 onMounted(async () => {
@@ -126,8 +303,25 @@ onMounted(async () => {
     await clipperStore.getEngineStatus()
   } catch (error) {
     console.error('Failed to get engine status:', error)
+    ElMessage.error('Failed to initialize engine status')
   }
 })
+
+// Status helpers
+function getStatusType() {
+  if (!engineStatus.value) return 'info'
+  return engineStatus.value.engine_ready ? 'success' : 'warning'
+}
+
+function getStatusIcon() {
+  if (!engineStatus.value) return 'Loading'
+  return engineStatus.value.engine_ready ? 'CircleCheckFilled' : 'WarningFilled'
+}
+
+function getStatusMessage() {
+  if (!engineStatus.value) return 'Loading...'
+  return engineStatus.value.engine_ready ? 'Ready' : 'Initializing...'
+}
 
 // File handling
 function getFileName(path: string): string {
@@ -138,20 +332,68 @@ function handleSelectedFiles(filePaths: string[]) {
   const newFiles = { markup: null as string | null, video: null as string | null }
 
   for (const filePath of filePaths) {
-    const fileName = getFileName(filePath)
-    const extension = fileName.split('.').pop()?.toLowerCase()
+    const extension = filePath.split('.').pop()?.toLowerCase()
 
     if (extension === 'json') {
       newFiles.markup = filePath
-    } else if (['mp4', 'webm', 'avi', 'mkv'].includes(extension || '')) {
+    } else if (['mp4', 'webm', 'avi', 'mkv', 'mov'].includes(extension || '')) {
       newFiles.video = filePath
     }
   }
 
-  clipperStore.setSelectedFiles(newFiles)
+  // Update store
+  if (newFiles.markup) {
+    clipperStore.selectedFiles.markup = newFiles.markup
+    parseMarkupFile(newFiles.markup)
+  }
+  if (newFiles.video) {
+    clipperStore.selectedFiles.video = newFiles.video
+  }
 }
 
-// File selection
+// Parse JSON markup and extract clips via API
+async function parseMarkupFile(filePath: string) {
+  try {
+    const result = await clipperStore.parseMarkupFile(filePath)
+
+    if (result.status === 'success' && result.clips) {
+      parsedClips.value = result.clips
+      selectedClips.value = Array.from({ length: result.clips.length }, (_, i) => i)
+      selectAllClips.value = true
+
+      ElMessage.success(`Loaded ${result.clips.length} clips from markup`)
+    } else {
+      throw new Error(result.message || 'Failed to parse markup file')
+    }
+  } catch (error) {
+    console.error('Failed to parse markup file:', error)
+    ElMessage.error(`Failed to parse markup file: ${error}`)
+
+    // Fallback to empty clips
+    parsedClips.value = []
+    selectedClips.value = []
+    selectAllClips.value = false
+  }
+}
+
+function formatDuration(clip: any): string {
+  if (typeof clip.start === 'number' && typeof clip.end === 'number') {
+    const duration = clip.end - clip.start
+    return `${formatTime(clip.start)} - ${formatTime(clip.end)} (${formatTime(duration)})`
+  }
+  if (clip.start && clip.end) {
+    return `${clip.start} - ${clip.end}`
+  }
+  return 'Duration unknown'
+}
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = (seconds % 60).toFixed(2)
+  return `${mins}:${secs.padStart(5, '0')}`
+}
+
+// Event handlers
 async function handleSelectFiles() {
   try {
     const files = await clipperStore.selectFiles()
@@ -160,278 +402,241 @@ async function handleSelectFiles() {
     }
   } catch (error) {
     console.error('File selection failed:', error)
+    ElMessage.error('File selection failed')
   }
 }
 
-// Drag and drop
-function handleDragOver(e: DragEvent) {
-  e.preventDefault()
-  isDragOver.value = true
+function handleFileChange(file: UploadFile) {
+  if (file.raw) {
+    // In a real implementation, we'd handle file paths properly
+    // For now, use the file name as a placeholder
+    const extension = file.name.split('.').pop()?.toLowerCase()
+
+    if (extension === 'json') {
+      clipperStore.selectedFiles.markup = file.name
+      parseMarkupFile(file.name)
+    } else if (['mp4', 'webm', 'avi', 'mkv', 'mov'].includes(extension || '')) {
+      clipperStore.selectedFiles.video = file.name
+    }
+
+    ElMessage.success(`Added ${file.name}`)
+  }
 }
 
-function handleDragLeave() {
-  isDragOver.value = false
+function handleSelectAllClips(value: boolean) {
+  if (value) {
+    selectedClips.value = Array.from({ length: parsedClips.value.length }, (_, i) => i)
+  } else {
+    selectedClips.value = []
+  }
 }
 
-function handleDrop(e: DragEvent) {
-  e.preventDefault()
-  isDragOver.value = false
-
-  const files = Array.from(e.dataTransfer?.files || [])
-  const filePaths = files.map(f => (f as any).path || f.name)
-  handleSelectedFiles(filePaths)
-}
-
-// Processing
 async function handleProcessFiles() {
+  if (!canProcess.value) return
+
   try {
+    // TODO: Pass selected clips and overwrite flag to the processing
     await clipperStore.startProcessing()
+    ElMessage.success('Processing started successfully')
   } catch (error) {
     console.error('Processing failed:', error)
+    ElMessage.error('Processing failed to start')
   }
 }
 
-// Status helpers
-function getStatusMessage(): string {
-  if (isProcessing.value) {
-    return '🔄 Processing files...'
-  }
-  return '✅ Ready to process files! Drop a JSON markup file or use the file picker.'
-}
-
-function getStatusClass(): string {
-  if (isProcessing.value) {
-    return 'info'
-  }
-  return 'success'
-}
-
-function getProcessingStatusClass(): string {
-  if (!processingResult.value) {
-    return 'info'
-  }
-  return processingResult.value.status === 'success' ? 'success' : 'error'
+function handleCloseCacheDialog() {
+  showVideoCache.value = false
 }
 </script>
 
 <style scoped>
-.clipper-gui {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+.clipper-app {
+  height: 100vh;
+  background: var(--el-bg-color-page);
+}
+
+.app-header {
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.app-title {
   margin: 0;
-  padding: 20px;
-  background-color: #f5f5f5;
-  min-height: 100vh;
+  font-size: 24px;
+  color: var(--el-text-color-primary);
 }
 
-.header {
-  text-align: center;
-  margin-bottom: 2rem;
+.sidebar {
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color);
+  padding: 0;
+  height: calc(100vh - 60px);
+  overflow: hidden;
 }
 
-.header h1 {
-  color: #333;
-  margin: 0;
+.sidebar-content {
+  padding: 16px;
+  height: 100%;
 }
 
-.container {
-  max-width: 800px;
-  margin: 0 auto;
+.section-card {
+  margin-bottom: 16px;
 }
 
-.status-section,
-.file-section,
-.processing-section {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.section-card:last-child {
+  margin-bottom: 0;
 }
 
-.status-section h2,
-.file-section h2,
-.processing-section h2 {
-  margin-top: 0;
-  color: #333;
-}
-
-.status {
-  padding: 12px 16px;
-  border-radius: 6px;
-  font-weight: 500;
-}
-
-.status.success {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-}
-
-.status.info {
-  background-color: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
-}
-
-.status.error {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
 }
 
 .button-group {
-  margin: 1rem 0;
+  margin-bottom: 16px;
 }
 
-.select-btn,
-.process-btn {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-size: 16px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
+.upload-drop-zone {
+  width: 100%;
 }
 
-.select-btn:hover,
-.process-btn:hover {
-  background-color: #0056b3;
+.upload-drop-zone :deep(.el-upload-dragger) {
+  width: 100%;
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-.select-btn:disabled,
-.process-btn:disabled {
-  background-color: #6c757d;
-  cursor: not-allowed;
+.upload-icon {
+  font-size: 32px;
+  color: var(--el-color-primary);
+  margin-bottom: 8px;
 }
 
-.process-btn.processing {
-  background-color: #6c757d;
-}
-
-.drop-zone {
-  border: 2px dashed #ccc;
-  border-radius: 8px;
-  padding: 3rem;
+.upload-text {
   text-align: center;
-  margin: 1rem 0;
-  transition: border-color 0.2s, background-color 0.2s;
 }
 
-.drop-zone:hover,
-.drop-zone.dragover {
-  border-color: #007bff;
-  background-color: #f8f9fa;
+.upload-text p {
+  margin: 4px 0;
 }
 
-.drop-content {
-  pointer-events: none;
+.upload-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
-.drop-icon {
-  font-size: 3rem;
-  display: block;
-  margin-bottom: 1rem;
-}
-
-.drop-hint {
-  font-size: 0.9rem;
-  color: #666;
-  margin: 0.5rem 0 0 0;
-}
-
-.file-info {
-  background-color: #f8f9fa;
-  border-radius: 6px;
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.file-info h3 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  color: #333;
+.selected-files {
+  margin-top: 16px;
 }
 
 .file-item {
+  margin-bottom: 8px;
+}
+
+.clip-selection {
+  max-height: 250px;
+}
+
+.clip-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-.file-type {
+.clip-item:last-child {
+  border-bottom: none;
+}
+
+.clip-info {
+  flex: 1;
+  margin-left: 8px;
+}
+
+.clip-title {
   font-weight: 500;
-  min-width: 80px;
+  color: var(--el-text-color-primary);
 }
 
-.file-path {
-  font-family: monospace;
-  background-color: #e9ecef;
-  padding: 2px 6px;
-  border-radius: 3px;
-  word-break: break-all;
+.clip-duration {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
-.processing-status,
-.processing-result {
-  margin: 1rem 0;
+.processing-progress {
+  width: 100%;
 }
 
-.output-info {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 1rem;
-  word-break: break-all;
+.progress-text {
+  text-align: center;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 8px;
 }
 
-.report {
-  margin-top: 1rem;
+.main-content {
+  background: var(--el-bg-color-page);
+  padding: 16px;
 }
 
-.report details {
-  background-color: #f8f9fa;
-  border-radius: 6px;
-  padding: 1rem;
-}
-
-.report summary {
-  cursor: pointer;
-  font-weight: 500;
-  margin-bottom: 0.5rem;
-}
-
-.report pre {
-  background-color: #e9ecef;
-  padding: 1rem;
-  border-radius: 4px;
-  overflow-x: auto;
-  font-size: 0.9rem;
-  margin: 0;
-}
-
-.processing-text {
+.welcome-area {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  height: 100%;
 }
 
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ffffff40;
-  border-top: 2px solid #ffffff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.content-area {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.preview-card {
+  flex: 1;
+  min-height: 300px;
+}
+
+.timeline-card {
+  height: 200px;
+}
+
+.video-preview-placeholder,
+.timeline-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--el-text-color-secondary);
+}
+
+.preview-filename {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  margin-top: 8px;
+}
+
+.cache-content {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

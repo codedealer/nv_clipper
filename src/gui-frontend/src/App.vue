@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="q-app">
     <RouterView />
   </div>
 </template>
@@ -9,14 +9,18 @@ import { RouterView } from 'vue-router'
 </script>
 
 <style>
-#app {
+#q-app {
   margin: 0;
   padding: 0;
+  height: 100vh;
+  overflow: hidden; /* Prevent scrollbars as per design requirements */
 }
 
 body {
   margin: 0;
   padding: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 
 * {

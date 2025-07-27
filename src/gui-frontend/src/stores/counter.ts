@@ -155,6 +155,15 @@ export const useClipperStore = defineStore('clipper', () => {
     }
   }
 
+  async function parseMarkupFile(filePath: string): Promise<any> {
+    try {
+      const api = getAPI()
+      return await api.parse_markup_file(filePath)
+    } catch (error) {
+      throw new Error(`Failed to parse markup file: ${error}`)
+    }
+  }
+
   return {
     // State
     selectedFiles,
@@ -176,6 +185,7 @@ export const useClipperStore = defineStore('clipper', () => {
     clearSelectedFiles,
     startProcessing,
     getEngineStatus,
-    selectFiles
+    selectFiles,
+    parseMarkupFile
   }
 })

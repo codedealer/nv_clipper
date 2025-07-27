@@ -133,6 +133,52 @@ class ClipperGUI:
         )
         return result
 
+    def parse_markup_file(self, file_path: str):
+        """Parse a JSON markup file and return clip information"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Extract clips from markerPairs
+            clips = []
+            marker_pairs = data.get('markerPairs', [])
+            video_title = data.get('videoTitle', 'Unknown Video')
+
+            for marker in marker_pairs:
+                clip = {
+                    'number': marker.get('number', len(clips) + 1),
+                    'title': f"{video_title[:50]}... - Clip {marker.get('number', len(clips) + 1)}",
+                    'start': marker.get('start', 0),
+                    'end': marker.get('end', 0),
+                    'duration': marker.get('end', 0) - marker.get('start', 0),
+                    'speed': marker.get('speed', 1),
+                    'crop': marker.get('crop', ''),
+                    'enableZoomPan': marker.get('enableZoomPan', False),
+                    'overrides': marker.get('overrides', {})
+                }
+                clips.append(clip)
+
+            return {
+                'status': 'success',
+                'clips': clips,
+                'video_info': {
+                    'title': video_title,
+                    'video_url': data.get('videoUrl', ''),
+                    'video_id': data.get('videoID', ''),
+                    'platform': data.get('platform', ''),
+                    'is_vertical': data.get('isVerticalVideo', False),
+                    'crop_res': data.get('cropRes', ''),
+                    'version': data.get('version', '')
+                }
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to parse markup file {file_path}: {e}")
+            return {
+                'status': 'error',
+                'message': f"Failed to parse markup file: {str(e)}"
+            }
+
 
 def create_app():
     """Create and configure the webview application"""
