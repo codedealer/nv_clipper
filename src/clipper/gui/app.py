@@ -143,11 +143,12 @@ class ClipperGUI:
             clips = []
             marker_pairs = data.get('markerPairs', [])
             video_title = data.get('videoTitle', 'Unknown Video')
+            title_suffix = data.get('titleSuffix', 'clip')
 
             for marker in marker_pairs:
                 clip = {
                     'number': marker.get('number', len(clips) + 1),
-                    'title': f"{video_title[:50]}... - Clip {marker.get('number', len(clips) + 1)}",
+                    'title': f"{title_suffix}-{marker.get('number', len(clips) + 1)}",
                     'start': marker.get('start', 0),
                     'end': marker.get('end', 0),
                     'duration': marker.get('end', 0) - marker.get('start', 0),
@@ -194,7 +195,7 @@ def create_app():
         )
 
     window = webview.create_window(
-        'YT Clipper GUI',
+        'NV Clipper GUI',
         frontend_path.as_uri(),
         js_api=api,
         width=1000,
