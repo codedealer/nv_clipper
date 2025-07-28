@@ -3,7 +3,7 @@
     <!-- Header -->
     <el-header height="60px" class="app-header">
       <div class="header-content">
-        <h1 class="app-title">🎬 YT Clipper GUI</h1>
+        <h1 class="app-title">🎬 NV Clipper GUI</h1>
         <div class="status-indicator">
           <el-tag
             :type="getStatusType()"
@@ -20,128 +20,136 @@
     <el-container>
       <!-- Left Sidebar: File Operations -->
       <el-aside width="350px" class="sidebar">
-        <el-scrollbar height="100%">
-          <div class="sidebar-content">
+        <el-container direction="vertical" style="height: 100%;">
+          <!-- Scrollable Content Area -->
+          <el-main class="sidebar-main">
+            <el-scrollbar height="100%">
+              <div class="sidebar-content">
 
-            <!-- File Upload Section -->
-            <el-card class="section-card" shadow="hover">
-              <template #header>
-                <div class="card-header">
-                  <el-icon><FolderOpened /></el-icon>
-                  <span>File Selection</span>
-                </div>
-              </template>
-
-              <!-- File Selection Buttons -->
-              <div class="button-group">
-                <el-button
-                  @click="handleSelectFiles"
-                  :loading="isProcessing"
-                  type="primary"
-                  :icon="FolderOpened"
-                  style="width: 100%; margin-bottom: 8px;"
-                >
-                  Select Files
-                </el-button>
-
-                <el-button
-                  @click="showVideoCache = true"
-                  type="default"
-                  :icon="VideoCamera"
-                  style="width: 100%;"
-                  plain
-                >
-                  Video Cache
-                </el-button>
-              </div>
-
-              <!-- Drop Zone -->
-              <el-upload
-                ref="uploadRef"
-                class="upload-drop-zone"
-                drag
-                :auto-upload="false"
-                :on-change="handleFileChange"
-                :show-file-list="false"
-                multiple
-                accept=".json,.mp4,.webm,.avi,.mkv,.mov"
-              >
-                <el-icon class="upload-icon"><UploadFilled /></el-icon>
-                <div class="upload-text">
-                  <p>Drop JSON markup here</p>
-                  <p class="upload-hint">Optionally include video file</p>
-                </div>
-              </el-upload>
-
-              <!-- Selected Files Display -->
-              <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
-                <el-divider content-position="left">Selected Files</el-divider>
-
-                <el-space direction="vertical" style="width: 100%;" size="small">
-                  <div v-if="selectedFiles.markup" class="file-item">
-                    <el-tag type="warning" :icon="Document" closable @close="selectedFiles.markup = null">
-                      {{ getFileName(selectedFiles.markup) }}
-                    </el-tag>
-                  </div>
-
-                  <div v-if="selectedFiles.video" class="file-item">
-                    <el-tag type="danger" :icon="VideoCamera" closable @close="selectedFiles.video = null">
-                      {{ getFileName(selectedFiles.video) }}
-                    </el-tag>
-                  </div>
-                </el-space>
-              </div>
-            </el-card>
-
-            <!-- Clip Selection Section -->
-            <el-card v-if="parsedClips.length > 0" class="section-card" shadow="hover">
-              <template #header>
-                <div class="card-header">
-                  <el-icon><VideoPlay /></el-icon>
-                  <span>Clips ({{ selectedClips.length }}/{{ parsedClips.length }})</span>
-                </div>
-              </template>
-
-              <div class="clip-selection">
-                <el-checkbox
-                  v-model="selectAllClips"
-                  @change="handleSelectAllClips"
-                  :indeterminate="isIndeterminate"
-                  style="margin-bottom: 12px;"
-                >
-                  Select All
-                </el-checkbox>
-
-                <el-scrollbar max-height="300px">
-                  <el-checkbox-group v-model="selectedClips" size="small">
-                    <div
-                      v-for="(clip, index) in parsedClips"
-                      :key="index"
-                      class="clip-item"
-                    >
-                      <el-checkbox :value="index">
-                        <div class="clip-info">
-                          <div class="clip-title">{{ clip.title || `Clip ${clip.number || index + 1}` }}</div>
-                          <div class="clip-duration">{{ formatDuration(clip) }}</div>
-                        </div>
-                      </el-checkbox>
+                <!-- File Upload Section -->
+                <el-card class="section-card" shadow="hover">
+                  <template #header>
+                    <div class="card-header">
+                      <el-icon><FolderOpened /></el-icon>
+                      <span>File Selection</span>
                     </div>
-                  </el-checkbox-group>
-                </el-scrollbar>
-              </div>
-            </el-card>
+                  </template>
 
-            <!-- Processing Controls -->
-            <el-card class="section-card" shadow="hover">
-              <template #header>
+                  <!-- File Selection Buttons -->
+                  <div class="button-group">
+                    <el-button
+                      @click="handleSelectFiles"
+                      :loading="isProcessing"
+                      type="primary"
+                      :icon="FolderOpened"
+                      style="width: 100%; margin-bottom: 8px;"
+                    >
+                      Select Files
+                    </el-button>
+
+                    <el-button
+                      @click="showVideoCache = true"
+                      type="default"
+                      :icon="VideoCamera"
+                      style="width: 100%;"
+                      plain
+                    >
+                      Video Cache
+                    </el-button>
+                  </div>
+
+                  <!-- Drop Zone -->
+                  <el-upload
+                    ref="uploadRef"
+                    class="upload-drop-zone"
+                    drag
+                    :auto-upload="false"
+                    :on-change="handleFileChange"
+                    :show-file-list="false"
+                    multiple
+                    accept=".json,.mp4,.webm,.avi,.mkv,.mov"
+                  >
+                    <el-icon class="upload-icon"><UploadFilled /></el-icon>
+                    <div class="upload-text">
+                      <p>Drop JSON markup here</p>
+                      <p class="upload-hint">Optionally include video file</p>
+                    </div>
+                  </el-upload>
+
+                  <!-- Selected Files Display -->
+                  <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
+                    <el-divider content-position="left">Selected Files</el-divider>
+
+                    <el-space direction="vertical" style="width: 100%;" size="small">
+                      <div v-if="selectedFiles.markup" class="file-item">
+                        <el-tag type="warning" :icon="Document" closable @close="selectedFiles.markup = null">
+                          {{ getFileName(selectedFiles.markup) }}
+                        </el-tag>
+                      </div>
+
+                      <div v-if="selectedFiles.video" class="file-item">
+                        <el-tag type="danger" :icon="VideoCamera" closable @close="selectedFiles.video = null">
+                          {{ getFileName(selectedFiles.video) }}
+                        </el-tag>
+                      </div>
+                    </el-space>
+                  </div>
+                </el-card>
+
+                <!-- Clip Selection Section -->
+                <el-card v-if="parsedClips.length > 0" class="section-card" shadow="hover">
+                  <template #header>
+                    <div class="card-header">
+                      <el-icon><VideoPlay /></el-icon>
+                      <span>Clips ({{ selectedClips.length }}/{{ parsedClips.length }})</span>
+                    </div>
+                  </template>
+
+                  <div class="clip-selection">
+                    <el-checkbox
+                      v-model="selectAllClips"
+                      @change="handleSelectAllClips"
+                      :indeterminate="isIndeterminate"
+                      style="margin-bottom: 12px;"
+                    >
+                      Select All
+                    </el-checkbox>
+
+                    <el-scrollbar max-height="300px">
+                      <el-checkbox-group v-model="selectedClips" size="small">
+                        <div
+                          v-for="(clip, index) in parsedClips"
+                          :key="index"
+                          class="clip-item"
+                        >
+                          <el-checkbox :value="index">
+                            <div class="clip-info">
+                              <div class="clip-title">{{ clip.title || `Clip ${clip.number || index + 1}` }}</div>
+                              <div class="clip-duration">{{ formatDuration(clip) }}</div>
+                            </div>
+                          </el-checkbox>
+                        </div>
+                      </el-checkbox-group>
+                    </el-scrollbar>
+                  </div>
+                </el-card>
+
+              </div>
+            </el-scrollbar>
+          </el-main>
+
+          <!-- Fixed Processing Footer -->
+          <el-footer height="auto" class="processing-footer">
+            <el-card class="processing-card" shadow="hover">
+              <!-- <template #header>
                 <div class="card-header">
                   <el-icon><Tools /></el-icon>
                   <span>Processing</span>
                 </div>
-              </template>
+              </template> -->
 
-              <el-space direction="vertical" style="width: 100%;">
-                <el-checkbox v-model="overwriteFiles" size="large">
+              <el-space direction="vertical" style="width: 100%;" size="small">
+                <el-checkbox v-model="overwriteFiles">
                   Overwrite existing files (-ow)
                 </el-checkbox>
 
@@ -178,9 +186,8 @@
                 />
               </el-space>
             </el-card>
-
-          </div>
-        </el-scrollbar>
+          </el-footer>
+        </el-container>
       </el-aside>
 
       <!-- Main Content Area -->
@@ -484,9 +491,27 @@ function handleCloseCacheDialog() {
   overflow: hidden;
 }
 
+.sidebar-main {
+  padding: 0;
+  overflow: hidden;
+}
+
 .sidebar-content {
   padding: 16px;
-  height: 100%;
+}
+
+.processing-footer {
+  border-top: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  padding: 8px;
+}
+
+.processing-card {
+  margin: 0;
+}
+
+.processing-card :deep(.el-card__body) {
+  padding: 12px;
 }
 
 .section-card {
