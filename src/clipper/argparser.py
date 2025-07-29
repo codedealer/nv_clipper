@@ -342,6 +342,21 @@ def getArgParser() -> argparse.ArgumentParser:
         ),
     )
     vfilter_options.add_argument(
+        "--target-fps",
+        "-tfps",
+        dest="targetFPS",
+        type=float,
+        default=None,
+        help=" ".join(
+            [
+                "Force the video's frame rate to this value.",
+                "This overrides the detected video frame rate and affects interpolation calculations.",
+                "Must be a positive number between 1 and 300 fps.",
+                "Use with caution as incorrect values may cause timing issues.",
+            ],
+        ),
+    )
+    vfilter_options.add_argument(
         "--delay",
         "-d",
         type=float,
@@ -796,6 +811,13 @@ def getArgs() -> Tuple[Dict[str, Any], List[str], List[str], List[str], Dict[str
     if args["cropMultiple"] != 1:
         args["cropMultipleX"] = args["cropMultiple"]
         args["cropMultipleY"] = args["cropMultiple"]
+
+    # Validate target FPS if provided
+    if args.get("targetFPS") is not None:
+        target_fps = args["targetFPS"]
+        if target_fps <= 0 or target_fps > 300:
+            parser.error("--target-fps must be a positive number between 1 and 300 fps")
+
     args = {k: v for k, v in args.items() if v is not None}
     args["videoStabilization"] = getVidstabPreset(args["videoStabilization"])
     args["denoise"] = getDenoisePreset(args["denoise"])

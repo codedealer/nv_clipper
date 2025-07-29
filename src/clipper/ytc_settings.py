@@ -2,8 +2,9 @@ import json
 import os
 import re
 import sys
+from fractions import Fraction
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 from rich.text import Text
 
@@ -19,6 +20,32 @@ from clipper.ffprobe import ffprobeVideoProperties
 from clipper.platforms import getVideoPageURL
 from clipper.ytc_logger import logger, printToLogFile
 from clipper.ytdl import ytdl_bin_get_subs, ytdl_bin_get_video_info
+
+
+def safe_fps_to_float(fps_value: Union[int, float, str, Fraction, None]) -> float:
+    """Safely convert frame rate value to float, handling fractions and strings."""
+    if fps_value is None:
+        return 0.0
+    if isinstance(fps_value, (int, float)):
+        return float(fps_value)
+    if isinstance(fps_value, Fraction):
+        return float(fps_value)
+    if isinstance(fps_value, str):
+        try:
+            # Handle fraction strings like "30000/1001"
+            return float(Fraction(fps_value))
+        except (ValueError, ZeroDivisionError):
+            try:
+                # Fallback to direct float conversion
+                return float(fps_value)
+            except ValueError:
+                logger.warning(f"Could not convert fps value '{fps_value}' to float, using 0.0")
+                return 0.0
+    try:
+        return float(fps_value)
+    except (ValueError, TypeError):
+        logger.warning(f"Could not convert fps value '{fps_value}' to float, using 0.0")
+        return 0.0
 
 
 def loadSettings(settings: Settings) -> None:
@@ -261,90 +288,77 @@ def _getVideoInfo(cs: ClipperState) -> Tuple[Dict[str, Any], Dict[str, Any], str
     return videoInfo, audioInfo, formats_table
 
 
-def getMoreVideoInfo(
-    cs: ClipperState,
-    videoInfo: Dict,
-    audioInfo: Dict,
-    formats_table: str,
-) -> None:
+def _probe_video_settings(cs: ClipperState) -> Dict[str, Any] | None:
+    """Probe video settings using ffprobe."""
     settings = cs.settings
 
-    # TODO: ffprobe all streams including audio
-    # TODO: merge properties fetched from ffprobe and ytdl into common namespace
-    # TODO: improve compatibility between inputVideo mode and default stream mode
     if settings["inputVideo"]:
         settings["videoType"] = "local_video"
-        probedSettings = ffprobeVideoProperties(cs, settings["inputVideo"])
+        return ffprobeVideoProperties(cs, settings["inputVideo"])
+    return ffprobeVideoProperties(cs, settings["videoDownloadURL"])
+
+
+def _determine_original_fps(settings: Settings, videoInfo: Dict) -> Union[int, float, str, Fraction]:
+    """Determine the original frame rate from available sources."""
+    if "r_frame_rate" in settings:
+        return settings["r_frame_rate"]
+    if videoInfo.get("fps") is not None:
+        return videoInfo["fps"]
+    DEFAULT_VIDEO_FPS = 30
+    logger.warning(
+        f"Could not determine video fps. Assuming {DEFAULT_VIDEO_FPS} fps.",
+    )
+    return DEFAULT_VIDEO_FPS
+
+
+def _handle_target_fps(settings: Settings, original_fps: Union[int, float, str, Fraction], target_fps: Union[int, float, str, Fraction, None]) -> None:
+    """Handle target FPS configuration and conversion detection."""
+    if target_fps is not None:
+        original_fps_float = safe_fps_to_float(original_fps)
+        target_fps_float = safe_fps_to_float(target_fps)
+        logger.info(f"Using target FPS: {target_fps} (overriding detected fps: {original_fps})")
+        settings["r_frame_rate"] = target_fps
+        # Flag that we need FPS conversion
+        needs_conversion = abs(target_fps_float - original_fps_float) > 0.001
+        settings["needsFPSConversion"] = needs_conversion
+        if needs_conversion:
+            logger.info(f"Frame rate conversion will be applied: {original_fps} → {target_fps} fps")
+        else:
+            logger.info(f"Target FPS matches detected FPS ({target_fps}), no conversion needed")
     else:
-        probedSettings = ffprobeVideoProperties(cs, settings["videoDownloadURL"])
+        settings["r_frame_rate"] = original_fps
+        settings["needsFPSConversion"] = False
 
-    settings.update(videoInfo)
-    if probedSettings is not None:
-        settings.update(probedSettings)
-    else:
-        logger.warning("Could not fetch video info with ffprobe")
-        logger.warning("Defaulting to video info fetched with youtube-dl")
 
-    if "bit_rate" not in settings:
-        settings["bit_rate"] = int(videoInfo["tbr"])
+def _log_formats_table(cs: ClipperState, formats_table: str, videoFormatID: str, audioFormatID: str) -> None:
+    """Log the formats table with highlighted selected formats."""
+    formats_table_text = Text.from_ansi(formats_table)
+    formats_table = re.sub(
+        string=formats_table,
+        pattern=rf"m{videoFormatID}",
+        repl=f"m✅{videoFormatID}",
+    )
+    formats_table = re.sub(
+        string=formats_table,
+        pattern=rf"m{audioFormatID}",
+        repl=f"m✅{audioFormatID}",
+    )
+    logger.info(
+        f"Found the following audio/video formats: \n",
+    )
+    # print without logger to use full console width
+    print(formats_table)
+    printToLogFile(cs.clipper_paths, f"{formats_table_text}\n")
 
-    if "r_frame_rate" not in settings:
-        DEFAULT_VIDEO_FPS = 30
-        if videoInfo["fps"] is None:
-            logger.warning(
-                f"Could not determine video fps. Assuming {DEFAULT_VIDEO_FPS} fps.",
-            )
-        settings["r_frame_rate"] = (
-            videoInfo["fps"] if videoInfo["fps"] is not None else DEFAULT_VIDEO_FPS
-        )
 
+def _log_video_info(settings: Settings, videoFormat: str, videoFormatID: str,
+                   audioFormat: str, audioFormatID: str, videoInfo: Dict) -> None:
+    """Log video information and properties."""
     videoTitleStyle = "" if settings["noRichLogs"] else "[green]"
     logger.report(
         f'Video Title: {videoTitleStyle}{settings["videoTitle"]}',
         extra={"highlighter": None},
     )
-
-    videoFormat = util.dictTryGetKeys(
-        videoInfo,
-        "vcodec",
-        "format",
-        default=UNKNOWN_PROPERTY,
-    )
-    videoFormatID = util.dictTryGetKeys(
-        videoInfo,
-        "format_id",
-        default=UNKNOWN_PROPERTY,
-    )
-    audioFormat = util.dictTryGetKeys(
-        audioInfo,
-        "acodec",
-        "format",
-        default=UNKNOWN_PROPERTY,
-    )
-    audioFormatID = util.dictTryGetKeys(
-        audioInfo,
-        "format_id",
-        default=UNKNOWN_PROPERTY,
-    )
-
-    if formats_table:
-        formats_table_text = Text.from_ansi(formats_table)
-        formats_table = re.sub(
-            string=formats_table,
-            pattern=rf"m{videoFormatID}",
-            repl=f"m✅{videoFormatID}",
-        )
-        formats_table = re.sub(
-            string=formats_table,
-            pattern=rf"m{audioFormatID}",
-            repl=f"m✅{audioFormatID}",
-        )
-        logger.info(
-            f"Found the following audio/video formats: \n",
-        )
-        # print without logger to use full console width
-        print(formats_table)
-        printToLogFile(cs.clipper_paths, f"{formats_table_text}\n")
 
     logger.report(f"Video Format: {videoFormat} ({videoFormatID})")
     # TODO: improve detection of when unique audio stream format information is available
@@ -360,6 +374,52 @@ def getMoreVideoInfo(
     logger.report(
         f'Video Dynamic Range: {videoInfo.get("dynamic_range")}',
     )
+
+
+def getMoreVideoInfo(
+    cs: ClipperState,
+    videoInfo: Dict,
+    audioInfo: Dict,
+    formats_table: str,
+) -> None:
+    settings = cs.settings
+
+    # TODO: ffprobe all streams including audio
+    # TODO: merge properties fetched from ffprobe and ytdl into common namespace
+    # TODO: improve compatibility between inputVideo mode and default stream mode
+    probedSettings = _probe_video_settings(cs)
+
+    # Store target FPS before it gets overwritten by merging
+    target_fps = settings.get("targetFPS")
+
+    settings.update(videoInfo)
+    if probedSettings is not None:
+        settings.update(probedSettings)
+    else:
+        logger.warning("Could not fetch video info with ffprobe")
+        logger.warning("Defaulting to video info fetched with youtube-dl")
+
+    if "bit_rate" not in settings:
+        settings["bit_rate"] = int(videoInfo["tbr"])
+
+    # Determine and handle frame rate
+    original_fps = _determine_original_fps(settings, videoInfo)
+    settings["originalFPS"] = original_fps
+    _handle_target_fps(settings, original_fps, target_fps)
+
+    # Extract format information
+    videoFormat = util.dictTryGetKeys(videoInfo, "vcodec", "format", default=UNKNOWN_PROPERTY)
+    videoFormatID = util.dictTryGetKeys(videoInfo, "format_id", default=UNKNOWN_PROPERTY)
+    audioFormat = util.dictTryGetKeys(audioInfo, "acodec", "format", default=UNKNOWN_PROPERTY)
+    audioFormatID = util.dictTryGetKeys(audioInfo, "format_id", default=UNKNOWN_PROPERTY)
+
+    # Handle formats table logging
+    if formats_table:
+        _log_formats_table(cs, formats_table, videoFormatID, audioFormatID)
+
+    # Log video information
+    _log_video_info(settings, videoFormat, videoFormatID, audioFormat, audioFormatID, videoInfo)
+
     autoSetCropMultiples(settings)
 
 

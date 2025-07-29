@@ -1,9 +1,8 @@
-from typing import TypedDict, Literal
 import enum
 import io
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Literal, TypedDict, Union
 
 UNKNOWN_PROPERTY = "unknown"
 

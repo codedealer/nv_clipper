@@ -541,6 +541,15 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     # Thus we set the timebase to a low value (1/9000 as 9000 is a multiple of 24,25,30).
     video_filter += f",settb=1/9000"
 
+    # Apply target FPS conversion if needed (but not if zoompan already handled it)
+    # TODO: In the future this might be moved to Interpolation providers
+    if (mps.get("needsFPSConversion", False) and
+        mps.get("targetFPS") is not None):
+        target_fps = mps["r_frame_rate"] # r_frame_rate holds the validated target FPS
+        original_fps = mps.get("originalFPS", mps["r_frame_rate"])
+        logger.info(f"Applying FPS conversion from {original_fps} to {target_fps} fps")
+        video_filter += f",fps={target_fps}"
+
     # Videos with no duplicate frames should not be adversely affected by frame deduplication.
     # Low fps video with 1 duplicated frame every N > 2 frames is essentially
     # of variable frame rate masked as a constant frame rate.
