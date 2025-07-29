@@ -87,11 +87,11 @@ clean-sandbox:
   rm -r ./sandbox/*
 
 version-patch:
-  npx commit-and-tag-version -r patch && uv run bumpit -p patch || true
+  uv run bumpit -p patch
 version-minor:
-  npx commit-and-tag-version -r minor && uv run bumpit -p minor || true
+  uv run bumpit -p minor
 version-major:
-  npx commit-and-tag-version -r major && uv run bumpit -p major || true
+  uv run bumpit -p major
 pigar:
   pigar -P ./src/clipper -p ./src/clipper/requirements.txt --without-referenced-comments
 
