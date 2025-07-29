@@ -33,6 +33,29 @@ lint-py-fix:
 poetry-sync:
   poetry lock --no-update && poetry install --sync
 
+# GUI Development Workflow:
+# 1. Terminal 1: just gui-vite    (starts Vite dev server)
+# 2. Terminal 2: just gui-dev     (starts GUI in dev mode)
+#
+# GUI Production Workflow:
+# 1. just gui-build               (builds frontend)
+# 2. just gui-prod                (starts GUI in prod mode)
+gui-dev:
+  Write-Host "🎬 Starting NV Clipper GUI in development mode..." -ForegroundColor Blue
+  uv run yt_clipper_gui_dev
+
+gui-vite:
+  Write-Host "🚀 Starting Vite development server..." -ForegroundColor Green
+  cd src/gui-frontend; pnpm run dev
+
+gui-build:
+  Write-Host "🏗️ Building frontend for production..." -ForegroundColor Yellow
+  cd src/gui-frontend; pnpm run build
+
+gui-prod:
+  Write-Host "🎬 Starting NV Clipper GUI in production mode..." -ForegroundColor Blue
+  uv run yt_clipper_gui
+
 build-ts:
   npx tsc --watch
 build-ts-ne:
