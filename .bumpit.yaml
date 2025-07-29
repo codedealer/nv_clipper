@@ -1,4 +1,4 @@
-current_version: "6.1.0"
+current_version: "6.2.0"
 base_branch: "nv_clipper"
 strategy:
   name: "semver"
