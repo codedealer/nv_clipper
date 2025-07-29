@@ -28,6 +28,7 @@ dependencies = [
 [project.scripts]
 yt_clipper = "clipper.yt_clipper:main"
 yt_clipper_gui = "clipper.gui.app:main"
+yt_clipper_gui_dev = "clipper.gui.app:main_dev"
 
 [dependency-groups]
 dev = [
