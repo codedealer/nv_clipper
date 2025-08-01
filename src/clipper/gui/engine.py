@@ -90,15 +90,11 @@ class ClipperEngine:
                 # Now run the exact CLI initialization flow
                 args, unknown, argsFromArgFiles, argFiles, argsFromArgFilesMap = argparser.getArgs()
 
-                # Apply CLI arguments first to get the json path and other settings
+                # Apply CLI arguments first to get the json path and other required settings
                 self.cs.settings.update({"color_space": None, **args})
 
-                # IMPORTANT: Load settings from markup JSON, which will merge with CLI args
-                # The CLI args we applied above will take precedence for any conflicts
+                # Load settings from markup JSON
                 ytc_settings.loadSettings(self.cs.settings)
-
-                # Re-apply CLI arguments to ensure GUI settings override any JSON settings
-                self.cs.settings.update(args)
 
                 # Preserve persistent RIFE cache across processing sessions
                 if self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"]:

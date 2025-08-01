@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from clipper.argparser import getArgParser
+from clipper.argparser import getArgParser, getSettingsSchema
 from clipper.clipper_types import Settings
 
 
@@ -43,6 +43,14 @@ class GeneralSettings:
     # === OTHER OPTIONS ===
     preview: bool = False
     notify_on_completion: bool = False
+
+    # === AI/GPU PROCESSING OPTIONS ===
+    gpu_id: int = 0  # GPU ID for interpolation
+    rife_model_path: str = ""  # Path to RIFE model file
+    rife_worker_threads: int = 1  # Number of worker threads for RIFE
+    topaz_ai_path: str = ""  # Path to Topaz Video AI executable
+    topaz_model_dir: str = ""  # Path to Topaz model directory
+    topaz_model_data_dir: str = ""  # Path to Topaz model data directory
 
     # === YT-DLP OPTIONS ===
     ytdl_location: str = ""
@@ -423,36 +431,4 @@ class SettingsManager:
 
     def get_settings_schema(self) -> Dict[str, Any]:
         """Get schema information for the frontend."""
-        return {
-            "general": {
-                "overwrite": {"type": "boolean", "description": "Overwrite existing files (-ow)"},
-                "format_sort": {"type": "string", "description": "Format sort preferences for yt-dlp"},
-                "no_ytdl_auto_update": {"type": "boolean", "description": "Disable yt-dlp auto-update"},
-                "crf": {"type": "integer", "min": 0, "max": 63, "description": "Constant Rate Factor (0-63)"},
-                "target_max_bitrate": {"type": "integer", "min": 100, "description": "Target max bitrate (kbps)"},
-                "two_pass": {"type": "boolean", "description": "Enable two-pass encoding"},
-                "video_codec": {"type": "string", "description": "Video codec to use"},
-                "audio_codec": {"type": "string", "description": "Audio codec to use"},
-                "denoise": {"type": "boolean", "description": "Apply video denoising"},
-                "stabilize": {"type": "boolean", "description": "Apply video stabilization"},
-                "enhance_video": {"type": "boolean", "description": "Apply video enhancement"},
-                "interpolate": {"type": "boolean", "description": "Apply frame interpolation"},
-                "log_level": {"type": "integer", "min": 0, "max": 56, "description": "Logging level"},
-                "preview_mode": {"type": "boolean", "description": "Enable preview mode"},
-                "ytdl_location": {"type": "string", "description": "Path to yt-dlp executable"},
-                "cookies_file": {"type": "string", "description": "Path to cookies file"},
-                "format_selector": {"type": "string", "description": "yt-dlp format selector"},
-            },
-            "video": {
-                "video_title": {"type": "string", "description": "Video title"},
-                "video_url": {"type": "string", "description": "Video URL"},
-                "platform": {"type": "string", "description": "Platform (youtube, etc.)"},
-                "is_vertical_video": {"type": "boolean", "description": "Is vertical video"},
-                "crop_res": {"type": "string", "description": "Crop resolution"},
-                "fps": {"type": "number", "description": "Frames per second"},
-                "width": {"type": "integer", "description": "Video width"},
-                "height": {"type": "integer", "description": "Video height"},
-                "duration": {"type": "number", "description": "Video duration in seconds"},
-                "color_space": {"type": "string", "description": "Color space (bt709, bt2020, etc.)"},
-            },
-        }
+        return getSettingsSchema()

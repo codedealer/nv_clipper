@@ -31,6 +31,14 @@ export interface GeneralSettings {
   preview: boolean
   notify_on_completion: boolean
 
+  // === AI/GPU PROCESSING OPTIONS ===
+  gpu_id: number // GPU ID for interpolation
+  rife_model_path: string // Path to RIFE model file
+  rife_worker_threads: number // Number of worker threads for RIFE
+  topaz_ai_path: string // Path to Topaz Video AI executable
+  topaz_model_dir: string // Path to Topaz model directory
+  topaz_model_data_dir: string // Path to Topaz model data directory
+
   // === YT-DLP OPTIONS ===
   ytdl_location: string
   ytdl_username: string
@@ -96,6 +104,13 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: 'Video enhancement and processing options',
     icon: 'VideoCamera',
     settings: ['denoise', 'stabilize', 'enhance_video', 'interpolate']
+  },
+  {
+    id: 'ai_gpu',
+    name: 'AI & GPU Processing',
+    description: 'AI interpolation and GPU acceleration settings',
+    icon: 'MagicStick',
+    settings: ['gpu_id', 'rife_model_path', 'rife_worker_threads', 'topaz_ai_path', 'topaz_model_dir', 'topaz_model_data_dir']
   },
   {
     id: 'output',

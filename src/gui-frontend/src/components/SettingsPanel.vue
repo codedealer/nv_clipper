@@ -222,6 +222,81 @@
         </div>
       </el-tab-pane>
 
+      <!-- === AI/GPU PROCESSING OPTIONS === -->
+      <el-tab-pane label="AI & GPU" name="ai_gpu">
+        <div class="settings-section">
+          <h4>GPU Configuration</h4>
+          <el-form label-width="220px" label-position="left">
+            <el-form-item label="GPU ID">
+              <el-input-number
+                :model-value="settings?.gpu_id || 0"
+                @update:model-value="(value) => updateNumberSetting('gpu_id', value)"
+                :min="0"
+                :max="15"
+                :disabled="isLoading"
+                style="width: 150px"
+              />
+              <el-text class="setting-help" type="info">GPU device ID for AI interpolation (0 = first GPU)</el-text>
+            </el-form-item>
+          </el-form>
+
+          <h4>RIFE Interpolation</h4>
+          <el-form label-width="220px" label-position="left">
+            <el-form-item label="RIFE model path">
+              <el-input
+                :model-value="settings?.rife_model_path || ''"
+                @update:model-value="(value) => updateStringSetting('rife_model_path', value)"
+                :disabled="isLoading"
+                placeholder="Path to RIFE model file (.onnx)"
+              />
+              <el-text class="setting-help" type="info">Path to RIFE ONNX model for AI frame interpolation</el-text>
+            </el-form-item>
+            <el-form-item label="Worker threads">
+              <el-input-number
+                :model-value="settings?.rife_worker_threads || 1"
+                @update:model-value="(value) => updateNumberSetting('rife_worker_threads', value)"
+                :min="1"
+                :max="32"
+                :disabled="isLoading"
+                style="width: 150px"
+              />
+              <el-text class="setting-help" type="info">Number of worker threads for RIFE processing</el-text>
+            </el-form-item>
+          </el-form>
+
+          <h4>Topaz Video AI</h4>
+          <el-form label-width="220px" label-position="left">
+            <el-form-item label="Topaz Video AI path">
+              <el-input
+                :model-value="settings?.topaz_ai_path || ''"
+                @update:model-value="(value) => updateStringSetting('topaz_ai_path', value)"
+                :disabled="isLoading"
+                placeholder="Path to Topaz Video AI executable"
+              />
+              <el-text class="setting-help" type="info">Path to the Topaz Video AI application executable</el-text>
+            </el-form-item>
+            <el-form-item label="Model directory">
+              <el-input
+                :model-value="settings?.topaz_model_dir || ''"
+                @update:model-value="(value) => updateStringSetting('topaz_model_dir', value)"
+                :disabled="isLoading"
+                placeholder="Path to Topaz models directory"
+              />
+              <el-text class="setting-help" type="info">Directory containing Topaz Video AI model files</el-text>
+            </el-form-item>
+            <el-form-item label="Model data directory">
+              <el-input
+                :model-value="settings?.topaz_model_data_dir || ''"
+                @update:model-value="(value) => updateStringSetting('topaz_model_data_dir', value)"
+                :disabled="isLoading"
+                placeholder="Path to Topaz model data directory"
+              />
+              <el-text class="setting-help" type="info">Directory containing Topaz Video AI model data</el-text>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
+
       <!-- === OTHER OPTIONS === -->
       <el-tab-pane label="Other" name="other">
         <div class="settings-section">
@@ -334,7 +409,7 @@ interface Props {
   isLoading?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   settings: null,
   isLoading: false
 })
