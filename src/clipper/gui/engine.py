@@ -31,7 +31,8 @@ class ClipperEngine:
         self.cs: Optional[ClipperState] = None
         self.logger = logging.getLogger(__name__)
 
-    def process_files(self, markup_path: str, video_path: Optional[str] = None) -> Dict[str, Any]:
+    def process_files(self, markup_path: str, video_path: Optional[str] = None,  # noqa: PLR0912
+                     settings_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process markup and optionally video files using exact CLI logic."""
         try:
             print(f"DEBUG: Starting file processing with CLI-identical logic...")
@@ -58,6 +59,27 @@ class ClipperEngine:
                     return {"status": "error", "message": f"Video file not found: {video_path}"}
                 simulated_argv.extend(["--input-video", str(video_file.absolute())])
 
+            # Handle selected clips (convert list to comma-separated string)
+            # Note: GUI clips are 0-indexed, but CLI expects 1-indexed values
+            if settings_overrides and 'only' in settings_overrides:
+                selected_clips = settings_overrides['only']
+                if isinstance(selected_clips, list):
+                    # Convert 0-indexed GUI clips to 1-indexed CLI format
+                    one_indexed_clips = [str(i + 1) for i in selected_clips]
+                    only_string = ','.join(one_indexed_clips)
+                    simulated_argv.extend(["--only", only_string])
+                    print(f"DEBUG: Added --only parameter: {only_string} (converted from 0-indexed {selected_clips})")
+
+            # Handle other common settings overrides
+            if settings_overrides:
+                # Handle overwrite flag
+                if settings_overrides.get('overwrite'):
+                    simulated_argv.append("--overwrite")
+
+                # Handle preview mode
+                if settings_overrides.get('preview'):
+                    simulated_argv.append("--preview")
+
             print(f"DEBUG: Simulating CLI with args: {simulated_argv}")
 
             # Temporarily replace sys.argv to simulate CLI call
@@ -68,14 +90,20 @@ class ClipperEngine:
                 # Now run the exact CLI initialization flow
                 args, unknown, argsFromArgFiles, argFiles, argsFromArgFilesMap = argparser.getArgs()
 
+                # Apply CLI arguments first to get the json path and other settings
                 self.cs.settings.update({"color_space": None, **args})
+
+                # IMPORTANT: Load settings from markup JSON, which will merge with CLI args
+                # The CLI args we applied above will take precedence for any conflicts
+                ytc_settings.loadSettings(self.cs.settings)
+
+                # Re-apply CLI arguments to ensure GUI settings override any JSON settings
+                self.cs.settings.update(args)
 
                 # Preserve persistent RIFE cache across processing sessions
                 if self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"]:
                     self.cs.settings["__RIFE_LOADED"] = True
                     print("DEBUG: Using persistent RIFE cache from previous session")
-
-                ytc_settings.loadSettings(self.cs.settings)
 
                 # Import the setup functions from the main CLI module
                 from clipper.yt_clipper import setupDepPaths, setupOutputPaths
