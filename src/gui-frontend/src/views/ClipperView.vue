@@ -25,218 +25,49 @@
           <el-main class="sidebar-main">
             <el-scrollbar height="100%">
               <div class="sidebar-content">
+                <!-- File Selection Component -->
+                <FileSelection
+                  :selected-files="selectedFiles"
+                  :is-processing="isProcessing"
+                  @files-selected="handleSelectFiles"
+                  @file-changed="handleFileChange"
+                  @clear-markup="clearMarkupFile"
+                  @clear-video="clearVideoFile"
+                  @show-video-cache="showVideoCache = true"
+                  @show-settings="showSettings = true"
+                />
 
-                <!-- File Upload Section -->
-                <el-card class="section-card" shadow="hover">
-                  <template #header>
-                    <div class="card-header">
-                      <el-icon><FolderOpened /></el-icon>
-                      <span>File Selection</span>
-                    </div>
-                  </template>
-
-                  <!-- File Selection Buttons -->
-                  <div class="button-group">
-                    <el-button
-                      @click="handleSelectFiles"
-                      :loading="isProcessing"
-                      type="primary"
-                      :icon="FolderOpened"
-                      style="width: 100%; margin-bottom: 8px;"
-                    >
-                      Select Files
-                    </el-button>
-
-                    <el-button
-                      @click="showVideoCache = true"
-                      type="default"
-                      :icon="VideoCamera"
-                      style="width: 100%;"
-                      plain
-                    >
-                      Video Cache
-                    </el-button>
-                  </div>
-
-                  <!-- Drop Zone -->
-                  <el-upload
-                    ref="uploadRef"
-                    class="upload-drop-zone"
-                    drag
-                    :auto-upload="false"
-                    :on-change="handleFileChange"
-                    :show-file-list="false"
-                    multiple
-                    accept=".json,.mp4,.webm,.avi,.mkv,.mov"
-                  >
-                    <el-icon class="upload-icon"><UploadFilled /></el-icon>
-                    <div class="upload-text">
-                      <p>Drop JSON markup here</p>
-                      <p class="upload-hint">Optionally include video file</p>
-                    </div>
-                  </el-upload>
-
-                  <!-- Selected Files Display -->
-                  <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
-                    <el-divider content-position="left">Selected Files</el-divider>
-
-                    <el-space direction="vertical" style="width: 100%;" size="small">
-                      <div v-if="selectedFiles.markup" class="file-item">
-                        <el-tag type="warning" :icon="Document" closable @close="selectedFiles.markup = null">
-                          {{ getFileName(selectedFiles.markup) }}
-                        </el-tag>
-                      </div>
-
-                      <div v-if="selectedFiles.video" class="file-item">
-                        <el-tag type="danger" :icon="VideoCamera" closable @close="selectedFiles.video = null">
-                          {{ getFileName(selectedFiles.video) }}
-                        </el-tag>
-                      </div>
-                    </el-space>
-                  </div>
-                </el-card>
-
-                <!-- Clip Selection Section -->
-                <el-card v-if="parsedClips.length > 0" class="section-card" shadow="hover">
-                  <template #header>
-                    <div class="card-header">
-                      <el-icon><VideoPlay /></el-icon>
-                      <span>Clips ({{ selectedClips.length }}/{{ parsedClips.length }})</span>
-                    </div>
-                  </template>
-
-                  <div class="clip-selection">
-                    <el-checkbox
-                      v-model="selectAllClips"
-                      @change="handleSelectAllClips"
-                      :indeterminate="isIndeterminate"
-                      style="margin-bottom: 12px;"
-                    >
-                      Select All
-                    </el-checkbox>
-
-                    <el-scrollbar max-height="300px">
-                      <el-checkbox-group v-model="selectedClips" size="small">
-                        <div
-                          v-for="(clip, index) in parsedClips"
-                          :key="index"
-                          class="clip-item"
-                        >
-                          <el-checkbox :value="index">
-                            <div class="clip-info">
-                              <div class="clip-title">{{ clip.title || `Clip ${clip.number || index + 1}` }}</div>
-                              <div class="clip-duration">{{ formatDuration(clip) }}</div>
-                            </div>
-                          </el-checkbox>
-                        </div>
-                      </el-checkbox-group>
-                    </el-scrollbar>
-                  </div>
-                </el-card>
-
+                <!-- Clip Selection Component -->
+                <ClipSelection
+                  :clips="parsedClips"
+                  v-model="selectedClips"
+                />
               </div>
             </el-scrollbar>
           </el-main>
 
           <!-- Fixed Processing Footer -->
           <el-footer height="auto" class="processing-footer">
-            <el-card class="processing-card" shadow="hover">
-              <!-- <template #header>
-                <div class="card-header">
-                  <el-icon><Tools /></el-icon>
-                  <span>Processing</span>
-                </div>
-              </template> -->
-
-              <el-space direction="vertical" style="width: 100%;" size="small">
-                <el-checkbox v-model="overwriteFiles">
-                  Overwrite existing files (-ow)
-                </el-checkbox>
-
-                <el-button
-                  @click="handleProcessFiles"
-                  :loading="isProcessing"
-                  :disabled="!canProcess"
-                  type="success"
-                  :icon="VideoPlay"
-                  size="large"
-                  style="width: 100%;"
-                >
-                  {{ isProcessing ? 'Processing...' : 'Start Processing' }}
-                </el-button>
-
-                <!-- Processing Progress -->
-                <div v-if="isProcessing" class="processing-progress">
-                  <el-progress
-                    :percentage="100"
-                    :indeterminate="true"
-                    :show-text="false"
-                  />
-                  <div class="progress-text">{{ processingStatus }}</div>
-                </div>
-
-                <!-- Processing Result -->
-                <el-alert
-                  v-if="processingResult"
-                  :title="processingResult.message"
-                  :type="processingResult.status === 'success' ? 'success' : 'error'"
-                  :icon="processingResult.status === 'success' ? SuccessFilled : CircleCloseFilled"
-                  show-icon
-                  :closable="false"
-                />
-              </el-space>
-            </el-card>
+            <ProcessingPanel
+              :can-process="canProcess"
+              :is-processing="isProcessing"
+              :processing-status="processingStatus"
+              :processing-result="processingResult"
+              :overwrite-enabled="settingsStore.isOverwriteEnabled"
+              @start-processing="handleProcessFiles"
+              @update-overwrite="updateOverwriteSetting"
+            />
           </el-footer>
         </el-container>
       </el-aside>
 
       <!-- Main Content Area -->
-      <el-main class="main-content">
-        <div v-if="!hasMarkupFile" class="welcome-area">
-          <el-empty
-            image-size="120"
-            description="Drop a JSON markup file to get started"
-          >
-            <template #image>
-              <el-icon size="120"><Document /></el-icon>
-            </template>
-          </el-empty>
-        </div>
-
-        <div v-else class="content-area">
-          <!-- Future: Video Preview Area -->
-          <el-card v-if="hasVideoFile" class="preview-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <el-icon><Monitor /></el-icon>
-                <span>Video Preview</span>
-              </div>
-            </template>
-
-            <div class="video-preview-placeholder">
-              <el-icon size="60"><VideoCamera /></el-icon>
-              <p>Video preview coming soon...</p>
-              <p class="preview-filename">{{ getFileName(selectedFiles.video || '') }}</p>
-            </div>
-          </el-card>
-
-          <!-- Future: Timeline Area -->
-          <el-card v-if="parsedClips.length > 0" class="timeline-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <el-icon><Timer /></el-icon>
-                <span>Timeline</span>
-              </div>
-            </template>
-
-            <div class="timeline-placeholder">
-              <el-icon size="60"><Timer /></el-icon>
-              <p>Timeline view coming soon...</p>
-              <p>{{ parsedClips.length }} clips loaded</p>
-            </div>
-          </el-card>
-        </div>
-      </el-main>
+      <MainContent
+        :has-markup-file="hasMarkupFile"
+        :has-video-file="hasVideoFile"
+        :video-file="selectedFiles.video"
+        :clip-count="parsedClips.length"
+      />
     </el-container>
 
     <!-- Video Cache Dialog -->
@@ -255,36 +86,73 @@
         <el-button type="primary" disabled>Manage Cache</el-button>
       </template>
     </el-dialog>
+
+    <!-- Settings Dialog -->
+    <el-dialog
+      v-model="showSettings"
+      title="Settings"
+      width="900px"
+      :before-close="handleCloseSettings"
+    >
+      <SettingsPanel
+        :settings="settingsStore.generalSettings"
+        :is-loading="settingsStore.isLoading"
+        @update-setting="updateGeneralSetting"
+        @reset-settings="handleResetSettings"
+        @export-settings="handleExportSettings"
+        @import-settings="handleImportSettings"
+      />
+
+      <div v-if="settingsStore.lastError" class="error-message">
+        <el-alert
+          :title="settingsStore.lastError"
+          type="error"
+          :closable="true"
+          @close="settingsStore.clearError()"
+        />
+      </div>
+
+      <template #footer>
+        <el-button @click="handleCloseSettings">Close</el-button>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import {
-  FolderOpened,
-  VideoCamera,
-  UploadFilled,
-  Document,
-  VideoPlay,
-  Tools,
-  Monitor,
-  Timer,
-  SuccessFilled,
-  CircleCloseFilled
-} from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+  ElContainer,
+  ElHeader,
+  ElTag,
+  ElAside,
+  ElMain,
+  ElScrollbar,
+  ElFooter,
+  ElDialog,
+  ElButton,
+  ElEmpty,
+  ElAlert,
+  ElMessage
+} from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
+import { useSettingsStore } from '@/stores/settings'
+import SettingsPanel from '@/components/SettingsPanel.vue'
+import FileSelection from '@/components/FileSelection.vue'
+import ClipSelection from '@/components/ClipSelection.vue'
+import ProcessingPanel from '@/components/ProcessingPanel.vue'
+import MainContent from '@/components/MainContent.vue'
 
 // Store
 const clipperStore = useClipperStore()
+const settingsStore = useSettingsStore()
 
 // Local state
 const showVideoCache = ref(false)
-const overwriteFiles = ref(false)
+const showSettings = ref(false)
 const parsedClips = ref<any[]>([])
 const selectedClips = ref<number[]>([])
-const selectAllClips = ref(true)
 
 // Computed properties from store
 const selectedFiles = computed(() => clipperStore.selectedFiles)
@@ -300,17 +168,16 @@ const canProcess = computed(() =>
   hasMarkupFile.value && selectedClips.value.length > 0 && !isProcessing.value
 )
 
-const isIndeterminate = computed(() =>
-  selectedClips.value.length > 0 && selectedClips.value.length < parsedClips.value.length
-)
-
-// Initialize engine status on mount
+// Initialize engine status and settings on mount
 onMounted(async () => {
   try {
-    await clipperStore.getEngineStatus()
+    await Promise.all([
+      clipperStore.getEngineStatus(),
+      settingsStore.loadAllSettings()
+    ])
   } catch (error) {
-    console.error('Failed to get engine status:', error)
-    ElMessage.error('Failed to initialize engine status')
+    console.error('Failed to initialize:', error)
+    ElMessage.error('Failed to initialize application')
   }
 })
 
@@ -331,10 +198,6 @@ function getStatusMessage() {
 }
 
 // File handling
-function getFileName(path: string): string {
-  return path.split(/[\\/]/).pop() || path
-}
-
 function handleSelectedFiles(filePaths: string[]) {
   const newFiles = { markup: null as string | null, video: null as string | null }
 
@@ -366,7 +229,6 @@ async function parseMarkupFile(filePath: string) {
     if (result.status === 'success' && result.clips) {
       parsedClips.value = result.clips
       selectedClips.value = Array.from({ length: result.clips.length }, (_, i) => i)
-      selectAllClips.value = true
 
       ElMessage.success(`Loaded ${result.clips.length} clips from markup`)
     } else {
@@ -379,25 +241,7 @@ async function parseMarkupFile(filePath: string) {
     // Fallback to empty clips
     parsedClips.value = []
     selectedClips.value = []
-    selectAllClips.value = false
   }
-}
-
-function formatDuration(clip: any): string {
-  if (typeof clip.start === 'number' && typeof clip.end === 'number') {
-    const duration = clip.end - clip.start
-    return `${formatTime(clip.start)} - ${formatTime(clip.end)} (${formatTime(duration)})`
-  }
-  if (clip.start && clip.end) {
-    return `${clip.start} - ${clip.end}`
-  }
-  return 'Duration unknown'
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = (seconds % 60).toFixed(2)
-  return `${mins}:${secs.padStart(5, '0')}`
 }
 
 // Event handlers
@@ -430,20 +274,21 @@ function handleFileChange(file: UploadFile) {
   }
 }
 
-function handleSelectAllClips(value: boolean) {
-  if (value) {
-    selectedClips.value = Array.from({ length: parsedClips.value.length }, (_, i) => i)
-  } else {
-    selectedClips.value = []
-  }
+function clearMarkupFile() {
+  clipperStore.selectedFiles.markup = null
+  parsedClips.value = []
+  selectedClips.value = []
+}
+
+function clearVideoFile() {
+  clipperStore.selectedFiles.video = null
 }
 
 async function handleProcessFiles() {
   if (!canProcess.value) return
 
   try {
-    // TODO: Pass selected clips and overwrite flag to the processing
-    await clipperStore.startProcessing()
+    await clipperStore.startProcessing(selectedClips.value)
     ElMessage.success('Processing started successfully')
   } catch (error) {
     console.error('Processing failed:', error)
@@ -451,8 +296,57 @@ async function handleProcessFiles() {
   }
 }
 
+async function updateOverwriteSetting(value: boolean) {
+  try {
+    await settingsStore.updateGeneralSettings({ overwrite: value })
+  } catch (error) {
+    ElMessage.error('Failed to update overwrite setting')
+    console.error('Failed to update overwrite setting:', error)
+  }
+}
+
+// Dialog handlers
 function handleCloseCacheDialog() {
   showVideoCache.value = false
+}
+
+function handleCloseSettings() {
+  showSettings.value = false
+}
+
+// Settings handlers
+async function updateGeneralSetting(key: string, value: unknown) {
+  try {
+    await settingsStore.updateGeneralSettings({ [key]: value })
+    ElMessage.success(`Updated ${key}`)
+  } catch (error) {
+    ElMessage.error(`Failed to update ${key}`)
+    console.error(`Failed to update ${key}:`, error)
+  }
+}
+
+async function handleResetSettings() {
+  try {
+    await settingsStore.resetToDefaults()
+    ElMessage.success('Settings reset to defaults')
+  } catch (error) {
+    ElMessage.error('Failed to reset settings')
+    console.error('Failed to reset settings:', error)
+  }
+}
+
+async function handleExportSettings() {
+  try {
+    const filePath = await settingsStore.exportToArgsFile()
+    ElMessage.success(`Settings exported to ${filePath}`)
+  } catch (error) {
+    ElMessage.error('Failed to export settings')
+    console.error('Failed to export settings:', error)
+  }
+}
+
+async function handleImportSettings() {
+  ElMessage.info('Import from args file feature coming soon...')
 }
 </script>
 
@@ -506,162 +400,14 @@ function handleCloseCacheDialog() {
   padding: 8px;
 }
 
-.processing-card {
-  margin: 0;
-}
-
-.processing-card :deep(.el-card__body) {
-  padding: 12px;
-}
-
-.section-card {
-  margin-bottom: 16px;
-}
-
-.section-card:last-child {
-  margin-bottom: 0;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.button-group {
-  margin-bottom: 16px;
-}
-
-.upload-drop-zone {
-  width: 100%;
-}
-
-.upload-drop-zone :deep(.el-upload-dragger) {
-  width: 100%;
-  height: 120px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.upload-icon {
-  font-size: 32px;
-  color: var(--el-color-primary);
-  margin-bottom: 8px;
-}
-
-.upload-text {
-  text-align: center;
-}
-
-.upload-text p {
-  margin: 4px 0;
-}
-
-.upload-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.selected-files {
-  margin-top: 16px;
-}
-
-.file-item {
-  margin-bottom: 8px;
-}
-
-.clip-selection {
-  max-height: 250px;
-}
-
-.clip-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.clip-item:last-child {
-  border-bottom: none;
-}
-
-.clip-info {
-  flex: 1;
-  margin-left: 8px;
-}
-
-.clip-title {
-  font-weight: 500;
-  color: var(--el-text-color-primary);
-}
-
-.clip-duration {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.processing-progress {
-  width: 100%;
-}
-
-.progress-text {
-  text-align: center;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 8px;
-}
-
-.main-content {
-  background: var(--el-bg-color-page);
-  padding: 16px;
-}
-
-.welcome-area {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-
-.content-area {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.preview-card {
-  flex: 1;
-  min-height: 300px;
-}
-
-.timeline-card {
-  height: 200px;
-}
-
-.video-preview-placeholder,
-.timeline-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--el-text-color-secondary);
-}
-
-.preview-filename {
-  font-size: 12px;
-  color: var(--el-color-primary);
-  margin-top: 8px;
-}
-
 .cache-content {
   min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.error-message {
+  margin-top: 16px;
 }
 </style>
