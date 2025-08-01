@@ -13,135 +13,34 @@ from clipper.ytdl import ytdl_bin_get_version
 
 
 def getArgParser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Generate clips from input video.",
-        formatter_class=ArgumentDefaultsRichHelpFormatter,
-    )
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=getVersionFormatString(),
-    )
-    parser.add_argument(
-        "--print-versions",
-        dest="printVersions",
-        action="store_true",
-        default=False,
-        help="Print version information for yt_clipper and its dependencies.",
-    )
-    logging_options = parser.add_argument_group("Logging Options")
-    other_options = parser.add_argument_group("Other Options")
-    input_options = parser.add_argument_group("Input Options")
-    ytdl_options = parser.add_argument_group("yt-dlp Options")
+    """
+    Create the argument parser using a hybrid approach:
+    - Use schema for defined settings to ensure CLI/GUI sync
+    - Keep manual definitions for complex arguments not yet in schema
+    """
+    # Start with the schema-based parser
+    parser = getArgParserFromSchema()
 
-    output_options = parser.add_argument_group("Output Options")
-    afilter_options = parser.add_argument_group("Audio Filter Options")
+    # Add argument groups for the manual arguments
     vfilter_options = parser.add_argument_group("Video Filter Options")
+    afilter_options = parser.add_argument_group("Audio Filter Options")
 
-    parser.add_argument(
-        "--markers-json",
-        "-j",
-        required="--print-versions" not in sys.argv,
-        dest="json",
-        help=" ".join(
-            [
-                "Specify markers json path for generating webms from input video.",
-                "Automatically streams required portions of input video from the",
-                "internet if it is not otherwise specified.",
-            ],
-        ),
-    )
-    parser.add_argument(
-        "--arg-files",
-        nargs="*",
-        dest="argFiles",
-        default=["default_args.txt"]
-        + (["../yt_clipper_default_args.txt"] if getattr(sys, "frozen", False) else []),
-        help=" ".join(
-            [
-                "List of paths to files to read arguments from.",
-                "The files are processed in order with later files taking precedence.",
-            ],
-        ),
-    )
-    logging_options.add_argument(
-        "--log-level",
-        dest="logLevel",
-        type=int,
-        default=15,  # VERBOSE
-        help=" ".join(
-            [
-                "Change the log level of yt-clipper. Should be between 0 and 56.",
-                "All logs above the chosen level will be shown and the rest will be hidden.",
-                """Log Level Reference:
-                  CRITICAL = 50;
-                  FATAL = CRITICAL;
-                  ERROR = 40;
-                  REPORT = 34;
-                  HEADER = 33;
-                  NOTICE = 32;
-                  WARNING = 30;
-                  WARN = WARNING;
-                  IMPORTANT = 29;
-                  INFO = 20;
-                  VERBOSE = 15;
-                  DEBUG = 10;
-                  NOTSET = 0;
-                """,
-            ],
-        ),
-    )
-    logging_options.add_argument(
-        "--no-rich-logs",
-        dest="noRichLogs",
-        action="store_true",
-        default=False,
-        help=" ".join(
-            [
-                "Disable rich colored logging introduced in v5.26 (3 column layout with syntactical highlighting)."
-                "Use simpler colored logging instead.",
-            ],
-        ),
-    )
-
-    input_options.add_argument(
-        "--input-video",
-        "-i",
-        dest="inputVideo",
-        default="",
-        help="Input video path.",
-    )
-    input_options.add_argument(
-        "--download-video",
-        "-dv",
-        action="store_true",
-        dest="downloadVideo",
-        help="Download video from the internet and use as input video for processing marker data.",
-    )
+    # Manual arguments that aren't in the schema yet
     parser.add_argument(
         "--marker-pairs-merge-list",
         "-mpml",
         dest="markerPairsMergeList",
         default="",
-        help=" ".join(
-            [
-                "Specify which marker pairs if any you would like to merge/concatenate.",
-                "Each merge is a comma separated list of marker pair numbers or ranges",
-                'For example "1-3,5,9" will merge marker pairs "1,2,3,5,9").',
-                'Separate multiple merges with semicolons (eg "1-3,5,9;6-2,8" creates 2 merged clips).',
-                "Merge requires successful generation of each required marker pair.",
-                "Merge does not require reencoding and simply orders each clip into one container.",
-            ],
-        ),
+        help=" ".join([
+            "Specify which marker pairs if any you would like to merge/concatenate.",
+            "Each merge is a comma separated list of marker pair numbers or ranges",
+            'For example "1-3,5,9" will merge marker pairs "1,2,3,5,9").',
+            'Separate multiple merges with semicolons (eg "1-3,5,9;6-2,8" creates 2 merged clips).',
+            "Merge requires successful generation of each required marker pair.",
+            "Merge does not require reencoding and simply orders each clip into one container.",
+        ]),
     )
-    output_options.add_argument(
-        "--fast-trim",
-        "-ft",
-        action="store_true",
-        dest="fastTrim",
-        help="Enable fast trim mode. Generates output clips very quickly by skipping re-encoding. The output will use the same video and audio codec as the input. Will output video clips with imprecise time trim and will disable most features including crop and speed.",
-    )
+
     vfilter_options.add_argument(
         "--overlay",
         "-ov",
@@ -155,12 +54,10 @@ def getArgParser() -> argparse.ArgumentParser:
         type=float,
         dest="cropMultiple",
         default=1,
-        help=" ".join(
-            [
-                "Multiply all crop dimensions by an integer.",
-                "(Helpful if you change resolutions: eg 1920x1080 * 2 = 3840x2160(4k)).",
-            ],
-        ),
+        help=" ".join([
+            "Multiply all crop dimensions by an integer.",
+            "(Helpful if you change resolutions: eg 1920x1080 * 2 = 3840x2160(4k)).",
+        ]),
     )
     vfilter_options.add_argument(
         "--multiply-crop-x",
@@ -178,61 +75,23 @@ def getArgParser() -> argparse.ArgumentParser:
         default=1,
         help="Multiply all y crop dimensions by an integer.",
     )
-    input_options.add_argument(
+    parser.add_argument(
         "--only",
         default="",
-        help=" ".join(
-            [
-                "Specify which marker pairs to process by providing a comma separated",
-                'list of marker pair numbers or ranges (e.g., "1-3,5,9" = "1,2,3,5,9").',
-                "The --except flag takes precedence and will skip pairs specified with --only.",
-            ],
-        ),
+        help=" ".join([
+            "Specify which marker pairs to process by providing a comma separated",
+            'list of marker pair numbers or ranges (e.g., "1-3,5,9" = "1,2,3,5,9").',
+            "The --except flag takes precedence and will skip pairs specified with --only.",
+        ]),
     )
-    input_options.add_argument(
+    parser.add_argument(
         "--except",
         default="",
-        help=" ".join(
-            [
-                "Specify which marker pairs to skip by providing a comma separated",
-                'list of marker pair numbers or ranges (e.g., "1-3,5,9" = "1,2,3,5,9").',
-                "The --except flag takes precedence and will skip pairs specified with --only.",
-            ],
-        ),
-    )
-    input_options.add_argument(
-        "--format",
-        "-f",
-        default="(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best",
-        help="Specify format string passed to yt-dlp.",
-    )
-
-    input_options.add_argument(
-        "--format-sort",
-        "-S",
-        dest="formatSort",
-        nargs="+",
-        default=[
-            "hasvid,ie_pref,lang,quality,res,fps,br,size,hdr:1,vcodec:vp9.2,vcodec:vp9,asr,proto,ext,hasaud,source,id",
-        ],
-        help=" ".join(
-            [
-                "Specify the sorting used to determine the best audio and video formats to download for generating clips."
-                "The sorting is specified as a comma-separated list of sort fields that describe audio/video formats."
-                "The list of sort fields is passed to yt_dlp.",
-                "See the documentation of yt-dlp for the details on available sort fields.",
-                "The default sort used by yt-dlp is similar to the yt-dlp default",
-                "except higher filesize and bitrate are preferred over a codec hierarchy.",
-                "This default sort is closer to the behavior of youtube_dl but not the same.",
-            ],
-        ),
-    )
-
-    output_options.add_argument(
-        "--audio",
-        "-a",
-        action="store_true",
-        help="Enable audio in output webms.",
+        help=" ".join([
+            "Specify which marker pairs to skip by providing a comma separated",
+            'list of marker pair numbers or ranges (e.g., "1-3,5,9" = "1,2,3,5,9").',
+            "The --except flag takes precedence and will skip pairs specified with --only.",
+        ]),
     )
 
     vfilter_options.add_argument(
@@ -255,13 +114,11 @@ def getArgParser() -> argparse.ArgumentParser:
         dest="minterpMode",
         default="None",
         choices=["None", "VideoFPS", "x2slow", "x4slow", "x6slow", "x8slow"],
-        help=" ".join(
-            [
-                "Motion interpolation with AI.",
-                "In VideoFPS mode, targets the fps of the input video. Depending on the calculated interpoltion factor not all providers may be supported.",
-                "Slow motion factor keeps the target FPS but increases the duration.",
-            ],
-        ),
+        help=" ".join([
+            "Motion interpolation with AI.",
+            "In VideoFPS mode, targets the fps of the input video. Depending on the calculated interpoltion factor not all providers may be supported.",
+            "Slow motion factor keeps the target FPS but increases the duration.",
+        ]),
     )
     vfilter_options.add_argument(
         "--minterp-provider",
@@ -269,77 +126,13 @@ def getArgParser() -> argparse.ArgumentParser:
         dest="minterpProvider",
         default="RIFE",
         choices=["RIFE", "TopazCHF", "TopazApollo", "TopazAion"],
-        help=" ".join(
-            [
-                "AI Provider for the motion interpolation.",
-                "Default provider is RIFE and it comes integrated with the clipper.",
-                "Topaz providers require a Topaz Video AI installation and the path to the executable to be set in the options (--topaz-ai-path).",
-                "Motion interpolation can and will introduce artifacting (visual glitches).",
-                "Artifacting increases with the speed and complexity of the video.",
-            ],
-        ),
-    )
-    vfilter_options.add_argument(
-        "--rife-model-path",
-        "-rmp",
-        dest="rifeModelPath",
-        default="",
-        help="Path to the RIFE model file. Required for RIFE interpolation.",
-    )
-    vfilter_options.add_argument(
-        "--rife-worker-threads",
-        "-rwt",
-        dest="rifeWorkerThreads",
-        type=int,
-        default=1,
-        help="Number of worker threads for RIFE interpolation.",
-    )
-    vfilter_options.add_argument(
-        "--gpu-id",
-        "-gid",
-        dest="gpuId",
-        type=int,
-        default=0,
-        help="GPU ID to use for interpolation.",
-    )
-    vfilter_options.add_argument(
-        "--topaz-ai-path",
-        "-tap",
-        dest="topazAIPath",
-        default="",
-        help=" ".join(
-            [
-                "Path to the Topaz Video AI executable.",
-                "This is required for using Topaz motion interpolation providers.",
-                "If not set, Topaz providers will not be available.",
-            ],
-        ),
-    )
-    vfilter_options.add_argument(
-        "--topaz-model-dir",
-        "-tmd",
-        dest="topazModelDir",
-        default="",
-        help=" ".join(
-            [
-                "Path to the Topaz Video AI model directory.",
-                "This directory contains the AI models used for motion interpolation.",
-                "If not set, Topaz providers will not be available.",
-            ],
-        ),
-    )
-    vfilter_options.add_argument(
-        "--topaz-model-data-dir",
-        "-tmdd",
-        dest="topazModelDataDir",
-        default="",
-        help=" ".join(
-            [
-                "Path to the Topaz Video AI model data directory.",
-                "This directory contains additional data required by the AI models.",
-                "If not set, Topaz providers will not be available.",
-            ],
-        ),
+        help=" ".join([
+            "AI Provider for the motion interpolation.",
+            "Default provider is RIFE and it comes integrated with the clipper.",
+            "Topaz providers require a Topaz Video AI installation and the path to the executable to be set in the options (--topaz-ai-path).",
+            "Motion interpolation can and will introduce artifacting (visual glitches).",
+            "Artifacting increases with the speed and complexity of the video.",
+        ]),
     )
     vfilter_options.add_argument(
         "--target-fps",
@@ -347,14 +140,12 @@ def getArgParser() -> argparse.ArgumentParser:
         dest="targetFPS",
         type=float,
         default=None,
-        help=" ".join(
-            [
-                "Force the video's frame rate to this value.",
-                "This overrides the detected video frame rate and affects interpolation calculations.",
-                "Must be a positive number between 1 and 300 fps.",
-                "Use with caution as incorrect values may cause timing issues.",
-            ],
-        ),
+        help=" ".join([
+            "Force the video's frame rate to this value.",
+            "This overrides the detected video frame rate and affects interpolation calculations.",
+            "Must be a positive number between 1 and 300 fps.",
+            "Use with caution as incorrect values may cause timing issues.",
+        ]),
     )
     vfilter_options.add_argument(
         "--delay",
@@ -362,13 +153,11 @@ def getArgParser() -> argparse.ArgumentParser:
         type=float,
         dest="delay",
         default=0,
-        help=" ".join(
-            [
-                "Add a fixed delay to both the start and end time of each marker pair.",
-                "This can be used to correct desync between the markup video and the input video.",
-                "Can be negative.",
-            ],
-        ),
+        help=" ".join([
+            "Add a fixed delay to both the start and end time of each marker pair.",
+            "This can be used to correct desync between the markup video and the input video.",
+            "Can be negative.",
+        ]),
     )
     afilter_options.add_argument(
         "--audio-delay",
@@ -376,13 +165,11 @@ def getArgParser() -> argparse.ArgumentParser:
         type=float,
         dest="audioDelay",
         default=0,
-        help=" ".join(
-            [
-                "Add a fixed delay to the start and end time of the audio of each marker pair.",
-                "This can be used to correct audio desync present in the source video.",
-                "Note that the audio delay is applied on top of the overall delay from `--delay`/`-d`.",
-            ],
-        ),
+        help=" ".join([
+            "Add a fixed delay to the start and end time of the audio of each marker pair.",
+            "This can be used to correct audio desync present in the source video.",
+            "Note that the audio delay is applied on top of the overall delay from `--delay`/`-d`.",
+        ]),
     )
     vfilter_options.add_argument(
         "--gamma",
@@ -390,12 +177,10 @@ def getArgParser() -> argparse.ArgumentParser:
         type=float,
         dest="gamma",
         default=1,
-        help=" ".join(
-            [
-                "Apply luminance gamma correction.",
-                "Pass in a value between 0 and 1 to brighten shadows and reveal darker details.",
-            ],
-        ),
+        help=" ".join([
+            "Apply luminance gamma correction.",
+            "Pass in a value between 0 and 1 to brighten shadows and reveal darker details.",
+        ]),
     )
     vfilter_options.add_argument(
         "--rotate",
@@ -410,12 +195,10 @@ def getArgParser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         choices=range(0, 6),
-        help=" ".join(
-            [
-                "Apply the hqdn3d denoise filter using a preset strength level from 0-5",
-                "where 0 is disabled and 5 is very strong.",
-            ],
-        ),
+        help=" ".join([
+            "Apply the hqdn3d denoise filter using a preset strength level from 0-5",
+            "where 0 is disabled and 5 is very strong.",
+        ]),
     )
     vfilter_options.add_argument(
         "--video-stabilization",
@@ -424,24 +207,20 @@ def getArgParser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         choices=range(0, 7),
-        help=" ".join(
-            [
-                "Apply video stabilization using a preset strength from 0-6",
-                "where 0 is disabled and 6 is strongest.",
-            ],
-        ),
+        help=" ".join([
+            "Apply video stabilization using a preset strength from 0-6",
+            "where 0 is disabled and 6 is strongest.",
+        ]),
     )
     vfilter_options.add_argument(
         "--video-stabilization-dynamic-zoom",
         "-vsdz",
         dest="videoStabilizationDynamicZoom",
         action="store_true",
-        help=" ".join(
-            [
-                "Enable video stabilization dynamic zoom.",
-                "Unlike a static zoom the zoom in can vary with time to reduce cropping of video.",
-            ],
-        ),
+        help=" ".join([
+            "Enable video stabilization dynamic zoom.",
+            "Unlike a static zoom the zoom in can vary with time to reduce cropping of video.",
+        ]),
     )
     vfilter_options.add_argument(
         "--video-stabilization-max-angle",
@@ -449,13 +228,11 @@ def getArgParser() -> argparse.ArgumentParser:
         dest="videoStabilizationMaxAngle",
         type=float,
         default=0,
-        help=" ".join(
-            [
-                "When video stabilization is enabled,",
-                "set the per-frame maximum angle in degrees for rotation-based stabilization.",
-                "Negative values impose no limit.",
-            ],
-        ),
+        help=" ".join([
+            "When video stabilization is enabled,",
+            "set the per-frame maximum angle in degrees for rotation-based stabilization.",
+            "Negative values impose no limit.",
+        ]),
     )
     vfilter_options.add_argument(
         "--video-stabilization-max-shift",
@@ -463,37 +240,31 @@ def getArgParser() -> argparse.ArgumentParser:
         dest="videoStabilizationMaxShift",
         type=int,
         default=-1,
-        help=" ".join(
-            [
-                "When video stabilization is enabled,",
-                "set the per-frame maximum shift in pixels for shift-based stabilization.",
-                "Negative values impose no limit.",
-            ],
-        ),
+        help=" ".join([
+            "When video stabilization is enabled,",
+            "set the per-frame maximum shift in pixels for shift-based stabilization.",
+            "Negative values impose no limit.",
+        ]),
     )
     vfilter_options.add_argument(
         "--remove-duplicate-frames",
         "-rdf",
         dest="dedupe",
         action="store_true",
-        help=" ".join(
-            [
-                "Remove duplicate frames from input video.",
-                "This option is automatically enabled when motion interpolation is enabled.",
-            ],
-        ),
+        help=" ".join([
+            "Remove duplicate frames from input video.",
+            "This option is automatically enabled when motion interpolation is enabled.",
+        ]),
     )
     vfilter_options.add_argument(
         "--no-remove-duplicate-frames",
         "-nrdf",
         dest="noDedupe",
         action="store_true",
-        help=" ".join(
-            [
-                "Force disable removing of duplicate frames from input video.",
-                "Overrides --remove-duplicate-frames option.",
-            ],
-        ),
+        help=" ".join([
+            "Force disable removing of duplicate frames from input video.",
+            "Overrides --remove-duplicate-frames option.",
+        ]),
     )
     vfilter_options.add_argument(
         "--deinterlace",
@@ -531,13 +302,11 @@ def getArgParser() -> argparse.ArgumentParser:
         type=float,
         dest="fadeDuration",
         default=0.7,
-        help=" ".join(
-            [
-                "When fade loop is enabled, set the duration of the fade for both clip start and end.",
-                "The fade duration is clamped to a minimum of 0.1 seconds",
-                "and a maximum of 40%% of the output clip duration.",
-            ],
-        ),
+        help=" ".join([
+            "When fade loop is enabled, set the duration of the fade for both clip start and end.",
+            "The fade duration is clamped to a minimum of 0.1 seconds",
+            "and a maximum of 40%% of the output clip duration.",
+        ]),
     )
     afilter_options.add_argument(
         "--audio-fade",
@@ -547,235 +316,27 @@ def getArgParser() -> argparse.ArgumentParser:
         default=0,
         help=("Fade the audio in at start and out at end by the specified duration in seconds."),
     )
-    output_options.add_argument(
-        "--encode-speed",
-        "-s",
-        type=int,
-        dest="encodeSpeed",
-        choices=range(0, 6),
-        help="Set the vp9 encoding speed.",
-    )
-    output_options.add_argument(
+    vfilter_options.add_argument(
         "--crf",
         type=int,
-        help=" ".join(
-            [
-                "Set constant rate factor (crf). Default is 30 for video file input.",
-                "Automatically set to a factor of the detected video bitrate",
-            ],
-        ),
+        help=" ".join([
+            "Set constant rate factor (crf). Default is 30 for video file input.",
+            "Automatically set to a factor of the detected video bitrate",
+        ]),
     )
-    output_options.add_argument(
+    vfilter_options.add_argument(
         "--two-pass",
         "-tp",
         dest="twoPass",
         action="store_true",
         help="Enable two-pass encoding. Improves quality at the cost of encoding speed.",
     )
-    output_options.add_argument(
-        "--target-max-bitrate",
-        "-b",
-        dest="targetMaxBitrate",
-        type=int,
-        help=" ".join(
-            [
-                "Set target max bitrate in kilobits/s. Constrains bitrate of complex scenes."
-                "Automatically set based on detected video bitrate.",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--h264-disable-reduce-stutter",
-        "-h264-drs",
-        dest="h264DisableReduceStutter",
-        action="store_true",
-        help=" ".join(
-            [
-                "Disable reducing output clip sutter when using the h264 output video codec.",
-                "When disabled, output clips will all use the input video framerate and slowed down clips may have duplicate frames that cause some stuttering.",
-                "This may be useful when merging h264 videos however as in some cases keeping the same framerate results in smoother transitions between clips.",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--auto-subs-lang",
-        "-asl",
-        dest="autoSubsLang",
+    parser.add_argument(
+        "--input-video",
+        "-i",
+        dest="inputVideo",
         default="",
-        help=" ".join(
-            [
-                "Automatically download and add subtitles from YouTube in the specified language.",
-                "Subtitles will be burned (hardcoded) into the video.",
-                "The argument to this option is a two-letter language code (eg en, fr, ko, ja).",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--subs-file",
-        "-sf",
-        dest="subsFilePath",
-        default="",
-        help=" ".join(
-            [
-                "Provide a subtitles file in vtt, sbv, or srt format.",
-                "Subtitles will be burned (hardcoded) into the video.",
-                "This option will take precedence over `--auto-subs-lang`.",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--subs-style",
-        "-ss",
-        dest="subsStyle",
-        default="FontSize=12,PrimaryColour=&H32FFFFFF,SecondaryColour=&H32000000,MarginV=5",
-        help=" ".join(
-            [
-                "Specify an ASS format string for styling subtitles.",
-                "The provided styles will override those specified in the subs file.",
-                "See https://fileformats.fandom.com/wiki/SubStation_Alpha#Styles_section.",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--no-auto-scale-crop-res",
-        "-nascr",
-        dest="noAutoScaleCropRes",
-        action="store_true",
-        help=" ".join(
-            [
-                "Disable automatically scaling the crop resolution",
-                "when a mismatch with video resolution is detected.",
-            ],
-        ),
-    )
-    other_options.add_argument(
-        "--preview",
-        "-p",
-        action="store_true",
-        help=" ".join(
-            [
-                "Enable preview mode. Skips generating clips and instead prompts for marker pairs to preview.",
-            ],
-        ),
-    )
-    input_options.add_argument(
-        "--no-auto-find-input-video",
-        "-nafiv",
-        dest="noAutoFindInputVideo",
-        action="store_true",
-        help="Disable automatic detection and usage of input video when not in preview mode.",
-    )
-
-    output_options.add_argument(
-        "--remove-metadata",
-        "-rm",
-        dest="removeMetadata",
-        action="store_true",
-        help=" ".join(
-            [
-                "Do not add metadata to output video.",
-                "The only metadata currently added is the videoTitle from the markers .json file.",
-                "Also tries to strip any other metadata that may otherwise be added.",
-                "Some basic video properties such as the duration or muxing app will remain.",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--extra-ffmpeg-args",
-        "-efa",
-        dest="extraFfmpegArgs",
-        default="",
-        help=" ".join(
-            [
-                "Extra arguments to be passed to the ffmpeg command built by yt_clipper.",
-                "The extra arguments are injected after other arguments set by yt_clipper,",
-                "but before the video filters."
-                "Use quotes to ensure the arguments are passed to ffmpeg including whitespace.",
-                "On Windows, if nested quoting is required, it may be necessary ",
-                "to use double quotes for the outermost quotes due to a bug.",
-                "Arguments that conflict with the arguments automatically added ",
-                "by yt_clipper may cause errors.",
-            ],
-        ),
-    )
-    output_options.add_argument(
-        "--target-size",
-        "-ts",
-        dest="targetSize",
-        type=float,
-        default=0,
-        help=" ".join(
-            [
-                "Target file size in megabytes.",
-                "A target size of 0 or less means unlimited.",
-                "Note that this will use an estimated a constant bitrate for encoding.",
-            ],
-        ),
-    )
-    other_options.add_argument(
-        "--notify-on-completion",
-        "-noc",
-        dest="notifyOnCompletion",
-        action="store_true",
-        help="Display a system notification when yt_clipper completes the current run.",
-    )
-    output_options.add_argument(
-        "--overwrite",
-        "-ow",
-        dest="overwrite",
-        action="store_true",
-        help="Regenerate and overwrite existing clips.",
-    )
-
-    input_options.add_argument(
-        "--enable-video-streaming-protocol-hls",
-        "-evsp-hls",
-        dest="enableVideoStreamingProtocolHLS",
-        action="store_true",
-        help="Enable use of the HLS (HTTP live streaming) video streaming protocol. Typically this involves the use of a m3u8 manifest file with a list of video segments. HLS is a relatively unreliable protocol and support for it in ffmpeg is not robust, often leading to errors during clip generation. Thus, HLS is disabled by default. However, some platforms only offer HLS (e.g. AfreecaTV for which HLS is allowed by default) and in other cases HLS may be the highest quality video stream. If HLS is required, consider downloading the video first either automatically with --download-video or the yt_clipper_auto_download helper script or manually and then specifying the video with --input-video or the yt_clipper_auto_input_video helper script.",
-    )
-
-    ytdl_options.add_argument(
-        "--ytdl-username",
-        "-yu",
-        dest="username",
-        default="",
-        help="Username passed to youtube-dl for authentication.",
-    )
-    ytdl_options.add_argument(
-        "--ytdl-password",
-        "-yp",
-        dest="password",
-        default="",
-        help="Password passed to youtube-dl for authentication.",
-    )
-
-    ytdl_options.add_argument(
-        "--cookiefile",
-        "-cf",
-        dest="cookiefile",
-        default="",
-        metavar="FILE",
-        help="Specify the path to a Netscape formatted cookies file to be used by yt-dlp. Use this option when sign "
-        "in is required by the video platform. On how to obtain the cookies file, "
-        "see https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp",
-    )
-
-    ytdl_options.add_argument(
-        "--ytdl-location",
-        dest="ytdlLocation",
-        default="",
-        help="Specify a location for yt-dlp on your system."
-        "If a relative or absolute path is given, the yt-dlp installed at that location is used."
-        "Otherwise the system PATH will be searched.",
-    )
-
-    ytdl_options.add_argument(
-        "--no-ytdl-auto-update",
-        dest="ytdlAutoUpdate",
-        action="store_false",
-        default=True,
-        help="Disable automatic yt-dlp updates when running a frozen release of yt_clipper.",
+        help="Input video path.",
     )
 
     return parser
@@ -891,3 +452,482 @@ def getDenoisePreset(level: int) -> DictStrAny:
     elif level == 5:
         denoisePreset = {"enabled": True, "lumaSpatial": 8, "desc": "Very Strong"}
     return denoisePreset
+
+
+def getSettingsSchema() -> Dict[str, Any]:
+    """
+    Get the canonical settings schema that defines all available settings.
+    This serves as the single source of truth for both CLI and GUI.
+    """
+    return {
+        "general": {
+            # Logging Options
+            "log_level": {
+                "type": "integer",
+                "description": "Change the log level of yt-clipper (0-56)",
+                "min": 0,
+                "max": 56,
+                "default": 15,
+                "cli_args": ["--log-level"]
+            },
+            "no_rich_logs": {
+                "type": "boolean",
+                "description": "Disable rich colored logging",
+                "default": False,
+                "cli_args": ["--no-rich-logs"]
+            },
+
+            # Input Options
+            "download_video": {
+                "type": "boolean",
+                "description": "Download video from the internet for processing",
+                "default": False,
+                "cli_args": ["--download-video", "-dv"]
+            },
+            "format": {
+                "type": "string",
+                "description": "Format string passed to yt-dlp",
+                "default": "(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best",
+                "cli_args": ["--format", "-f"]
+            },
+            "format_sort": {
+                "type": "string_list",
+                "description": "Sorting criteria for yt-dlp format selection",
+                "default": ["hasvid,ie_pref,lang,quality,res,fps,br,size,hdr:1,vcodec:vp9.2,vcodec:vp9,asr,proto,ext,hasaud,source,id"],
+                "cli_args": ["--format-sort", "-S"]
+            },
+            "no_auto_find_input_video": {
+                "type": "boolean",
+                "description": "Disable automatic detection and usage of input video",
+                "default": False,
+                "cli_args": ["--no-auto-find-input-video", "-nafiv"]
+            },
+            "enable_video_streaming_protocol_hls": {
+                "type": "boolean",
+                "description": "Enable use of the HLS video streaming protocol",
+                "default": False,
+                "cli_args": ["--enable-video-streaming-protocol-hls", "-evsp-hls"]
+            },
+
+            # Output Options
+            "audio": {
+                "type": "boolean",
+                "description": "Enable audio in output webms",
+                "default": False,
+                "cli_args": ["--audio", "-a"]
+            },
+            "fast_trim": {
+                "type": "boolean",
+                "description": "Enable fast trim mode (skip re-encoding)",
+                "default": False,
+                "cli_args": ["--fast-trim", "-ft"]
+            },
+            "encode_speed": {
+                "type": "integer",
+                "description": "Set the vp9 encoding speed (0-5)",
+                "min": 0,
+                "max": 5,
+                "default": None,
+                "cli_args": ["--encode-speed", "-s"]
+            },
+            "target_max_bitrate": {
+                "type": "integer",
+                "description": "Set target max bitrate in kilobits/s",
+                "min": 1,
+                "default": None,
+                "cli_args": ["--target-max-bitrate", "-b"]
+            },
+            "h264_disable_reduce_stutter": {
+                "type": "boolean",
+                "description": "Disable reducing output clip stutter when using h264",
+                "default": False,
+                "cli_args": ["--h264-disable-reduce-stutter", "-h264-drs"]
+            },
+            "auto_subs_lang": {
+                "type": "string",
+                "description": "Automatically download subtitles in specified language",
+                "default": "",
+                "cli_args": ["--auto-subs-lang", "-asl"]
+            },
+            "subs_file_path": {
+                "type": "string",
+                "description": "Path to subtitles file (vtt, sbv, or srt)",
+                "default": "",
+                "cli_args": ["--subs-file", "-sf"]
+            },
+            "subs_style": {
+                "type": "string",
+                "description": "ASS format string for styling subtitles",
+                "default": "FontSize=12,PrimaryColour=&H32FFFFFF,SecondaryColour=&H32000000,MarginV=5",
+                "cli_args": ["--subs-style", "-ss"]
+            },
+            "no_auto_scale_crop_res": {
+                "type": "boolean",
+                "description": "Disable automatically scaling crop resolution",
+                "default": False,
+                "cli_args": ["--no-auto-scale-crop-res", "-nascr"]
+            },
+            "remove_metadata": {
+                "type": "boolean",
+                "description": "Do not add metadata to output video",
+                "default": False,
+                "cli_args": ["--remove-metadata", "-rm"]
+            },
+            "extra_ffmpeg_args": {
+                "type": "string",
+                "description": "Extra arguments to be passed to ffmpeg",
+                "default": "",
+                "cli_args": ["--extra-ffmpeg-args", "-efa"]
+            },
+            "target_size": {
+                "type": "number",
+                "description": "Target file size in megabytes (0 = unlimited)",
+                "min": 0,
+                "default": 0,
+                "cli_args": ["--target-size", "-ts"]
+            },
+            "overwrite": {
+                "type": "boolean",
+                "description": "Regenerate and overwrite existing clips",
+                "default": False,
+                "cli_args": ["--overwrite", "-ow"]
+            },
+
+            # AI/GPU Processing Options
+            "gpu_id": {
+                "type": "integer",
+                "description": "GPU ID to use for interpolation",
+                "min": 0,
+                "default": 0,
+                "cli_args": ["--gpu-id", "-gid"]
+            },
+            "rife_model_path": {
+                "type": "string",
+                "description": "Path to the RIFE model file",
+                "default": "",
+                "cli_args": ["--rife-model-path", "-rmp"]
+            },
+            "rife_worker_threads": {
+                "type": "integer",
+                "description": "Number of worker threads for RIFE interpolation",
+                "min": 1,
+                "default": 1,
+                "cli_args": ["--rife-worker-threads", "-rwt"]
+            },
+            "topaz_ai_path": {
+                "type": "string",
+                "description": "Path to the Topaz Video AI executable",
+                "default": "",
+                "cli_args": ["--topaz-ai-path", "-tap"]
+            },
+            "topaz_model_dir": {
+                "type": "string",
+                "description": "Path to the Topaz Video AI model directory",
+                "default": "",
+                "cli_args": ["--topaz-model-dir", "-tmd"]
+            },
+            "topaz_model_data_dir": {
+                "type": "string",
+                "description": "Path to the Topaz Video AI model data directory",
+                "default": "",
+                "cli_args": ["--topaz-model-data-dir", "-tmdd"]
+            },
+
+            # Other Options
+            "preview": {
+                "type": "boolean",
+                "description": "Enable preview mode",
+                "default": False,
+                "cli_args": ["--preview", "-p"]
+            },
+            "notify_on_completion": {
+                "type": "boolean",
+                "description": "Display system notification when completed",
+                "default": False,
+                "cli_args": ["--notify-on-completion", "-noc"]
+            },
+
+            # yt-dlp Options
+            "ytdl_location": {
+                "type": "string",
+                "description": "Specify location for yt-dlp on your system",
+                "default": "",
+                "cli_args": ["--ytdl-location"]
+            },
+            "ytdl_username": {
+                "type": "string",
+                "description": "Username passed to yt-dlp for authentication",
+                "default": "",
+                "cli_args": ["--ytdl-username", "-yu"]
+            },
+            "ytdl_password": {
+                "type": "string",
+                "description": "Password passed to yt-dlp for authentication",
+                "default": "",
+                "cli_args": ["--ytdl-password", "-yp"]
+            },
+            "cookiefile": {
+                "type": "string",
+                "description": "Path to Netscape formatted cookies file",
+                "default": "",
+                "cli_args": ["--cookiefile", "-cf"]
+            },
+            "ytdl_auto_update": {
+                "type": "boolean",
+                "description": "Enable automatic yt-dlp updates",
+                "default": True,
+                "cli_args": ["--no-ytdl-auto-update"]  # Note: this is inverted
+            }
+        },
+        "video": {
+            "video_title": {
+                "type": "string",
+                "description": "Title of the video",
+                "default": ""
+            },
+            "video_url": {
+                "type": "string",
+                "description": "URL of the video",
+                "default": ""
+            },
+            "video_id": {
+                "type": "string",
+                "description": "ID of the video",
+                "default": ""
+            },
+            "platform": {
+                "type": "string",
+                "description": "Platform hosting the video",
+                "default": "youtube"
+            },
+            "is_vertical_video": {
+                "type": "boolean",
+                "description": "Whether the video is in vertical format",
+                "default": False
+            },
+            "crop_res": {
+                "type": "string",
+                "description": "Crop resolution in WxH format",
+                "default": "1920x1080"
+            },
+            "fps": {
+                "type": "number",
+                "description": "Frame rate of the video",
+                "default": None
+            },
+            "width": {
+                "type": "integer",
+                "description": "Width of the video in pixels",
+                "default": None
+            },
+            "height": {
+                "type": "integer",
+                "description": "Height of the video in pixels",
+                "default": None
+            },
+            "duration": {
+                "type": "number",
+                "description": "Duration of the video in seconds",
+                "default": None
+            },
+            "color_space": {
+                "type": "string",
+                "description": "Color space of the video",
+                "default": None
+            }
+        }
+    }
+
+
+def getArgParserFromSchema() -> argparse.ArgumentParser:
+    """
+    Create an argument parser dynamically from the settings schema.
+    This ensures CLI and GUI settings are always in sync.
+    """
+    parser = argparse.ArgumentParser(
+        description="Generate clips from input video.",
+        formatter_class=ArgumentDefaultsRichHelpFormatter,
+    )
+
+    # Add special arguments that aren't in the schema
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=getVersionFormatString(),
+    )
+    parser.add_argument(
+        "--print-versions",
+        dest="printVersions",
+        action="store_true",
+        default=False,
+        help="Print version information for yt_clipper and its dependencies.",
+    )
+    parser.add_argument(
+        "--markers-json",
+        "-j",
+        required="--print-versions" not in sys.argv,
+        dest="json",
+        help=" ".join([
+            "Specify markers json path for generating webms from input video.",
+            "Automatically streams required portions of input video from the",
+            "internet if it is not otherwise specified.",
+        ]),
+    )
+    parser.add_argument(
+        "--arg-files",
+        nargs="*",
+        dest="argFiles",
+        default=["default_args.txt"]
+        + (["../yt_clipper_default_args.txt"] if getattr(sys, "frozen", False) else []),
+        help=" ".join([
+            "List of paths to files to read arguments from.",
+            "The files are processed in order with later files taking precedence.",
+        ]),
+    )
+
+    # Create argument groups
+    logging_options = parser.add_argument_group("Logging Options")
+    input_options = parser.add_argument_group("Input Options")
+    output_options = parser.add_argument_group("Output Options")
+    ai_gpu_options = parser.add_argument_group("AI/GPU Processing Options")
+    other_options = parser.add_argument_group("Other Options")
+    ytdl_options = parser.add_argument_group("yt-dlp Options")
+
+    # Map settings to argument groups
+    group_mapping = {
+        # Logging Options
+        'log_level': logging_options,
+        'no_rich_logs': logging_options,
+
+        # Input Options
+        'download_video': input_options,
+        'format': input_options,
+        'format_sort': input_options,
+        'no_auto_find_input_video': input_options,
+        'enable_video_streaming_protocol_hls': input_options,
+
+        # Output Options
+        'audio': output_options,
+        'fast_trim': output_options,
+        'encode_speed': output_options,
+        'target_max_bitrate': output_options,
+        'h264_disable_reduce_stutter': output_options,
+        'auto_subs_lang': output_options,
+        'subs_file_path': output_options,
+        'subs_style': output_options,
+        'no_auto_scale_crop_res': output_options,
+        'remove_metadata': output_options,
+        'extra_ffmpeg_args': output_options,
+        'target_size': output_options,
+        'overwrite': output_options,
+
+        # AI/GPU Processing Options
+        'gpu_id': ai_gpu_options,
+        'rife_model_path': ai_gpu_options,
+        'rife_worker_threads': ai_gpu_options,
+        'topaz_ai_path': ai_gpu_options,
+        'topaz_model_dir': ai_gpu_options,
+        'topaz_model_data_dir': ai_gpu_options,
+
+        # Other Options
+        'preview': other_options,
+        'notify_on_completion': other_options,
+
+        # yt-dlp Options
+        'ytdl_location': ytdl_options,
+        'ytdl_username': ytdl_options,
+        'ytdl_password': ytdl_options,
+        'cookiefile': ytdl_options,
+        'ytdl_auto_update': ytdl_options,
+    }
+
+    # Get schema and create arguments
+    schema = getSettingsSchema()
+
+    for setting_key, setting_def in schema['general'].items():
+        group = group_mapping.get(setting_key, parser)
+        cli_args = setting_def.get('cli_args', [])
+
+        if not cli_args:
+            continue  # Skip settings without CLI arguments
+
+        # Convert setting key to destination name (snake_case to camelCase for some)
+        dest_mapping = {
+            'log_level': 'logLevel',
+            'no_rich_logs': 'noRichLogs',
+            'download_video': 'downloadVideo',
+            'format_sort': 'formatSort',
+            'no_auto_find_input_video': 'noAutoFindInputVideo',
+            'enable_video_streaming_protocol_hls': 'enableVideoStreamingProtocolHLS',
+            'fast_trim': 'fastTrim',
+            'encode_speed': 'encodeSpeed',
+            'target_max_bitrate': 'targetMaxBitrate',
+            'h264_disable_reduce_stutter': 'h264DisableReduceStutter',
+            'auto_subs_lang': 'autoSubsLang',
+            'subs_file_path': 'subsFilePath',
+            'subs_style': 'subsStyle',
+            'no_auto_scale_crop_res': 'noAutoScaleCropRes',
+            'remove_metadata': 'removeMetadata',
+            'extra_ffmpeg_args': 'extraFfmpegArgs',
+            'target_size': 'targetSize',
+            'gpu_id': 'gpuId',
+            'rife_model_path': 'rifeModelPath',
+            'rife_worker_threads': 'rifeWorkerThreads',
+            'topaz_ai_path': 'topazAIPath',
+            'topaz_model_dir': 'topazModelDir',
+            'topaz_model_data_dir': 'topazModelDataDir',
+            'notify_on_completion': 'notifyOnCompletion',
+            'ytdl_location': 'ytdlLocation',
+            'ytdl_username': 'username',
+            'ytdl_password': 'password',
+            'ytdl_auto_update': 'ytdlAutoUpdate',
+        }
+
+        dest = dest_mapping.get(setting_key, setting_key)
+        setting_type = setting_def.get('type')
+        description = setting_def.get('description', '')
+        default = setting_def.get('default')
+
+        # Build argument kwargs
+        kwargs = {
+            'dest': dest,
+            'help': description,
+        }
+
+        if setting_type == 'boolean':
+            # Handle inverted boolean for ytdl_auto_update
+            if setting_key == 'ytdl_auto_update':
+                kwargs['action'] = 'store_false'
+                kwargs['default'] = True
+            else:
+                kwargs['action'] = 'store_true'
+                if default is not None:
+                    kwargs['default'] = default
+        elif setting_type == 'integer':
+            kwargs['type'] = int
+            if default is not None:
+                kwargs['default'] = default
+            if 'min' in setting_def:
+                # Add choices for bounded integers
+                if 'max' in setting_def:
+                    kwargs['choices'] = range(setting_def['min'], setting_def['max'] + 1)
+        elif setting_type == 'number':
+            kwargs['type'] = float
+            if default is not None:
+                kwargs['default'] = default
+        elif setting_type == 'string_list':
+            kwargs['nargs'] = '+'
+            if default is not None:
+                kwargs['default'] = default
+        elif setting_type == 'string':
+            if default is not None:
+                kwargs['default'] = default
+            # Special handling for cookiefile
+            if setting_key == 'cookiefile':
+                kwargs['metavar'] = 'FILE'
+
+        # Add the argument
+        group.add_argument(*cli_args, **kwargs)
+
+    return parser
