@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import type { SelectedFiles, ProcessingResult, JobStatus, EngineStatus } from '@/types/api'
 import { getAPI, waitForPywebview } from '@/utils/api'
+import { useSettingsStore } from './settings'
 
 export const useClipperStore = defineStore('clipper', () => {
   // State
@@ -41,7 +42,7 @@ export const useClipperStore = defineStore('clipper', () => {
     }
   }
 
-  async function startProcessing(): Promise<ProcessingResult> {
+  async function startProcessing(selectedClips?: number[]): Promise<ProcessingResult> {
     if (!canProcess.value) {
       throw new Error('Cannot start processing: no markup file selected or already processing')
     }
@@ -52,10 +53,20 @@ export const useClipperStore = defineStore('clipper', () => {
     processingResult.value = null
 
     try {
-      const api = getAPI()
+      const api = await waitForPywebview()
+
+      // Use settings store to get current settings
+      const settingsStore = useSettingsStore()
+
+      // Ensure settings are loaded
+      if (!settingsStore.hasSettings) {
+        await settingsStore.loadAllSettings()
+      }
+
       const result = await api.process_files(
         selectedFiles.value.markup!,
-        selectedFiles.value.video || undefined
+        selectedFiles.value.video || undefined,
+        selectedClips || undefined
       )
 
       if (result.status === 'accepted' && result.job_id) {
@@ -90,7 +101,7 @@ export const useClipperStore = defineStore('clipper', () => {
 
     for (let attempts = 0; attempts < maxAttempts; attempts++) {
       try {
-        const api = getAPI()
+        const api = await waitForPywebview()
         const status = await api.get_job_status(jobId)
 
         if (status.status === 'processing') {
@@ -148,7 +159,7 @@ export const useClipperStore = defineStore('clipper', () => {
 
   async function selectFiles(): Promise<string[]> {
     try {
-      const api = getAPI()
+      const api = await waitForPywebview()
       return await api.select_files()
     } catch (error) {
       throw new Error(`File selection failed: ${error}`)
@@ -157,7 +168,7 @@ export const useClipperStore = defineStore('clipper', () => {
 
   async function parseMarkupFile(filePath: string): Promise<any> {
     try {
-      const api = getAPI()
+      const api = await waitForPywebview()
       return await api.parse_markup_file(filePath)
     } catch (error) {
       throw new Error(`Failed to parse markup file: ${error}`)

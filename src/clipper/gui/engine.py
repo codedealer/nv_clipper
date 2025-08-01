@@ -1,36 +1,31 @@
 """Core clipper engine that can be reused between CLI and GUI."""
 
-import json
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
-import logging
+from typing import Any, ClassVar, Dict, Optional
 
 from clipper import (
     argparser,
     clip_maker,
     clipper_types,
-    util,
     ytc_logger,
     ytc_settings,
 )
 from clipper.clipper_types import ClipperState
-from clipper.ffmpeg_version import getFfmpegVersion
 from clipper.version import __version__
-from clipper.ytc_logger import logger
-from clipper.ytdl import ytdl_bin_get_version
 
 
 class ClipperEngine:
     """Core clipper engine that can be reused between CLI and GUI."""
 
     # Class-level persistent cache for RIFE dependencies
-    _PERSISTENT_RIFE_CACHE: Dict[str, Any] = {
-        "__RIFE_LOADED": False
+    _PERSISTENT_RIFE_CACHE: ClassVar[Dict[str, Any]] = {
+        "__RIFE_LOADED": False,
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the clipper engine - ready to use immediately."""
         self.is_initialized = True  # Always ready since we do minimal initialization
         self.cs: Optional[ClipperState] = None
@@ -54,7 +49,7 @@ class ClipperEngine:
             # Build argv as if we called: yt_clipper --markers-json markup.json [--input-video video.mp4]
             simulated_argv = [
                 "yt_clipper",
-                "--markers-json", str(markup_file.absolute())
+                "--markers-json", str(markup_file.absolute()),
             ]
 
             if video_path:
@@ -122,7 +117,7 @@ class ClipperEngine:
                 "status": "success",
                 "message": message,
                 "report": report,
-                "output_path": self.cs.clipper_paths.clipsPath
+                "output_path": self.cs.clipper_paths.clipsPath,
             }
 
         except Exception as e:
@@ -138,7 +133,7 @@ class ClipperEngine:
         return {
             "initialized": self.is_initialized,
             "engine_ready": self.is_initialized,
-            "version": __version__
+            "version": __version__,
         }
 
     def _inject_rife_cache(self) -> None:

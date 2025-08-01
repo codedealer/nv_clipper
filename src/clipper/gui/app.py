@@ -1,28 +1,32 @@
 """Main GUI application using pywebview."""
 
 import json
-import threading
-import webview
-from pathlib import Path
-from typing import Optional
 import logging
+import threading
 import time
 import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import webview
 
 from .engine import ClipperEngine
+from .settings_manager import SettingsManager
 
 
 class ClipperGUI:
     """GUI API class for pywebview."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.engine = ClipperEngine()  # Initialize immediately
+        self.settings_manager = SettingsManager()  # Initialize settings manager
         self.is_initialized = True     # Always ready since initialization is minimal
         self.logger = logging.getLogger(__name__)
         self.processing_jobs = {}      # Track processing jobs by ID
         self.job_lock = threading.Lock()
 
-    def process_files(self, markup_path: str, video_path: Optional[str] = None):
+    def process_files(self, markup_path: str, video_path: Optional[str] = None,
+                     selected_clips: Optional[List[int]] = None) -> Dict[str, Any]:
         """Process files using the engine in a separate thread"""
         # Create a unique job ID
         job_id = str(uuid.uuid4())
@@ -33,11 +37,11 @@ class ClipperGUI:
                 "status": "starting",
                 "message": "Initializing processing...",
                 "result": None,
-                "started_at": time.time()
+                "started_at": time.time(),
             }
 
         # Start processing in a separate thread
-        def process_worker():
+        def process_worker() -> None:
             try:
                 self.logger.info(f"Starting processing job {job_id}")
 
@@ -45,18 +49,25 @@ class ClipperGUI:
                 with self.job_lock:
                     self.processing_jobs[job_id].update({
                         "status": "processing",
-                        "message": "Processing files..."
+                        "message": "Processing files...",
                     })
 
-                # Call the engine processing
-                result = self.engine.process_files(markup_path, video_path)
+                # Get current settings and convert to CLI format
+                settings_overrides = self.settings_manager.get_combined_settings()
+
+                # Add selected clips if provided
+                if selected_clips is not None:
+                    settings_overrides['only'] = selected_clips
+
+                # Call the engine processing with settings
+                result = self.engine.process_files(markup_path, video_path, settings_overrides)
 
                 # Update with final result
                 with self.job_lock:
                     self.processing_jobs[job_id].update({
                         "status": "completed",
                         "result": result,
-                        "completed_at": time.time()
+                        "completed_at": time.time(),
                     })
 
                 self.logger.info(f"Completed processing job {job_id}: {result['status']}")
@@ -69,7 +80,7 @@ class ClipperGUI:
                     self.processing_jobs[job_id].update({
                         "status": "completed",
                         "result": {"status": "error", "message": str(e)},
-                        "completed_at": time.time()
+                        "completed_at": time.time(),
                     })
 
         # Start the worker thread
@@ -79,7 +90,7 @@ class ClipperGUI:
         # Return job ID for status tracking
         return {"status": "accepted", "job_id": job_id, "message": "Processing started"}
 
-    def get_job_status(self, job_id: str):
+    def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """Get the status of a processing job"""
         with self.job_lock:
             if job_id not in self.processing_jobs:
@@ -102,10 +113,10 @@ class ClipperGUI:
             return {
                 "status": job["status"],
                 "message": job["message"],
-                "job_id": job_id
+                "job_id": job_id,
             }
 
-    def cleanup_old_jobs(self):
+    def cleanup_old_jobs(self) -> Dict[str, int]:
         """Clean up old completed jobs to prevent memory leaks"""
         current_time = time.time()
         with self.job_lock:
@@ -120,23 +131,23 @@ class ClipperGUI:
 
         return {"cleaned": len(job_ids_to_remove)}
 
-    def get_status(self):
+    def get_status(self) -> Dict[str, Any]:
         """Get current status of the application"""
         return self.engine.get_status()
 
-    def select_files(self):
+    def select_files(self) -> Optional[List[str]]:
         """Open file dialog to select files"""
         result = webview.windows[0].create_file_dialog(
             webview.OPEN_DIALOG,
             allow_multiple=True,
-            file_types=('JSON files (*.json)', 'Video files (*.mp4;*.webm;*.avi;*.mkv)', 'All files (*.*)')
+            file_types=('JSON files (*.json)', 'Video files (*.mp4;*.webm;*.avi;*.mkv)', 'All files (*.*)'),
         )
-        return result
+        return list(result) if result else None
 
-    def parse_markup_file(self, file_path: str):
+    def parse_markup_file(self, file_path: str) -> Dict[str, Any]:
         """Parse a JSON markup file and return clip information"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 data = json.load(f)
 
             # Extract clips from markerPairs
@@ -155,7 +166,7 @@ class ClipperGUI:
                     'speed': marker.get('speed', 1),
                     'crop': marker.get('crop', ''),
                     'enableZoomPan': marker.get('enableZoomPan', False),
-                    'overrides': marker.get('overrides', {})
+                    'overrides': marker.get('overrides', {}),
                 }
                 clips.append(clip)
 
@@ -169,19 +180,148 @@ class ClipperGUI:
                     'platform': data.get('platform', ''),
                     'is_vertical': data.get('isVerticalVideo', False),
                     'crop_res': data.get('cropRes', ''),
-                    'version': data.get('version', '')
-                }
+                    'version': data.get('version', ''),
+                },
             }
 
         except Exception as e:
             self.logger.error(f"Failed to parse markup file {file_path}: {e}")
             return {
                 'status': 'error',
-                'message': f"Failed to parse markup file: {str(e)}"
+                'message': f"Failed to parse markup file: {e!s}",
+            }
+
+    # Settings Management API
+
+    def get_general_settings(self) -> Dict[str, Any]:
+        """Get current general settings"""
+        return {
+            'status': 'success',
+            'settings': self.settings_manager.get_general_settings(),
+        }
+
+    def get_video_settings(self) -> Dict[str, Any]:
+        """Get current video-specific settings"""
+        return {
+            'status': 'success',
+            'settings': self.settings_manager.get_video_settings(),
+        }
+
+    def get_all_settings(self) -> Dict[str, Any]:
+        """Get all settings (general + video)"""
+        return {
+            'status': 'success',
+            'general': self.settings_manager.get_general_settings(),
+            'video': self.settings_manager.get_video_settings(),
+        }
+
+    def get_settings_schema(self) -> Dict[str, Any]:
+        """Get settings schema for the frontend"""
+        return {
+            'status': 'success',
+            'schema': self.settings_manager.get_settings_schema(),
+        }
+
+    def update_general_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Update general settings"""
+        try:
+            success = self.settings_manager.update_general_settings(settings)
+            if success:
+                return {
+                    'status': 'success',
+                    'message': f'Updated {len(settings)} general settings',
+                    'settings': self.settings_manager.get_general_settings(),
+                }
+            return {
+                'status': 'error',
+                'message': 'Failed to update general settings',
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to update general settings: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to update settings: {e!s}',
+            }
+
+    def update_video_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Update video-specific settings"""
+        try:
+            success = self.settings_manager.update_video_settings(settings)
+            if success:
+                return {
+                    'status': 'success',
+                    'message': f'Updated {len(settings)} video settings',
+                    'settings': self.settings_manager.get_video_settings(),
+                }
+            return {
+                'status': 'error',
+                'message': 'Failed to update video settings',
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to update video settings: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to update settings: {e!s}',
+            }
+
+    def reset_settings_to_defaults(self) -> Dict[str, Any]:
+        """Reset all settings to defaults"""
+        try:
+            self.settings_manager.reset_to_defaults()
+            return {
+                'status': 'success',
+                'message': 'Reset all settings to defaults',
+                'general': self.settings_manager.get_general_settings(),
+                'video': self.settings_manager.get_video_settings(),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to reset settings: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to reset settings: {e!s}',
+            }
+
+    def export_settings_to_args_file(self, file_path: Optional[str] = None) -> Dict[str, Any]:
+        """Export current settings to args file"""
+        try:
+            path = Path(file_path) if file_path else None
+            result_path = self.settings_manager.export_to_args_file(path)
+            return {
+                'status': 'success',
+                'message': f'Exported settings to {result_path}',
+                'file_path': str(result_path),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to export settings: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to export settings: {e!s}',
+            }
+
+    def import_settings_from_args_file(self, file_path: str) -> Dict[str, Any]:
+        """Import settings from args file"""
+        try:
+            success = self.settings_manager.import_from_args_file(Path(file_path))
+            if success:
+                return {
+                    'status': 'success',
+                    'message': f'Imported settings from {file_path}',
+                    'general': self.settings_manager.get_general_settings(),
+                    'video': self.settings_manager.get_video_settings(),
+                }
+            return {
+                'status': 'error',
+                'message': f'Failed to import settings from {file_path}',
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to import settings: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to import settings: {e!s}',
             }
 
 
-def create_app(dev_mode=False, dev_url="http://localhost:5173"):
+def create_app(dev_mode: bool = False, dev_url: str = "http://localhost:5173") -> webview.Window:
     """Create and configure the webview application"""
     api = ClipperGUI()
 
@@ -196,7 +336,7 @@ def create_app(dev_mode=False, dev_url="http://localhost:5173"):
         if not frontend_path.exists():
             raise FileNotFoundError(
                 f"Frontend not found at {frontend_path}. "
-                "Please build the frontend first: cd src/gui-frontend && pnpm run build"
+                "Please build the frontend first: cd src/gui-frontend && pnpm run build",
             )
 
         url = frontend_path.as_uri()
@@ -208,13 +348,13 @@ def create_app(dev_mode=False, dev_url="http://localhost:5173"):
         width=1000,
         height=800,
         resizable=True,
-        min_size=(800, 600)
+        min_size=(800, 600),
     )
 
     return window
 
 
-def main():
+def main() -> None:
     """Main entry point for the GUI application"""
     import sys
 
@@ -231,11 +371,11 @@ def main():
             dev_url = sys.argv[i + 1]
             break
 
-    window = create_app(dev_mode=dev_mode, dev_url=dev_url)
+    create_app(dev_mode=dev_mode, dev_url=dev_url)
     webview.start(debug=True)  # Enable debug mode
 
 
-def main_dev():
+def main_dev() -> None:
     """Development entry point for the GUI application - automatically connects to Vite dev server"""
     import sys
 
