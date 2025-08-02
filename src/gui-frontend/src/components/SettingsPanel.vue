@@ -47,7 +47,7 @@
             </el-form-item>
             <el-form-item label="Format string">
               <el-input
-                :model-value="settings?.format || '(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best'"
+                :model-value="settings?.format || ''"
                 @update:model-value="(value) => updateStringSetting('format', value)"
                 :disabled="isLoading"
                 placeholder="(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best"
@@ -111,18 +111,6 @@
                 @update:model-value="(value) => updateBooleanSetting('overwrite', value)"
                 :loading="isLoading"
               />
-            </el-form-item>
-            <el-form-item label="Encode speed (0-5)">
-              <el-input-number
-                :model-value="settings?.encode_speed"
-                @update:model-value="(value) => updateNumberSetting('encode_speed', value)"
-                :min="0"
-                :max="5"
-                :disabled="isLoading"
-                style="width: 150px"
-                placeholder="Default"
-              />
-              <el-text class="setting-help" type="info">VP9 encoding speed (0=slowest/best, 5=fastest)</el-text>
             </el-form-item>
             <el-form-item label="Target max bitrate (kbps)">
               <el-input-number
@@ -217,6 +205,28 @@
                 :rows="2"
                 placeholder="Additional FFmpeg arguments"
               />
+            </el-form-item>
+            <el-form-item label="Extra video filters">
+              <el-input
+                :model-value="settings?.extra_video_filters || ''"
+                @update:model-value="(value) => updateStringSetting('extra_video_filters', value)"
+                :disabled="isLoading"
+                type="textarea"
+                :rows="2"
+                placeholder="Additional video filters for FFmpeg"
+              />
+              <el-text class="setting-help" type="info">Extra video filters to be passed to ffmpeg</el-text>
+            </el-form-item>
+            <el-form-item label="Extra audio filters">
+              <el-input
+                :model-value="settings?.extra_audio_filters || ''"
+                @update:model-value="(value) => updateStringSetting('extra_audio_filters', value)"
+                :disabled="isLoading"
+                type="textarea"
+                :rows="2"
+                placeholder="Additional audio filters for FFmpeg"
+              />
+              <el-text class="setting-help" type="info">Extra audio filters to be passed to ffmpeg</el-text>
             </el-form-item>
           </el-form>
         </div>
@@ -444,7 +454,11 @@ function updateStringSetting(key: string, value: string | number | boolean) {
 }
 
 function updateStringArraySetting(key: string, value: string) {
-  updateSetting(key, value.split(' ').filter(Boolean))
+  // Convert string to array, filtering out empty strings
+  // If the entire string is empty/whitespace, this results in an empty array
+  // which will trigger schema default application in the backend
+  const arrayValue = value.trim() === '' ? [] : value.split(' ').filter(Boolean)
+  updateSetting(key, arrayValue)
 }
 
 function handleReset() {
