@@ -9,7 +9,7 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Log Level (0-56)">
               <el-input-number
-                :model-value="settings?.log_level || 15"
+                :model-value="props.settings?.log_level || 15"
                 @update:model-value="(value) => updateNumberSetting('log_level', value)"
                 :min="0"
                 :max="56"
@@ -22,7 +22,7 @@
             </el-form-item>
             <el-form-item label="Disable rich colored logs">
               <el-switch
-                :model-value="settings?.no_rich_logs || false"
+                :model-value="props.settings?.no_rich_logs || false"
                 @update:model-value="(value) => updateBooleanSetting('no_rich_logs', value)"
                 :loading="isLoading"
               />
@@ -39,24 +39,26 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Download video">
               <el-switch
-                :model-value="settings?.download_video || false"
+                :model-value="props.settings?.download_video || false"
                 @update:model-value="(value) => updateBooleanSetting('download_video', value)"
                 :loading="isLoading"
               />
               <el-text class="setting-help" type="info">Download video from internet for processing</el-text>
             </el-form-item>
-            <el-form-item label="Format string">
+                        <el-form-item label="Format">
               <el-input
-                :model-value="settings?.format || ''"
-                @update:model-value="(value) => updateStringSetting('format', value)"
+                :model-value="getCurrentTextValue('format', '(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best')"
+                @input="(value) => handleTextInput('format', value)"
+                @blur="() => handleTextBlur('format')"
+                @keyup.enter="() => handleTextEnter('format')"
                 :disabled="isLoading"
-                placeholder="(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best"
+                placeholder="Video format for yt-dlp"
               />
-              <el-text class="setting-help" type="info">Format string passed to yt-dlp</el-text>
+              <el-text class="setting-help" type="info">Format string passed to yt-dlp for video selection</el-text>
             </el-form-item>
             <el-form-item label="Format sort">
               <el-input
-                :model-value="Array.isArray(settings?.format_sort) ? settings.format_sort.join(' ') : (settings?.format_sort || '')"
+                :model-value="Array.isArray(props.settings?.format_sort) ? props.settings.format_sort.join(' ') : (props.settings?.format_sort || '')"
                 @update:model-value="(value) => updateStringArraySetting('format_sort', value)"
                 :disabled="isLoading"
                 type="textarea"
@@ -67,14 +69,14 @@
             </el-form-item>
             <el-form-item label="Disable auto find input video">
               <el-switch
-                :model-value="settings?.no_auto_find_input_video || false"
+                :model-value="props.settings?.no_auto_find_input_video || false"
                 @update:model-value="(value) => updateBooleanSetting('no_auto_find_input_video', value)"
                 :loading="isLoading"
               />
             </el-form-item>
             <el-form-item label="Enable HLS protocol">
               <el-switch
-                :model-value="settings?.enable_video_streaming_protocol_hls || false"
+                :model-value="props.settings?.enable_video_streaming_protocol_hls || false"
                 @update:model-value="(value) => updateBooleanSetting('enable_video_streaming_protocol_hls', value)"
                 :loading="isLoading"
               />
@@ -91,7 +93,7 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Enable audio">
               <el-switch
-                :model-value="settings?.audio !== false"
+                :model-value="props.settings?.audio !== false"
                 @update:model-value="(value) => updateBooleanSetting('audio', value)"
                 :loading="isLoading"
               />
@@ -99,7 +101,7 @@
             </el-form-item>
             <el-form-item label="Fast trim mode">
               <el-switch
-                :model-value="settings?.fast_trim || false"
+                :model-value="props.settings?.fast_trim || false"
                 @update:model-value="(value) => updateBooleanSetting('fast_trim', value)"
                 :loading="isLoading"
               />
@@ -107,14 +109,14 @@
             </el-form-item>
             <el-form-item label="Overwrite existing clips">
               <el-switch
-                :model-value="settings?.overwrite || false"
+                :model-value="props.settings?.overwrite || false"
                 @update:model-value="(value) => updateBooleanSetting('overwrite', value)"
                 :loading="isLoading"
               />
             </el-form-item>
             <el-form-item label="Target max bitrate (kbps)">
               <el-input-number
-                :model-value="settings?.target_max_bitrate"
+                :model-value="props.settings?.target_max_bitrate"
                 @update:model-value="(value) => updateNumberSetting('target_max_bitrate', value)"
                 :min="100"
                 :max="50000"
@@ -125,7 +127,7 @@
             </el-form-item>
             <el-form-item label="Target file size (MB)">
               <el-input-number
-                :model-value="settings?.target_size || 0"
+                :model-value="props.settings?.target_size || 0"
                 @update:model-value="(value) => updateNumberSetting('target_size', value)"
                 :min="0"
                 :disabled="isLoading"
@@ -140,7 +142,7 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Disable reduce stutter">
               <el-switch
-                :model-value="settings?.h264_disable_reduce_stutter || false"
+                :model-value="props.settings?.h264_disable_reduce_stutter || false"
                 @update:model-value="(value) => updateBooleanSetting('h264_disable_reduce_stutter', value)"
                 :loading="isLoading"
               />
@@ -150,32 +152,36 @@
 
           <h4>Subtitle Settings</h4>
           <el-form label-width="220px" label-position="left">
-            <el-form-item label="Auto-download subtitles">
+                        <el-form-item label="Auto subtitles language">
               <el-input
-                :model-value="settings?.auto_subs_lang || ''"
-                @update:model-value="(value) => updateStringSetting('auto_subs_lang', value)"
+                :model-value="getCurrentTextValue('auto_subs_lang')"
+                @input="(value) => handleTextInput('auto_subs_lang', value)"
+                @blur="() => handleTextBlur('auto_subs_lang')"
+                @keyup.enter="() => handleTextEnter('auto_subs_lang')"
                 :disabled="isLoading"
-                style="width: 100px"
-                placeholder="en"
+                placeholder="Language code (e.g., 'en')"
+                maxlength="5"
               />
-              <el-text class="setting-help" type="info">Two-letter language code (en, fr, ja, etc.)</el-text>
+              <el-text class="setting-help" type="info">Two-letter language code for automatic subtitle download</el-text>
             </el-form-item>
             <el-form-item label="Subtitle file path">
               <el-input
-                :model-value="settings?.subs_file_path || ''"
-                @update:model-value="(value) => updateStringSetting('subs_file_path', value)"
+                :model-value="getCurrentTextValue('subs_file_path')"
+                @input="(value) => handleTextInput('subs_file_path', value)"
+                @blur="() => handleTextBlur('subs_file_path')"
+                @keyup.enter="() => handleTextEnter('subs_file_path')"
                 :disabled="isLoading"
                 placeholder="Path to .vtt, .sbv, or .srt file"
               />
             </el-form-item>
-            <el-form-item label="Subtitle style">
+                        <el-form-item label="Subtitles style">
               <el-input
-                :model-value="settings?.subs_style || ''"
-                @update:model-value="(value) => updateStringSetting('subs_style', value)"
+                :model-value="getCurrentTextValue('subs_style', 'FontSize=12,PrimaryColour=&H32FFFFFF,SecondaryColour=&H32000000,MarginV=5')"
+                @input="(value) => handleTextInput('subs_style', value)"
+                @blur="() => handleTextBlur('subs_style')"
+                @keyup.enter="() => handleTextEnter('subs_style')"
                 :disabled="isLoading"
-                type="textarea"
-                :rows="2"
-                placeholder="ASS format styling"
+                placeholder="ASS format string for styling"
               />
             </el-form-item>
           </el-form>
@@ -184,22 +190,23 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Disable auto-scale crop">
               <el-switch
-                :model-value="settings?.no_auto_scale_crop_res || false"
+                :model-value="props.settings?.no_auto_scale_crop_res || false"
                 @update:model-value="(value) => updateBooleanSetting('no_auto_scale_crop_res', value)"
                 :loading="isLoading"
               />
             </el-form-item>
             <el-form-item label="Remove metadata">
               <el-switch
-                :model-value="settings?.remove_metadata || false"
+                :model-value="props.settings?.remove_metadata || false"
                 @update:model-value="(value) => updateBooleanSetting('remove_metadata', value)"
                 :loading="isLoading"
               />
             </el-form-item>
             <el-form-item label="Extra FFmpeg arguments">
               <el-input
-                :model-value="settings?.extra_ffmpeg_args || ''"
-                @update:model-value="(value) => updateStringSetting('extra_ffmpeg_args', value)"
+                :model-value="getCurrentTextValue('extra_ffmpeg_args')"
+                @input="(value) => handleTextInput('extra_ffmpeg_args', value)"
+                @blur="() => handleTextBlur('extra_ffmpeg_args')"
                 :disabled="isLoading"
                 type="textarea"
                 :rows="2"
@@ -208,8 +215,9 @@
             </el-form-item>
             <el-form-item label="Extra video filters">
               <el-input
-                :model-value="settings?.extra_video_filters || ''"
-                @update:model-value="(value) => updateStringSetting('extra_video_filters', value)"
+                :model-value="getCurrentTextValue('extra_video_filters')"
+                @input="(value) => handleTextInput('extra_video_filters', value)"
+                @blur="() => handleTextBlur('extra_video_filters')"
                 :disabled="isLoading"
                 type="textarea"
                 :rows="2"
@@ -219,8 +227,9 @@
             </el-form-item>
             <el-form-item label="Extra audio filters">
               <el-input
-                :model-value="settings?.extra_audio_filters || ''"
-                @update:model-value="(value) => updateStringSetting('extra_audio_filters', value)"
+                :model-value="getCurrentTextValue('extra_audio_filters')"
+                @input="(value) => handleTextInput('extra_audio_filters', value)"
+                @blur="() => handleTextBlur('extra_audio_filters')"
                 :disabled="isLoading"
                 type="textarea"
                 :rows="2"
@@ -239,7 +248,7 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="GPU ID">
               <el-input-number
-                :model-value="settings?.gpu_id || 0"
+                :model-value="props.settings?.gpu_id || 0"
                 @update:model-value="(value) => updateNumberSetting('gpu_id', value)"
                 :min="0"
                 :max="15"
@@ -254,8 +263,10 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="RIFE model path">
               <el-input
-                :model-value="settings?.rife_model_path || ''"
-                @update:model-value="(value) => updateStringSetting('rife_model_path', value)"
+                :model-value="getCurrentTextValue('rife_model_path')"
+                @input="(value) => handleTextInput('rife_model_path', value)"
+                @blur="() => handleTextBlur('rife_model_path')"
+                @keyup.enter="() => handleTextEnter('rife_model_path')"
                 :disabled="isLoading"
                 placeholder="Path to RIFE model file (.onnx)"
               />
@@ -263,7 +274,7 @@
             </el-form-item>
             <el-form-item label="Worker threads">
               <el-input-number
-                :model-value="settings?.rife_worker_threads || 1"
+                :model-value="props.settings?.rife_worker_threads || 1"
                 @update:model-value="(value) => updateNumberSetting('rife_worker_threads', value)"
                 :min="1"
                 :max="32"
@@ -278,8 +289,10 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Topaz Video AI path">
               <el-input
-                :model-value="settings?.topaz_ai_path || ''"
-                @update:model-value="(value) => updateStringSetting('topaz_ai_path', value)"
+                :model-value="getCurrentTextValue('topaz_ai_path')"
+                @input="(value) => handleTextInput('topaz_ai_path', value)"
+                @blur="() => handleTextBlur('topaz_ai_path')"
+                @keyup.enter="() => handleTextEnter('topaz_ai_path')"
                 :disabled="isLoading"
                 placeholder="Path to Topaz Video AI executable"
               />
@@ -287,8 +300,10 @@
             </el-form-item>
             <el-form-item label="Model directory">
               <el-input
-                :model-value="settings?.topaz_model_dir || ''"
-                @update:model-value="(value) => updateStringSetting('topaz_model_dir', value)"
+                :model-value="getCurrentTextValue('topaz_model_dir')"
+                @input="(value) => handleTextInput('topaz_model_dir', value)"
+                @blur="() => handleTextBlur('topaz_model_dir')"
+                @keyup.enter="() => handleTextEnter('topaz_model_dir')"
                 :disabled="isLoading"
                 placeholder="Path to Topaz models directory"
               />
@@ -296,8 +311,10 @@
             </el-form-item>
             <el-form-item label="Model data directory">
               <el-input
-                :model-value="settings?.topaz_model_data_dir || ''"
-                @update:model-value="(value) => updateStringSetting('topaz_model_data_dir', value)"
+                :model-value="getCurrentTextValue('topaz_model_data_dir')"
+                @input="(value) => handleTextInput('topaz_model_data_dir', value)"
+                @blur="() => handleTextBlur('topaz_model_data_dir')"
+                @keyup.enter="() => handleTextEnter('topaz_model_data_dir')"
                 :disabled="isLoading"
                 placeholder="Path to Topaz model data directory"
               />
@@ -314,7 +331,7 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="Preview mode">
               <el-switch
-                :model-value="settings?.preview || false"
+                :model-value="props.settings?.preview || false"
                 @update:model-value="(value) => updateBooleanSetting('preview', value)"
                 :loading="isLoading"
               />
@@ -322,7 +339,7 @@
             </el-form-item>
             <el-form-item label="Notify on completion">
               <el-switch
-                :model-value="settings?.notify_on_completion || false"
+                :model-value="props.settings?.notify_on_completion || false"
                 @update:model-value="(value) => updateBooleanSetting('notify_on_completion', value)"
                 :loading="isLoading"
               />
@@ -339,39 +356,47 @@
           <el-form label-width="220px" label-position="left">
             <el-form-item label="YT-DLP location">
               <el-input
-                :model-value="settings?.ytdl_location || ''"
-                @update:model-value="(value) => updateStringSetting('ytdl_location', value)"
+                :model-value="getCurrentTextValue('ytdl_location')"
+                @input="(value) => handleTextInput('ytdl_location', value)"
+                @blur="() => handleTextBlur('ytdl_location')"
+                @keyup.enter="() => handleTextEnter('ytdl_location')"
                 :disabled="isLoading"
                 placeholder="Path to yt-dlp executable"
               />
             </el-form-item>
             <el-form-item label="Auto-update YT-DLP">
               <el-switch
-                :model-value="settings?.ytdl_auto_update !== false"
+                :model-value="props.settings?.ytdl_auto_update !== false"
                 @update:model-value="(value) => updateBooleanSetting('ytdl_auto_update', value)"
                 :loading="isLoading"
               />
             </el-form-item>
             <el-form-item label="Cookies file">
               <el-input
-                :model-value="settings?.cookiefile || ''"
-                @update:model-value="(value) => updateStringSetting('cookiefile', value)"
+                :model-value="getCurrentTextValue('cookiefile')"
+                @input="(value) => handleTextInput('cookiefile', value)"
+                @blur="() => handleTextBlur('cookiefile')"
+                @keyup.enter="() => handleTextEnter('cookiefile')"
                 :disabled="isLoading"
                 placeholder="Path to Netscape cookies file"
               />
             </el-form-item>
             <el-form-item label="Username">
               <el-input
-                :model-value="settings?.ytdl_username || ''"
-                @update:model-value="(value) => updateStringSetting('ytdl_username', value)"
+                :model-value="getCurrentTextValue('ytdl_username')"
+                @input="(value) => handleTextInput('ytdl_username', value)"
+                @blur="() => handleTextBlur('ytdl_username')"
+                @keyup.enter="() => handleTextEnter('ytdl_username')"
                 :disabled="isLoading"
                 placeholder="Authentication username"
               />
             </el-form-item>
             <el-form-item label="Password">
               <el-input
-                :model-value="settings?.ytdl_password || ''"
-                @update:model-value="(value) => updateStringSetting('ytdl_password', value)"
+                :model-value="getCurrentTextValue('ytdl_password')"
+                @input="(value) => handleTextInput('ytdl_password', value)"
+                @blur="() => handleTextBlur('ytdl_password')"
+                @keyup.enter="() => handleTextEnter('ytdl_password')"
                 :disabled="isLoading"
                 type="password"
                 placeholder="Authentication password"
@@ -419,7 +444,7 @@ interface Props {
   isLoading?: boolean
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   settings: null,
   isLoading: false
 })
@@ -434,23 +459,60 @@ const emit = defineEmits<{
 
 // State
 const activeTab = ref('logging')
+const pendingTextChanges = ref<Record<string, string>>({})
 
 // Methods
 function updateSetting(key: string, value: unknown) {
   emit('update-setting', key, value)
 }
 
+// Immediate update for non-text inputs
+function updateSettingImmediate(key: string, value: unknown) {
+  emit('update-setting', key, value)
+}
+
+// Handle text input changes (store locally, don't save yet)
+function handleTextInput(key: string, value: string) {
+  pendingTextChanges.value[key] = value
+}
+
+// Save text input when user finishes editing (blur event)
+function handleTextBlur(key: string) {
+  const value = pendingTextChanges.value[key]
+  if (value !== undefined) {
+    updateSetting(key, value)
+    delete pendingTextChanges.value[key]
+  }
+}
+
+// Save text input on Enter key press
+function handleTextEnter(key: string) {
+  handleTextBlur(key)
+}
+
+// Get current text value (either pending or from settings)
+function getCurrentTextValue(key: string, fallback: string = ''): string {
+  if (key in pendingTextChanges.value) {
+    return pendingTextChanges.value[key]
+  }
+  if (props.settings && key in props.settings) {
+    const value = props.settings[key as keyof GeneralSettings]
+    return typeof value === 'string' ? value : (value?.toString() ?? fallback)
+  }
+  return fallback
+}
+
 // Typed handlers for different value types
 function updateNumberSetting(key: string, value: number | null | undefined) {
-  updateSetting(key, value ?? null)
+  updateSettingImmediate(key, value ?? null)
 }
 
 function updateBooleanSetting(key: string, value: boolean | string | number) {
-  updateSetting(key, Boolean(value))
+  updateSettingImmediate(key, Boolean(value))
 }
 
 function updateStringSetting(key: string, value: string | number | boolean) {
-  updateSetting(key, String(value))
+  updateSettingImmediate(key, String(value))
 }
 
 function updateStringArraySetting(key: string, value: string) {
@@ -458,7 +520,7 @@ function updateStringArraySetting(key: string, value: string) {
   // If the entire string is empty/whitespace, this results in an empty array
   // which will trigger schema default application in the backend
   const arrayValue = value.trim() === '' ? [] : value.split(' ').filter(Boolean)
-  updateSetting(key, arrayValue)
+  updateSettingImmediate(key, arrayValue)
 }
 
 function handleReset() {
