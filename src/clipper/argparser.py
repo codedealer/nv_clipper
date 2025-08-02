@@ -95,20 +95,6 @@ def getArgParser() -> argparse.ArgumentParser:
     )
 
     vfilter_options.add_argument(
-        "--extra-video-filters",
-        "-evf",
-        dest="extraVideoFilters",
-        default="",
-        help="Specify any extra video filters to be passed to ffmpeg.",
-    )
-    afilter_options.add_argument(
-        "--extra-audio-filters",
-        "-eaf",
-        dest="extraAudioFilters",
-        default="",
-        help="Specify any extra audio filters to be passed to ffmpeg.",
-    )
-    vfilter_options.add_argument(
         "--minterp-mode",
         "-mm",
         dest="minterpMode",
@@ -522,14 +508,6 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "default": False,
                 "cli_args": ["--fast-trim", "-ft"]
             },
-            "encode_speed": {
-                "type": "integer",
-                "description": "Set the vp9 encoding speed (0-5)",
-                "min": 0,
-                "max": 5,
-                "default": None,
-                "cli_args": ["--encode-speed", "-s"]
-            },
             "target_max_bitrate": {
                 "type": "integer",
                 "description": "Set target max bitrate in kilobits/s",
@@ -578,6 +556,18 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "description": "Extra arguments to be passed to ffmpeg",
                 "default": "",
                 "cli_args": ["--extra-ffmpeg-args", "-efa"]
+            },
+            "extra_video_filters": {
+                "type": "string",
+                "description": "Extra video filters to be passed to ffmpeg",
+                "default": "",
+                "cli_args": ["--extra-video-filters", "-evf"]
+            },
+            "extra_audio_filters": {
+                "type": "string",
+                "description": "Extra audio filters to be passed to ffmpeg",
+                "default": "",
+                "cli_args": ["--extra-audio-filters", "-eaf"]
             },
             "target_size": {
                 "type": "number",
@@ -810,7 +800,6 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
         # Output Options
         'audio': output_options,
         'fast_trim': output_options,
-        'encode_speed': output_options,
         'target_max_bitrate': output_options,
         'h264_disable_reduce_stutter': output_options,
         'auto_subs_lang': output_options,
@@ -819,6 +808,8 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
         'no_auto_scale_crop_res': output_options,
         'remove_metadata': output_options,
         'extra_ffmpeg_args': output_options,
+        'extra_video_filters': output_options,
+        'extra_audio_filters': output_options,
         'target_size': output_options,
         'overwrite': output_options,
 
@@ -861,7 +852,6 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
             'no_auto_find_input_video': 'noAutoFindInputVideo',
             'enable_video_streaming_protocol_hls': 'enableVideoStreamingProtocolHLS',
             'fast_trim': 'fastTrim',
-            'encode_speed': 'encodeSpeed',
             'target_max_bitrate': 'targetMaxBitrate',
             'h264_disable_reduce_stutter': 'h264DisableReduceStutter',
             'auto_subs_lang': 'autoSubsLang',
@@ -870,6 +860,8 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
             'no_auto_scale_crop_res': 'noAutoScaleCropRes',
             'remove_metadata': 'removeMetadata',
             'extra_ffmpeg_args': 'extraFfmpegArgs',
+            'extra_video_filters': 'extraVideoFilters',
+            'extra_audio_filters': 'extraAudioFilters',
             'target_size': 'targetSize',
             'gpu_id': 'gpuId',
             'rife_model_path': 'rifeModelPath',

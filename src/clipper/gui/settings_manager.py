@@ -28,7 +28,6 @@ class GeneralSettings:
     # === OUTPUT OPTIONS ===
     audio: bool = True  # Enable audio in output
     fast_trim: bool = False
-    encode_speed: Optional[int] = None  # 0-5 for vp9, None for default
     target_max_bitrate: Optional[int] = None
     h264_disable_reduce_stutter: bool = False
     auto_subs_lang: str = ""  # Two-letter language code
@@ -37,6 +36,8 @@ class GeneralSettings:
     no_auto_scale_crop_res: bool = False
     remove_metadata: bool = False
     extra_ffmpeg_args: str = ""
+    extra_video_filters: str = ""
+    extra_audio_filters: str = ""
     target_size: float = 0.0  # Target file size in MB, 0 = unlimited
     overwrite: bool = False
 
@@ -176,6 +177,29 @@ class SettingsManager:
         video = asdict(self.video_settings)
         combined.update(video)
 
+        # Apply schema defaults for empty string values
+        schema = getSettingsSchema()
+        for setting_key, setting_def in schema['general'].items():
+            if setting_key in combined:
+                current_value = combined[setting_key]
+                default_value = setting_def.get('default')
+
+                # Apply default if current value is empty string and default is not empty
+                if (isinstance(current_value, str) and
+                    current_value == "" and
+                    default_value is not None and
+                    default_value != ""):
+                    combined[setting_key] = default_value
+                    self.logger.debug(f"Applied schema default for '{setting_key}': '{default_value}'")
+
+                # Apply default if current value is empty list and default is not empty
+                elif (isinstance(current_value, list) and
+                      len(current_value) == 0 and
+                      default_value is not None and
+                      default_value != []):
+                    combined[setting_key] = default_value
+                    self.logger.debug(f"Applied schema default for '{setting_key}': {default_value}")
+
         # Convert GUI-specific names to CLI names using a mapping
         gui_to_cli_mapping = {
             # Logging options
@@ -190,7 +214,6 @@ class SettingsManager:
 
             # Output options
             'fast_trim': 'fastTrim',
-            'encode_speed': 'encodeSpeed',
             'target_max_bitrate': 'targetMaxBitrate',
             'h264_disable_reduce_stutter': 'h264DisableReduceStutter',
             'auto_subs_lang': 'autoSubsLang',
@@ -199,6 +222,8 @@ class SettingsManager:
             'no_auto_scale_crop_res': 'noAutoScaleCropRes',
             'remove_metadata': 'removeMetadata',
             'extra_ffmpeg_args': 'extraFfmpegArgs',
+            'extra_video_filters': 'extraVideoFilters',
+            'extra_audio_filters': 'extraAudioFilters',
             'target_size': 'targetSize',
 
             # Other options
@@ -385,7 +410,6 @@ class SettingsManager:
                     # Output options
                     'audio': 'audio',
                     'fastTrim': 'fast_trim',
-                    'encodeSpeed': 'encode_speed',
                     'targetMaxBitrate': 'target_max_bitrate',
                     'h264DisableReduceStutter': 'h264_disable_reduce_stutter',
                     'autoSubsLang': 'auto_subs_lang',
@@ -394,6 +418,8 @@ class SettingsManager:
                     'noAutoScaleCropRes': 'no_auto_scale_crop_res',
                     'removeMetadata': 'remove_metadata',
                     'extraFfmpegArgs': 'extra_ffmpeg_args',
+                    'extraVideoFilters': 'extra_video_filters',
+                    'extraAudioFilters': 'extra_audio_filters',
                     'targetSize': 'target_size',
                     'overwrite': 'overwrite',
 

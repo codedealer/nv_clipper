@@ -33,9 +33,18 @@ class ClipperEngine:
 
     def process_files(self, markup_path: str, video_path: Optional[str] = None,  # noqa: PLR0912
                      settings_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Process markup and optionally video files using exact CLI logic."""
+        """Process markup and optionally video files using exact CLI logic with GUI settings.
+
+        Args:
+            markup_path: Path to the markup JSON file
+            video_path: Optional path to input video file
+            settings_overrides: Dict containing ONLY specific overrides not in GUI settings:
+                - 'only': List of clip indices to process (0-indexed, will be converted to 1-indexed)
+                - 'overwrite': Boolean to force overwrite existing clips
+                - 'preview': Boolean to enable preview mode
+        """
         try:
-            print(f"DEBUG: Starting file processing with CLI-identical logic...")
+            print(f"DEBUG: Starting file processing with CLI-identical logic and GUI settings...")
 
             # Validate markup file
             markup_file = Path(markup_path)
@@ -46,8 +55,13 @@ class ClipperEngine:
             self.cs = clipper_types.ClipperState()
             print("DEBUG: Created fresh ClipperState for processing")
 
-            # Simulate the exact CLI argument flow
-            # Build argv as if we called: yt_clipper --markers-json markup.json [--input-video video.mp4]
+            # Get comprehensive GUI settings
+            from clipper.gui.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            gui_settings = settings_manager.get_combined_settings()
+            print(f"DEBUG: Loaded GUI settings: {len(gui_settings)} settings")
+
+            # Build minimal argv for required arguments only (no settings)
             simulated_argv = [
                 "yt_clipper",
                 "--markers-json", str(markup_file.absolute()),
@@ -59,41 +73,49 @@ class ClipperEngine:
                     return {"status": "error", "message": f"Video file not found: {video_path}"}
                 simulated_argv.extend(["--input-video", str(video_file.absolute())])
 
-            # Handle selected clips (convert list to comma-separated string)
-            # Note: GUI clips are 0-indexed, but CLI expects 1-indexed values
-            if settings_overrides and 'only' in settings_overrides:
-                selected_clips = settings_overrides['only']
-                if isinstance(selected_clips, list):
-                    # Convert 0-indexed GUI clips to 1-indexed CLI format
-                    one_indexed_clips = [str(i + 1) for i in selected_clips]
-                    only_string = ','.join(one_indexed_clips)
-                    simulated_argv.extend(["--only", only_string])
-                    print(f"DEBUG: Added --only parameter: {only_string} (converted from 0-indexed {selected_clips})")
-
-            # Handle other common settings overrides
+            # Handle ONLY the specific overrides that aren't part of GUI settings
             if settings_overrides:
-                # Handle overwrite flag
-                if settings_overrides.get('overwrite'):
+                # Handle selected clips (convert list to comma-separated string)
+                # Note: GUI clips are 0-indexed, but CLI expects 1-indexed values
+                if 'only' in settings_overrides:
+                    selected_clips = settings_overrides['only']
+                    if isinstance(selected_clips, list) and len(selected_clips) > 0:
+                        # Convert 0-indexed GUI clips to 1-indexed CLI format
+                        one_indexed_clips = [str(i + 1) for i in selected_clips]
+                        only_string = ','.join(one_indexed_clips)
+                        simulated_argv.extend(["--only", only_string])
+                        print(f"DEBUG: Added --only parameter: {only_string} (converted from 0-indexed {selected_clips})")
+
+                # Handle overwrite flag (if explicitly set to True)
+                if settings_overrides.get('overwrite') is True:
                     simulated_argv.append("--overwrite")
 
-                # Handle preview mode
-                if settings_overrides.get('preview'):
+                # Handle preview mode (if explicitly set to True)
+                if settings_overrides.get('preview') is True:
                     simulated_argv.append("--preview")
 
-            print(f"DEBUG: Simulating CLI with args: {simulated_argv}")
+            # Pass empty argFiles arg to ignore arg files in GUI mode so they don't interfere
+            simulated_argv.extend(["--arg-files", "''"])
+
+            print(f"DEBUG: Simulating CLI with minimal args: {simulated_argv}")
 
             # Temporarily replace sys.argv to simulate CLI call
             original_argv = sys.argv
             try:
                 sys.argv = simulated_argv
 
-                # Now run the exact CLI initialization flow
+                # Run the CLI initialization flow (minimal args only)
                 args, unknown, argsFromArgFiles, argFiles, argsFromArgFilesMap = argparser.getArgs()
 
                 # Apply CLI arguments first to get the json path and other required settings
                 self.cs.settings.update({"color_space": None, **args})
 
-                # Load settings from markup JSON
+                # Apply GUI settings directly to clipper state BEFORE loading JSON
+                # This ensures GUI settings serve as the base, with JSON able to override them
+                print(f"DEBUG: Applying GUI settings to clipper state...")
+                self._apply_gui_settings_to_clipper_state(gui_settings)
+
+                # Load settings from markup JSON (this will override GUI settings where applicable)
                 ytc_settings.loadSettings(self.cs.settings)
 
                 # Preserve persistent RIFE cache across processing sessions
@@ -107,8 +129,6 @@ class ClipperEngine:
                 setupDepPaths(self.cs)
                 setupOutputPaths(self.cs)
                 ytc_logger.setUpLogger(self.cs)
-
-                print("DEBUG: Completed CLI-identical initialization")
 
                 # Inject persistent RIFE cache into clip_maker module before processing
                 self._inject_rife_cache()
@@ -176,6 +196,78 @@ class ClipperEngine:
         if self.cs and "__RIFE_LOADED" in self.cs.settings:
             self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"] = self.cs.settings["__RIFE_LOADED"]
             print(f"DEBUG: Updated persistent RIFE loaded state: {self._PERSISTENT_RIFE_CACHE['__RIFE_LOADED']}")
+
+    def _apply_gui_settings_to_clipper_state(self, gui_settings: Dict[str, Any]) -> None:
+        """Apply GUI settings directly to clipper state.
+
+        This method applies GUI settings as the base configuration.
+        The markup JSON will be loaded afterward and can override these settings.
+        Only applies settings that should come from GUI, not from markup JSON.
+        """
+        if not self.cs:
+            return
+
+        # Map of GUI settings to clipper state keys that are safe to apply
+        # These are settings that control processing behavior, not video metadata
+        safe_gui_settings = {
+            # Logging settings
+            'log_level': 'logLevel',
+            'no_rich_logs': 'noRichLogs',
+
+            # Input settings
+            'download_video': 'downloadVideo',
+            'format': 'format',
+            'format_sort': 'formatSort',
+            'no_auto_find_input_video': 'noAutoFindInputVideo',
+            'enable_video_streaming_protocol_hls': 'enableVideoStreamingProtocolHLS',
+
+            # Output settings
+            'audio': 'audio',
+            'fast_trim': 'fastTrim',
+            'target_max_bitrate': 'targetMaxBitrate',
+            'h264_disable_reduce_stutter': 'h264DisableReduceStutter',
+            'auto_subs_lang': 'autoSubsLang',
+            'subs_file_path': 'subsFilePath',
+            'subs_style': 'subsStyle',
+            'no_auto_scale_crop_res': 'noAutoScaleCropRes',
+            'remove_metadata': 'removeMetadata',
+            'extra_ffmpeg_args': 'extraFfmpegArgs',
+            'extra_video_filters': 'extraVideoFilters',
+            'extra_audio_filters': 'extraAudioFilters',
+            'target_size': 'targetSize',
+            'overwrite': 'overwrite',
+
+            # AI/GPU settings
+            'gpu_id': 'gpuId',
+            'rife_model_path': 'rifeModelPath',
+            'rife_worker_threads': 'rifeWorkerThreads',
+            'topaz_ai_path': 'topazAIPath',
+            'topaz_model_dir': 'topazModelDir',
+            'topaz_model_data_dir': 'topazModelDataDir',
+
+            # Other settings
+            'preview': 'preview',
+            'notify_on_completion': 'notifyOnCompletion',
+
+            # yt-dlp settings
+            'ytdl_location': 'ytdlLocation',
+            'ytdl_username': 'username',
+            'ytdl_password': 'password',
+            'ytdl_auto_update': 'ytdlAutoUpdate',
+            'cookiefile': 'cookiefile',
+        }
+
+        applied_count = 0
+        for gui_key, clipper_key in safe_gui_settings.items():
+            if gui_key in gui_settings:
+                value = gui_settings[gui_key]
+                # Only apply non-None, non-empty values
+                if value is not None and value != '':
+                    self.cs.settings[clipper_key] = value
+                    applied_count += 1
+
+        print(f"DEBUG: Applied {applied_count} GUI settings to clipper state (safe settings only)")
+        print(f"DEBUG: Markup JSON will load next and can override these settings")
 
     def _setupDepPaths(self, cs: ClipperState) -> None:
         """Setup dependency paths (copied from yt_clipper.py)."""

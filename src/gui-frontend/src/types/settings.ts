@@ -13,9 +13,8 @@ export interface GeneralSettings {
   enable_video_streaming_protocol_hls: boolean
 
   // === OUTPUT OPTIONS ===
-  audio: boolean // Enable audio in output
-  fast_trim: boolean
-  encode_speed?: number // 0-5 for vp9, null for default
+  audio?: boolean
+  fast_trim?: boolean
   target_max_bitrate?: number
   h264_disable_reduce_stutter: boolean
   auto_subs_lang: string // Two-letter language code
@@ -24,6 +23,8 @@ export interface GeneralSettings {
   no_auto_scale_crop_res: boolean
   remove_metadata: boolean
   extra_ffmpeg_args: string
+  extra_video_filters?: string
+  extra_audio_filters?: string
   target_size: number // Target file size in MB, 0 = unlimited
   overwrite: boolean
 

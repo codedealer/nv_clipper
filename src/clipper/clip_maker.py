@@ -277,7 +277,7 @@ def getMarkerPairSettings(  # noqa: PLR0912
         + f'Video Codec: {mps["videoCodec"]}, CRF: {mps["crf"]} (0-63), Target Bitrate: {mps["targetMaxBitrate"]}, '
         + f"Bitrate Crop Factor: {bitrateCropFactor}, Bitrate Speed Factor {bitrateSpeedFactor}, "
         + f'Adjusted Target Max Bitrate: {mps["autoTargetMaxBitrate"]}kbps, '
-        + f'Two-pass Encoding Enabled: {mps["twoPass"]}, Encoding Speed: {mps["encodeSpeed"]} (0-5), '
+        + f'Two-pass Encoding Enabled: {mps["twoPass"]}, '
         + f'HDR (High Dynamic Range) Output Enabled: {mps["enableHDR"]}, '
         + f'Audio Enabled: {mps["audio"]}, Denoise: {mps["denoise"]["desc"]}, '
         + f'Marker Pair {markerPairIndex + 1} is of variable speed: {mp["isVariableSpeed"]}, '
@@ -1396,70 +1396,60 @@ def getDefaultEncodeSettings(videobr: int) -> DictStrAny:
         encodeSettings = {
             "crf": 30,
             "autoTargetMaxBitrate": 0,
-            "encodeSpeed": 2,
             "twoPass": False,
         }
     elif videobr <= 1000:
         encodeSettings = {
             "crf": 20,
             "autoTargetMaxBitrate": int(2 * videobr),
-            "encodeSpeed": 2,
             "twoPass": False,
         }
     elif videobr <= 2000:
         encodeSettings = {
             "crf": 22,
             "autoTargetMaxBitrate": int(1.8 * videobr),
-            "encodeSpeed": 2,
             "twoPass": False,
         }
     elif videobr <= 4000:
         encodeSettings = {
             "crf": 24,
             "autoTargetMaxBitrate": int(1.6 * videobr),
-            "encodeSpeed": 2,
             "twoPass": False,
         }
     elif videobr <= 6000:
         encodeSettings = {
             "crf": 26,
             "autoTargetMaxBitrate": int(1.4 * videobr),
-            "encodeSpeed": 3,
             "twoPass": False,
         }
     elif videobr <= 10000:
         encodeSettings = {
             "crf": 28,
             "autoTargetMaxBitrate": int(1.2 * videobr),
-            "encodeSpeed": 4,
             "twoPass": False,
         }
     elif videobr <= 14000:
         encodeSettings = {
             "crf": 30,
             "autoTargetMaxBitrate": int(1.1 * videobr),
-            "encodeSpeed": 5,
             "twoPass": False,
         }
     elif videobr <= 18000:
         encodeSettings = {
             "crf": 30,
             "autoTargetMaxBitrate": int(1.0 * videobr),
-            "encodeSpeed": 5,
             "twoPass": False,
         }
     elif videobr <= 25000:
         encodeSettings = {
             "crf": 32,
             "autoTargetMaxBitrate": int(0.9 * videobr),
-            "encodeSpeed": 5,
             "twoPass": False,
         }
     else:
         encodeSettings = {
             "crf": 34,
             "autoTargetMaxBitrate": int(0.8 * videobr),
-            "encodeSpeed": 5,
             "twoPass": False,
         }
     return encodeSettings

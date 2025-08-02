@@ -479,8 +479,7 @@ def getGlobalSettings(cs: ClipperState) -> None:
         f'Automatically determined encoding settings: CRF: {encodeSettings["crf"]} (0-63), '
         + f'Auto Target Max Bitrate: {encodeSettings["autoTargetMaxBitrate"]}kbps, '
         + f"Detected Color Space: {globalColorSpaceMsg}, "
-        + f'Two-pass Encoding Enabled: {encodeSettings["twoPass"]}, '
-        + f'Encoding Speed: {encodeSettings["encodeSpeed"]} (0-5)',
+        + f'Two-pass Encoding Enabled: {encodeSettings["twoPass"]}',
     )
 
     encodeSettings = {**encodeSettings, **settings}
@@ -498,7 +497,6 @@ def getGlobalSettings(cs: ClipperState) -> None:
         + f'Detected Bitrate: {settings["bit_rate"]}kbps, '
         + f"Global Target Bitrate: {globalTargetBitrateMsg}, "
         + f'Two-pass Encoding Enabled: {encodeSettings["twoPass"]}, '
-        + f'Encoding Speed: {encodeSettings["encodeSpeed"]} (0-5), '
         + f'Audio Enabled: {settings["audio"]}, '
         + f'Denoise: {settings["denoise"]["desc"]}, Rotate: {settings["rotate"]}, '
         + f'HDR (High Dynamic Range) Output Enabled: {settings["enableHDR"]}, '
