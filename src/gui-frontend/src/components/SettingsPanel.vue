@@ -10,7 +10,7 @@
             <el-form-item label="Log Level (0-56)">
               <el-input-number
                 :model-value="props.settings?.log_level || 15"
-                @update:model-value="(value) => updateNumberSetting('log_level', value)"
+                @change="(value) => handleNumberChange('log_level', value)"
                 :min="0"
                 :max="56"
                 :disabled="isLoading"
@@ -117,7 +117,7 @@
             <el-form-item label="Target max bitrate (kbps)">
               <el-input-number
                 :model-value="props.settings?.target_max_bitrate"
-                @update:model-value="(value) => updateNumberSetting('target_max_bitrate', value)"
+                @change="(value) => handleNumberChange('target_max_bitrate', value)"
                 :min="100"
                 :max="50000"
                 :disabled="isLoading"
@@ -128,13 +128,25 @@
             <el-form-item label="Target file size (MB)">
               <el-input-number
                 :model-value="props.settings?.target_size || 0"
-                @update:model-value="(value) => updateNumberSetting('target_size', value)"
+                @change="(value) => handleNumberChange('target_size', value)"
                 :min="0"
                 :disabled="isLoading"
                 style="width: 150px"
                 placeholder="Unlimited"
               />
               <el-text class="setting-help" type="info">0 = unlimited size</el-text>
+            </el-form-item>
+            <el-form-item label="Target FPS">
+              <el-input-number
+                :model-value="props.settings?.target_fps || null"
+                @change="(value) => handleNumberChange('target_fps', value)"
+                :min="1"
+                :max="300"
+                :disabled="isLoading"
+                style="width: 150px"
+                placeholder="Auto"
+              />
+              <el-text class="setting-help" type="info">Force the video's frame rate to this value (affects interpolation calculations)</el-text>
             </el-form-item>
           </el-form>
 
@@ -249,7 +261,7 @@
             <el-form-item label="GPU ID">
               <el-input-number
                 :model-value="props.settings?.gpu_id || 0"
-                @update:model-value="(value) => updateNumberSetting('gpu_id', value)"
+                @change="(value) => handleNumberChange('gpu_id', value)"
                 :min="0"
                 :max="15"
                 :disabled="isLoading"
@@ -275,7 +287,7 @@
             <el-form-item label="Worker threads">
               <el-input-number
                 :model-value="props.settings?.rife_worker_threads || 1"
-                @update:model-value="(value) => updateNumberSetting('rife_worker_threads', value)"
+                @change="(value) => handleNumberChange('rife_worker_threads', value)"
                 :min="1"
                 :max="32"
                 :disabled="isLoading"
@@ -500,6 +512,11 @@ function getCurrentTextValue(key: string, fallback: string = ''): string {
     return typeof value === 'string' ? value : (value?.toString() ?? fallback)
   }
   return fallback
+}
+
+// Handle number change event (save immediately)
+function handleNumberChange(key: string, value: number | null | undefined) {
+  updateSetting(key, value ?? null)
 }
 
 // Typed handlers for different value types

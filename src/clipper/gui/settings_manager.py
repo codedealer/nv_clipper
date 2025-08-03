@@ -39,6 +39,7 @@ class GeneralSettings:
     extra_video_filters: str = ""
     extra_audio_filters: str = ""
     target_size: float = 0.0  # Target file size in MB, 0 = unlimited
+    target_fps: Optional[float] = None  # Force the video's frame rate to this value
     overwrite: bool = False
 
     # === OTHER OPTIONS ===
