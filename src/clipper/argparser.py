@@ -121,19 +121,6 @@ def getArgParser() -> argparse.ArgumentParser:
         ]),
     )
     vfilter_options.add_argument(
-        "--target-fps",
-        "-tfps",
-        dest="targetFPS",
-        type=float,
-        default=None,
-        help=" ".join([
-            "Force the video's frame rate to this value.",
-            "This overrides the detected video frame rate and affects interpolation calculations.",
-            "Must be a positive number between 1 and 300 fps.",
-            "Use with caution as incorrect values may cause timing issues.",
-        ]),
-    )
-    vfilter_options.add_argument(
         "--delay",
         "-d",
         type=float,
@@ -576,6 +563,14 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "default": 0,
                 "cli_args": ["--target-size", "-ts"]
             },
+            "target_fps": {
+                "type": "number",
+                "description": "Force the video's frame rate to this value",
+                "min": 1,
+                "max": 300,
+                "default": None,
+                "cli_args": ["--target-fps", "-tfps"]
+            },
             "overwrite": {
                 "type": "boolean",
                 "description": "Regenerate and overwrite existing clips",
@@ -811,6 +806,7 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
         'extra_video_filters': output_options,
         'extra_audio_filters': output_options,
         'target_size': output_options,
+        'target_fps': output_options,
         'overwrite': output_options,
 
         # AI/GPU Processing Options
@@ -863,6 +859,7 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
             'extra_video_filters': 'extraVideoFilters',
             'extra_audio_filters': 'extraAudioFilters',
             'target_size': 'targetSize',
+            'target_fps': 'targetFPS',
             'gpu_id': 'gpuId',
             'rife_model_path': 'rifeModelPath',
             'rife_worker_threads': 'rifeWorkerThreads',

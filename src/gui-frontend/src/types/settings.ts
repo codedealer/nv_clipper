@@ -26,6 +26,7 @@ export interface GeneralSettings {
   extra_video_filters?: string
   extra_audio_filters?: string
   target_size: number // Target file size in MB, 0 = unlimited
+  target_fps?: number // Force the video's frame rate to this value
   overwrite: boolean
 
   // === OTHER OPTIONS ===
