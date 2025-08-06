@@ -1010,8 +1010,8 @@ def getRIFEFfmpegEncodeCommand(
             "<__RIFE_placeholder>", # some of the flags will be determined by RIFE
             "-i -",  # read from stdin
             # f'-vf "scale=in_range=full:out_range=limited,format=yuv444p,hwupload_cuda"',
-            # f'-vf "scale=in_range=full:out_range=limited,format=yuv420p,hwupload_cuda"',
-            f'-vf "format=yuv420p,hwupload_cuda"',
+            f'-vf "scale=in_range=full:out_range=limited,format=yuv420p,hwupload_cuda"',
+            # f'-vf "format=yuv420p,hwupload_cuda"',
             f"-benchmark",
             video_codec_args,
             (
@@ -1020,7 +1020,7 @@ def getRIFEFfmpegEncodeCommand(
                 else "-map_metadata -1"
             ),
             video_codec_output_args,
-            "-color_range pc",
+            "-color_range tv",
             f'{mps["extraFfmpegArgs"]}',
             f'"{mp["filePath"]}"',
         ),
