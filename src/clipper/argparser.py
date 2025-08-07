@@ -441,13 +441,13 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "min": 0,
                 "max": 56,
                 "default": 15,
-                "cli_args": ["--log-level"]
+                "cli_args": ["--log-level"],
             },
             "no_rich_logs": {
                 "type": "boolean",
                 "description": "Disable rich colored logging",
                 "default": False,
-                "cli_args": ["--no-rich-logs"]
+                "cli_args": ["--no-rich-logs"],
             },
 
             # Input Options
@@ -455,31 +455,31 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "type": "boolean",
                 "description": "Download video from the internet for processing",
                 "default": False,
-                "cli_args": ["--download-video", "-dv"]
+                "cli_args": ["--download-video", "-dv"],
             },
             "format": {
                 "type": "string",
                 "description": "Format string passed to yt-dlp",
                 "default": "(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best",
-                "cli_args": ["--format", "-f"]
+                "cli_args": ["--format", "-f"],
             },
             "format_sort": {
                 "type": "string_list",
                 "description": "Sorting criteria for yt-dlp format selection",
                 "default": ["hasvid,ie_pref,lang,quality,res,fps,br,size,hdr:1,vcodec:vp9.2,vcodec:vp9,asr,proto,ext,hasaud,source,id"],
-                "cli_args": ["--format-sort", "-S"]
+                "cli_args": ["--format-sort", "-S"],
             },
             "no_auto_find_input_video": {
                 "type": "boolean",
                 "description": "Disable automatic detection and usage of input video",
                 "default": False,
-                "cli_args": ["--no-auto-find-input-video", "-nafiv"]
+                "cli_args": ["--no-auto-find-input-video", "-nafiv"],
             },
             "enable_video_streaming_protocol_hls": {
                 "type": "boolean",
                 "description": "Enable use of the HLS video streaming protocol",
                 "default": False,
-                "cli_args": ["--enable-video-streaming-protocol-hls", "-evsp-hls"]
+                "cli_args": ["--enable-video-streaming-protocol-hls", "-evsp-hls"],
             },
 
             # Output Options
@@ -487,81 +487,81 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "type": "boolean",
                 "description": "Enable audio in output webms",
                 "default": False,
-                "cli_args": ["--audio", "-a"]
+                "cli_args": ["--audio", "-a"],
             },
             "fast_trim": {
                 "type": "boolean",
                 "description": "Enable fast trim mode (skip re-encoding)",
                 "default": False,
-                "cli_args": ["--fast-trim", "-ft"]
+                "cli_args": ["--fast-trim", "-ft"],
             },
             "target_max_bitrate": {
                 "type": "integer",
                 "description": "Set target max bitrate in kilobits/s",
                 "min": 1,
                 "default": None,
-                "cli_args": ["--target-max-bitrate", "-b"]
+                "cli_args": ["--target-max-bitrate", "-b"],
             },
             "h264_disable_reduce_stutter": {
                 "type": "boolean",
                 "description": "Disable reducing output clip stutter when using h264",
                 "default": False,
-                "cli_args": ["--h264-disable-reduce-stutter", "-h264-drs"]
+                "cli_args": ["--h264-disable-reduce-stutter", "-h264-drs"],
             },
             "auto_subs_lang": {
                 "type": "string",
                 "description": "Automatically download subtitles in specified language",
                 "default": "",
-                "cli_args": ["--auto-subs-lang", "-asl"]
+                "cli_args": ["--auto-subs-lang", "-asl"],
             },
             "subs_file_path": {
                 "type": "string",
                 "description": "Path to subtitles file (vtt, sbv, or srt)",
                 "default": "",
-                "cli_args": ["--subs-file", "-sf"]
+                "cli_args": ["--subs-file", "-sf"],
             },
             "subs_style": {
                 "type": "string",
                 "description": "ASS format string for styling subtitles",
                 "default": "FontSize=12,PrimaryColour=&H32FFFFFF,SecondaryColour=&H32000000,MarginV=5",
-                "cli_args": ["--subs-style", "-ss"]
+                "cli_args": ["--subs-style", "-ss"],
             },
             "no_auto_scale_crop_res": {
                 "type": "boolean",
                 "description": "Disable automatically scaling crop resolution",
                 "default": False,
-                "cli_args": ["--no-auto-scale-crop-res", "-nascr"]
+                "cli_args": ["--no-auto-scale-crop-res", "-nascr"],
             },
             "remove_metadata": {
                 "type": "boolean",
                 "description": "Do not add metadata to output video",
                 "default": False,
-                "cli_args": ["--remove-metadata", "-rm"]
+                "cli_args": ["--remove-metadata", "-rm"],
             },
             "extra_ffmpeg_args": {
                 "type": "string",
                 "description": "Extra arguments to be passed to ffmpeg",
                 "default": "",
-                "cli_args": ["--extra-ffmpeg-args", "-efa"]
+                "cli_args": ["--extra-ffmpeg-args", "-efa"],
             },
             "extra_video_filters": {
                 "type": "string",
                 "description": "Extra video filters to be passed to ffmpeg",
                 "default": "",
-                "cli_args": ["--extra-video-filters", "-evf"]
+                "cli_args": ["--extra-video-filters", "-evf"],
             },
             "extra_audio_filters": {
                 "type": "string",
                 "description": "Extra audio filters to be passed to ffmpeg",
                 "default": "",
-                "cli_args": ["--extra-audio-filters", "-eaf"]
+                "cli_args": ["--extra-audio-filters", "-eaf"],
             },
             "target_size": {
                 "type": "number",
                 "description": "Target file size in megabytes (0 = unlimited)",
                 "min": 0,
                 "default": 0,
-                "cli_args": ["--target-size", "-ts"]
+                "cli_args": ["--target-size", "-ts"],
             },
             "target_fps": {
                 "type": "number",
@@ -569,13 +569,13 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "min": 1,
                 "max": 300,
                 "default": None,
-                "cli_args": ["--target-fps", "-tfps"]
+                "cli_args": ["--target-fps", "-tfps"],
             },
             "overwrite": {
                 "type": "boolean",
                 "description": "Regenerate and overwrite existing clips",
                 "default": False,
-                "cli_args": ["--overwrite", "-ow"]
+                "cli_args": ["--overwrite", "-ow"],
             },
 
             # AI/GPU Processing Options
@@ -584,38 +584,38 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "description": "GPU ID to use for interpolation",
                 "min": 0,
                 "default": 0,
-                "cli_args": ["--gpu-id", "-gid"]
+                "cli_args": ["--gpu-id", "-gid"],
             },
             "rife_model_path": {
                 "type": "string",
                 "description": "Path to the RIFE model file",
                 "default": "",
-                "cli_args": ["--rife-model-path", "-rmp"]
+                "cli_args": ["--rife-model-path", "-rmp"],
             },
             "rife_worker_threads": {
                 "type": "integer",
                 "description": "Number of worker threads for RIFE interpolation",
                 "min": 1,
                 "default": 1,
-                "cli_args": ["--rife-worker-threads", "-rwt"]
+                "cli_args": ["--rife-worker-threads", "-rwt"],
             },
             "topaz_ai_path": {
                 "type": "string",
                 "description": "Path to the Topaz Video AI executable",
                 "default": "",
-                "cli_args": ["--topaz-ai-path", "-tap"]
+                "cli_args": ["--topaz-ai-path", "-tap"],
             },
             "topaz_model_dir": {
                 "type": "string",
                 "description": "Path to the Topaz Video AI model directory",
                 "default": "",
-                "cli_args": ["--topaz-model-dir", "-tmd"]
+                "cli_args": ["--topaz-model-dir", "-tmd"],
             },
             "topaz_model_data_dir": {
                 "type": "string",
                 "description": "Path to the Topaz Video AI model data directory",
                 "default": "",
-                "cli_args": ["--topaz-model-data-dir", "-tmdd"]
+                "cli_args": ["--topaz-model-data-dir", "-tmdd"],
             },
 
             # Other Options
@@ -623,13 +623,13 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "type": "boolean",
                 "description": "Enable preview mode",
                 "default": False,
-                "cli_args": ["--preview", "-p"]
+                "cli_args": ["--preview", "-p"],
             },
             "notify_on_completion": {
                 "type": "boolean",
                 "description": "Display system notification when completed",
                 "default": False,
-                "cli_args": ["--notify-on-completion", "-noc"]
+                "cli_args": ["--notify-on-completion", "-noc"],
             },
 
             # yt-dlp Options
@@ -637,94 +637,109 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "type": "string",
                 "description": "Specify location for yt-dlp on your system",
                 "default": "",
-                "cli_args": ["--ytdl-location"]
+                "cli_args": ["--ytdl-location"],
             },
             "ytdl_username": {
                 "type": "string",
                 "description": "Username passed to yt-dlp for authentication",
                 "default": "",
-                "cli_args": ["--ytdl-username", "-yu"]
+                "cli_args": ["--ytdl-username", "-yu"],
             },
             "ytdl_password": {
                 "type": "string",
                 "description": "Password passed to yt-dlp for authentication",
                 "default": "",
-                "cli_args": ["--ytdl-password", "-yp"]
+                "cli_args": ["--ytdl-password", "-yp"],
             },
             "cookiefile": {
                 "type": "string",
                 "description": "Path to Netscape formatted cookies file",
                 "default": "",
-                "cli_args": ["--cookiefile", "-cf"]
+                "cli_args": ["--cookiefile", "-cf"],
             },
             "ytdl_auto_update": {
                 "type": "boolean",
                 "description": "Enable automatic yt-dlp updates",
                 "default": True,
-                "cli_args": ["--no-ytdl-auto-update"]  # Note: this is inverted
-            }
+                "cli_args": ["--no-ytdl-auto-update"],  # Note: this is inverted
+            },
+
+            # Cache Options
+            "cache_folder_path": {
+                "type": "string",
+                "description": "Path to the video cache folder",
+                "default": "",
+                "cli_args": ["--cache-folder-path"],
+            },
+            "cache_max_size_mb": {
+                "type": "integer",
+                "description": "Maximum cache size in MB (0 = unlimited)",
+                "min": 0,
+                "default": 5000,
+                "cli_args": ["--cache-max-size-mb"],
+            },
         },
         "video": {
             "video_title": {
                 "type": "string",
                 "description": "Title of the video",
-                "default": ""
+                "default": "",
             },
             "video_url": {
                 "type": "string",
                 "description": "URL of the video",
-                "default": ""
+                "default": "",
             },
             "video_id": {
                 "type": "string",
                 "description": "ID of the video",
-                "default": ""
+                "default": "",
             },
             "platform": {
                 "type": "string",
                 "description": "Platform hosting the video",
-                "default": "youtube"
+                "default": "youtube",
             },
             "is_vertical_video": {
                 "type": "boolean",
                 "description": "Whether the video is in vertical format",
-                "default": False
+                "default": False,
             },
             "crop_res": {
                 "type": "string",
                 "description": "Crop resolution in WxH format",
-                "default": "1920x1080"
+                "default": "1920x1080",
             },
             "fps": {
                 "type": "number",
                 "description": "Frame rate of the video",
-                "default": None
+                "default": None,
             },
             "width": {
                 "type": "integer",
                 "description": "Width of the video in pixels",
-                "default": None
+                "default": None,
             },
             "height": {
                 "type": "integer",
                 "description": "Height of the video in pixels",
-                "default": None
+                "default": None,
             },
             "duration": {
                 "type": "number",
                 "description": "Duration of the video in seconds",
-                "default": None
+                "default": None,
             },
             "color_space": {
                 "type": "string",
                 "description": "Color space of the video",
-                "default": None
-            }
-        }
+                "default": None,
+            },
+        },
     }
 
 
-def getArgParserFromSchema() -> argparse.ArgumentParser:
+def getArgParserFromSchema() -> argparse.ArgumentParser:  # noqa: PLR0912
     """
     Create an argument parser dynamically from the settings schema.
     This ensures CLI and GUI settings are always in sync.
@@ -827,6 +842,10 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
         'ytdl_password': ytdl_options,
         'cookiefile': ytdl_options,
         'ytdl_auto_update': ytdl_options,
+
+        # Cache Options
+        'cache_folder_path': other_options,
+        'cache_max_size_mb': other_options,
     }
 
     # Get schema and create arguments
@@ -871,6 +890,8 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
             'ytdl_username': 'username',
             'ytdl_password': 'password',
             'ytdl_auto_update': 'ytdlAutoUpdate',
+            'cache_folder_path': 'cacheFolderPath',
+            'cache_max_size_mb': 'cacheMaxSizeMb',
         }
 
         dest = dest_mapping.get(setting_key, setting_key)
@@ -897,10 +918,9 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:
             kwargs['type'] = int
             if default is not None:
                 kwargs['default'] = default
-            if 'min' in setting_def:
+            if 'min' in setting_def and 'max' in setting_def:
                 # Add choices for bounded integers
-                if 'max' in setting_def:
-                    kwargs['choices'] = range(setting_def['min'], setting_def['max'] + 1)
+                kwargs['choices'] = range(setting_def['min'], setting_def['max'] + 1)
         elif setting_type == 'number':
             kwargs['type'] = float
             if default is not None:

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import webview
 
+from ..cache_manager import get_cache_manager
 from .engine import ClipperEngine
 from .settings_manager import SettingsManager
 
@@ -20,10 +21,31 @@ class ClipperGUI:
     def __init__(self) -> None:
         self.engine = ClipperEngine()  # Initialize immediately
         self.settings_manager = SettingsManager()  # Initialize settings manager
+        self.cache_manager = get_cache_manager()  # Initialize cache manager
+
+        # Configure cache manager with current settings
+        self._update_cache_manager_settings()
+
         self.is_initialized = True     # Always ready since initialization is minimal
         self.logger = logging.getLogger(__name__)
         self.processing_jobs = {}      # Track processing jobs by ID
         self.job_lock = threading.Lock()
+
+    def _update_cache_manager_settings(self) -> None:
+        """Update cache manager with current settings."""
+        try:
+            general_settings = self.settings_manager.get_general_settings()
+            cache_dir = general_settings.get('cache_folder_path', '')
+            max_size_mb = general_settings.get('cache_max_size_mb', 5000)
+
+            # Use default if cache_folder_path is empty (should be handled by dataclass now)
+            if not cache_dir:
+                from pathlib import Path
+                cache_dir = str(Path.home() / ".nv_clipper" / "cache")
+
+            self.cache_manager.update_cache_settings(cache_dir, max_size_mb)
+        except Exception as e:
+            self.logger.error(f"Failed to update cache manager settings: {e}")
 
     def process_files(self, markup_path: str, video_path: Optional[str] = None,
                      selected_clips: Optional[List[int]] = None) -> Dict[str, Any]:
@@ -227,6 +249,10 @@ class ClipperGUI:
         try:
             success = self.settings_manager.update_general_settings(settings)
             if success:
+                # Update cache manager settings if cache-related settings changed
+                if 'cache_folder_path' in settings or 'cache_max_size_mb' in settings:
+                    self._update_cache_manager_settings()
+
                 return {
                     'status': 'success',
                     'message': f'Updated {len(settings)} general settings',
@@ -318,6 +344,129 @@ class ClipperGUI:
             return {
                 'status': 'error',
                 'message': f'Failed to import settings: {e!s}',
+            }
+
+    # Video Cache Management Methods
+
+    def get_cache_info(self) -> Dict[str, Any]:
+        """Get information about the video cache"""
+        try:
+            info = self.cache_manager.get_cache_info()
+            return {
+                'status': 'success',
+                'data': info,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get cache info: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to get cache info: {e!s}',
+            }
+
+    def download_video_to_cache(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Download a video to cache"""
+        try:
+            # Debug: log the entire request to see what we're receiving
+            self.logger.info(f"Cache download request received: {request}")
+
+            url = request.get('url')
+            if not url:
+                return {
+                    'status': 'error',
+                    'message': 'URL is required',
+                }
+
+            # Get current settings - we ALWAYS need ytdl_location and auto_update from settings
+            general_settings = self.settings_manager.get_general_settings()
+
+            # Prepare download parameters
+            download_params = {
+                'url': url,
+                'title': request.get('title'),
+                'ytdl_location': general_settings.get('ytdl_location'),  # Always use from settings
+                'auto_update': request.get('auto_update', general_settings.get('ytdl_auto_update', True)),
+            }
+
+            # Only add format settings if use_settings_format is True
+            if request.get('use_settings_format', False):
+                download_params['format_spec'] = general_settings.get('format')
+                download_params['format_sort'] = general_settings.get('format_sort')
+            else:
+                # Use explicit format settings from request, or None for defaults
+                download_params['format_spec'] = request.get('format')
+                download_params['format_sort'] = request.get('format_sort')
+
+            self.logger.info(f"Download parameters: {download_params}")
+
+            result = self.cache_manager.download_video(**download_params)
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Failed to download video: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to download video: {e!s}',
+            }
+
+    def get_download_progress(self, video_id: str) -> Dict[str, Any]:
+        """Get download progress for a video"""
+        try:
+            return self.cache_manager.get_download_progress(video_id)
+        except Exception as e:
+            self.logger.error(f"Failed to get download progress: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to get download progress: {e!s}',
+            }
+
+    def cancel_download(self, video_id: str) -> Dict[str, Any]:
+        """Cancel a video download"""
+        try:
+            return self.cache_manager.cancel_download(video_id)
+        except Exception as e:
+            self.logger.error(f"Failed to cancel download: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to cancel download: {e!s}',
+            }
+
+    def delete_cached_video(self, video_id: str) -> Dict[str, Any]:
+        """Delete a cached video"""
+        try:
+            return self.cache_manager.delete_cached_video(video_id)
+        except Exception as e:
+            self.logger.error(f"Failed to delete cached video: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to delete cached video: {e!s}',
+            }
+
+    def purge_cache(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        """Purge cache based on options"""
+        try:
+            result = self.cache_manager.purge_cache(
+                older_than_days=options.get('older_than_days'),
+                size_limit_mb=options.get('size_limit_mb'),
+                keep_most_recent=options.get('keep_most_recent'),
+            )
+            return result
+        except Exception as e:
+            self.logger.error(f"Failed to purge cache: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to purge cache: {e!s}',
+            }
+
+    def update_video_access_time(self, video_id: str) -> Dict[str, Any]:
+        """Update the last accessed time for a cached video"""
+        try:
+            return self.cache_manager.update_video_access_time(video_id)
+        except Exception as e:
+            self.logger.error(f"Failed to update video access time: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to update video access time: {e!s}',
             }
 
 

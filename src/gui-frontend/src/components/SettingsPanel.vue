@@ -418,6 +418,37 @@
           </el-form>
         </div>
       </el-tab-pane>
+
+      <!-- === CACHE OPTIONS === -->
+      <el-tab-pane label="Cache" name="cache">
+        <div class="settings-section">
+          <h4>Video Cache Configuration</h4>
+          <el-form label-width="220px" label-position="left">
+            <el-form-item label="Cache folder path">
+              <el-input
+                :model-value="getCurrentTextValue('cache_folder_path')"
+                @input="(value) => handleTextInput('cache_folder_path', value)"
+                @blur="() => handleTextBlur('cache_folder_path')"
+                @keyup.enter="() => handleTextEnter('cache_folder_path')"
+                :disabled="isLoading"
+                placeholder="~/.nv_clipper/cache (default if empty)"
+              />
+              <el-text class="setting-help" type="info">Folder where downloaded videos will be cached. If empty, uses default location in user home directory.</el-text>
+            </el-form-item>
+            <el-form-item label="Max cache size (MB)">
+              <el-input-number
+                :model-value="props.settings?.cache_max_size_mb ?? 5000"
+                @change="(value) => handleNumberChange('cache_max_size_mb', value)"
+                :disabled="isLoading"
+                :min="0"
+                :step="100"
+                placeholder="5000"
+              />
+              <el-text class="setting-help" type="info">Maximum cache size in MB (0 = unlimited, default = 5000MB)</el-text>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Action buttons -->
@@ -520,16 +551,8 @@ function handleNumberChange(key: string, value: number | null | undefined) {
 }
 
 // Typed handlers for different value types
-function updateNumberSetting(key: string, value: number | null | undefined) {
-  updateSettingImmediate(key, value ?? null)
-}
-
 function updateBooleanSetting(key: string, value: boolean | string | number) {
   updateSettingImmediate(key, Boolean(value))
-}
-
-function updateStringSetting(key: string, value: string | number | boolean) {
-  updateSettingImmediate(key, String(value))
 }
 
 function updateStringArraySetting(key: string, value: string) {

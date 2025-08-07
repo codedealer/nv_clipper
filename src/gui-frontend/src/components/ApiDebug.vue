@@ -32,7 +32,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElButton } from 'element-plus'
-import { waitForPywebview, getAPI } from '@/utils/api'
+import { waitForPywebview } from '@/utils/api'
 
 const debugInfo = ref<string>('')
 const apiMethods = ref<string[]>([])
@@ -40,7 +40,7 @@ const testResults = ref<Array<{
   method: string
   success: boolean
   error?: string
-  result?: any
+  result?: Record<string, unknown>
 }>>([])
 
 async function testApi() {
@@ -56,10 +56,10 @@ async function testApi() {
     console.log('API acquired successfully')
 
     // Get debug info
-    const debugApi = getAPI()
+    // const debugApi = getAPI()
 
     // Collect method names
-    const apiAny = api as any
+    const apiAny = api as Record<string, unknown>
     const allProps = Object.getOwnPropertyNames(apiAny)
     const methods = allProps.filter(prop => typeof apiAny[prop] === 'function')
     apiMethods.value = methods

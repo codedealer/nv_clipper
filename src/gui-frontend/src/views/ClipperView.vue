@@ -37,6 +37,14 @@
                   @show-settings="showSettings = true"
                 />
 
+                <!-- Video URL Extractor -->
+                <VideoUrlExtractor
+                  v-if="parsedMarkupData"
+                  :markup-data="parsedMarkupData"
+                  :has-video-source="hasVideoFile"
+                  @download-requested="handleVideoDownloadRequest"
+                />
+
                 <!-- Clip Selection Component -->
                 <ClipSelection
                   :clips="parsedClips"
@@ -74,17 +82,14 @@
     <el-dialog
       v-model="showVideoCache"
       title="Video Cache Management"
-      width="600px"
+      width="80%"
       :before-close="handleCloseCacheDialog"
+      :close-on-click-modal="false"
     >
-      <div class="cache-content">
-        <el-empty description="Video cache management coming soon..." />
-      </div>
-
-      <template #footer>
-        <el-button @click="showVideoCache = false">Close</el-button>
-        <el-button type="primary" disabled>Manage Cache</el-button>
-      </template>
+      <VideoCacheManager
+        :selected-video-id="selectedCacheVideoId"
+        @video-selected="handleVideoSelected"
+      />
     </el-dialog>
 
     <!-- Settings Dialog -->
@@ -131,7 +136,6 @@ import {
   ElFooter,
   ElDialog,
   ElButton,
-  ElEmpty,
   ElAlert,
   ElMessage
 } from 'element-plus'
@@ -143,6 +147,11 @@ import FileSelection from '@/components/FileSelection.vue'
 import ClipSelection from '@/components/ClipSelection.vue'
 import ProcessingPanel from '@/components/ProcessingPanel.vue'
 import MainContent from '@/components/MainContent.vue'
+import VideoCacheManager from '@/components/VideoCacheManager.vue'
+import VideoUrlExtractor from '@/components/VideoUrlExtractor.vue'
+import type { CachedVideo } from '@/types/cache'
+import type { MarkupData } from '@/utils/markup'
+import type { ClipInfo } from '@/types/api'
 
 // Store
 const clipperStore = useClipperStore()
@@ -151,8 +160,10 @@ const settingsStore = useSettingsStore()
 // Local state
 const showVideoCache = ref(false)
 const showSettings = ref(false)
-const parsedClips = ref<any[]>([])
+const parsedClips = ref<ClipInfo[]>([])
 const selectedClips = ref<number[]>([])
+const selectedCacheVideoId = ref<string | undefined>(undefined)
+const parsedMarkupData = ref<MarkupData | null>(null)
 
 // Computed properties from store
 const selectedFiles = computed(() => clipperStore.selectedFiles)
@@ -230,6 +241,12 @@ async function parseMarkupFile(filePath: string) {
       parsedClips.value = result.clips
       selectedClips.value = Array.from({ length: result.clips.length }, (_, i) => i)
 
+      // Store video info if available
+      if (result.video_info) {
+        // Could store video info here if needed
+        console.log('Video info:', result.video_info)
+      }
+
       ElMessage.success(`Loaded ${result.clips.length} clips from markup`)
     } else {
       throw new Error(result.message || 'Failed to parse markup file')
@@ -241,6 +258,7 @@ async function parseMarkupFile(filePath: string) {
     // Fallback to empty clips
     parsedClips.value = []
     selectedClips.value = []
+    parsedMarkupData.value = null
   }
 }
 
@@ -278,6 +296,7 @@ function clearMarkupFile() {
   clipperStore.selectedFiles.markup = null
   parsedClips.value = []
   selectedClips.value = []
+  parsedMarkupData.value = null
 }
 
 function clearVideoFile() {
@@ -308,6 +327,20 @@ async function updateOverwriteSetting(value: boolean) {
 // Dialog handlers
 function handleCloseCacheDialog() {
   showVideoCache.value = false
+}
+
+function handleVideoSelected(video: CachedVideo) {
+  // Set the selected video from cache as the input video
+  clipperStore.selectedFiles.video = video.file_path
+  selectedCacheVideoId.value = video.id
+
+  ElMessage.success(`Selected video: ${video.title}`)
+  showVideoCache.value = false
+}
+
+function handleVideoDownloadRequest() {
+  // Show a message that the download has started
+  ElMessage.info('Download started. Check the Video Cache for progress.')
 }
 
 function handleCloseSettings() {
