@@ -56,6 +56,10 @@ gui-prod:
   Write-Host "🎬 Starting NV Clipper GUI in production mode..." -ForegroundColor Blue
   uv run yt_clipper_gui
 
+gui-lint:
+  Write-Host "🔍 Linting NV Clipper GUI frontend..." -ForegroundColor Cyan
+  cd src/gui-frontend; pnpm run lint
+
 build-ts:
   npx tsc --watch
 build-ts-ne:
