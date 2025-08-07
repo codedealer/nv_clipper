@@ -61,12 +61,21 @@ class GeneralSettings:
     cookiefile: str = ""
     ytdl_auto_update: bool = True  # Note: inverted from --no-ytdl-auto-update
 
+    # === CACHE OPTIONS ===
+    cache_folder_path: str = ""
+    cache_max_size_mb: int = 5000
+
     def __post_init__(self) -> None:
         """Initialize default values that require complex objects."""
         if self.format_sort is None:
             self.format_sort = [
                 "hasvid,ie_pref,lang,quality,res,fps,br,size,hdr:1,vcodec:vp9.2,vcodec:vp9,asr,proto,ext,hasaud,source,id",
             ]
+
+        # Initialize cache folder path with default if empty
+        if not self.cache_folder_path:
+            from pathlib import Path
+            self.cache_folder_path = str(Path.home() / ".nv_clipper" / "cache")
 
 
 @dataclass

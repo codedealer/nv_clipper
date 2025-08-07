@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import type { SelectedFiles, ProcessingResult, JobStatus, EngineStatus } from '@/types/api'
-import { getAPI, waitForPywebview } from '@/utils/api'
+import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult } from '@/types/api'
+import { waitForPywebview } from '@/utils/api'
 import { useSettingsStore } from './settings'
 
 export const useClipperStore = defineStore('clipper', () => {
@@ -166,7 +166,7 @@ export const useClipperStore = defineStore('clipper', () => {
     }
   }
 
-  async function parseMarkupFile(filePath: string): Promise<any> {
+  async function parseMarkupFile(filePath: string): Promise<ParseMarkupResult> {
     try {
       const api = await waitForPywebview()
       return await api.parse_markup_file(filePath)

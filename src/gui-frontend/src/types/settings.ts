@@ -47,6 +47,10 @@ export interface GeneralSettings {
   ytdl_password: string
   cookiefile: string
   ytdl_auto_update: boolean
+
+  // === CACHE OPTIONS ===
+  cache_folder_path: string
+  cache_max_size_mb: number // 0 = unlimited
 }
 
 export interface VideoSpecificSettings {

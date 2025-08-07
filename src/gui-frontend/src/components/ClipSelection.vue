@@ -50,7 +50,7 @@ interface Clip {
   speed?: number
   crop?: string
   enableZoomPan?: boolean
-  overrides?: Record<string, any>
+  overrides?: Record<string, unknown>
 }
 
 interface Props {

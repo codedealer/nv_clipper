@@ -5,7 +5,6 @@ import type {
   VideoSpecificSettings,
   SettingsSchema
 } from '@/types/settings'
-import type { SettingsApiResponse } from '@/types/api'
 import { waitForPywebview } from '@/utils/api'
 
 export const useSettingsStore = defineStore('settings', () => {

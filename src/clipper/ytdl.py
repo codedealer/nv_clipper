@@ -30,11 +30,18 @@ def ytdl_bin_get_args_base(cs: ClipperState) -> List[str]:
       "--verbose",
       "--no-youtube-include-dash-manifest",
       "--merge-output-format", "mkv",
-      "--format", settings["format"],
-      "--format-sort", shlex.quote(",".join(settings["formatSort"])),
-      "--output", shlex.quote(f'{settings["downloadVideoPath"]}.%(ext)s'),
     ]
     # fmt: on
+
+    # Only add --format if set
+    if settings.get("format"):
+        ytdl_args.extend(["--format", settings["format"]])
+
+    # Only add --format-sort if set
+    if settings.get("formatSort"):
+        ytdl_args.extend(["--format-sort", shlex.quote(",".join(settings["formatSort"]))])
+
+    ytdl_args.extend(["--output", shlex.quote(f'{settings["downloadVideoPath"]}')])
 
     if getattr(sys, "frozen", False):
         ytdl_args.extend(["--ffmpeg-location", shlex.quote(cp.ffmpegPath)])
@@ -51,7 +58,7 @@ def ytdl_bin_get_args_base(cs: ClipperState) -> List[str]:
     return ytdl_args
 
 
-def ytdl_bin_get_video_info(cs: ClipperState) -> Tuple[Dict, str]:
+def ytdl_bin_get_video_info(cs: ClipperState, no_list_formats: bool = False, no_get_info: bool = False) -> Tuple[Dict, str]:
     settings = cs.settings
 
     ytdl_args = ytdl_bin_get_args_base(cs)
@@ -60,30 +67,37 @@ def ytdl_bin_get_video_info(cs: ClipperState) -> Tuple[Dict, str]:
     ytdl_bin_update(cs)
 
     # Get video info using yt-dlp
-    ytdl_args_dump_json = ytdl_args.copy()
-    ytdl_args_dump_json.extend(["--dump-json"])
-    ytdl_args_dump_json.extend([settings["videoPageURL"]])
-    ytdl_dumped_json_process = subprocess.run(
-        args=ytdl_args_dump_json,
-        stdout=subprocess.PIPE,
-        check=True,
-    )
-    ytdl_dumped_json = ytdl_dumped_json_process.stdout.decode("utf-8")
-    ytdl_info = json.loads(ytdl_dumped_json)
+    if not no_get_info:
+        ytdl_args_dump_json = ytdl_args.copy()
+        ytdl_args_dump_json.extend(["--dump-json"])
+        ytdl_args_dump_json.extend([settings["videoPageURL"]])
+        ytdl_dumped_json_process = subprocess.run(
+            args=ytdl_args_dump_json,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        ytdl_dumped_json = ytdl_dumped_json_process.stdout.decode("utf-8")
+        ytdl_info = json.loads(ytdl_dumped_json)
+    else:
+        ytdl_info = {}
 
     # Get available video and audio formats using yt-dlp
-    ytdl_args_list_formats = ytdl_args.copy()
-    ytdl_args_list_formats.extend(["--list-formats"])
-    ytdl_args_list_formats.extend([settings["videoPageURL"]])
-    formats_table_process = subprocess.run(
-        args=ytdl_args_list_formats,
-        stdout=subprocess.PIPE,
-        check=True,
-    )
-    formats_table = formats_table_process.stdout.decode("utf-8")
+    if not no_list_formats:
+        ytdl_args_list_formats = ytdl_args.copy()
+        ytdl_args_list_formats.extend(["--list-formats"])
+        ytdl_args_list_formats.extend([settings["videoPageURL"]])
+        formats_table_process = subprocess.run(
+            args=ytdl_args_list_formats,
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+        formats_table = formats_table_process.stdout.decode("utf-8")
+    else:
+        formats_table = ""
 
     # Download the full video if requested by user
     if settings["downloadVideo"]:
+        ytdl_args.extend([settings["videoPageURL"]])
         subprocess.run(args=ytdl_args, check=True)
         settings["downloadVideoPath"] = f'{settings["downloadVideoPath"]}.mkv'
 

@@ -3,7 +3,7 @@ function isAPIReady(): boolean {
   if (!window.pywebview?.api) return false
 
   // Check if critical methods are available and are functions
-  const api = window.pywebview.api as any
+  const api = window.pywebview.api as Record<string, unknown>
   const requiredMethods = ['get_status', 'get_all_settings', 'process_files']
 
   return requiredMethods.every(method => typeof api[method] === 'function')
@@ -24,15 +24,17 @@ export function waitForPywebview(): Promise<Window['pywebview']['api']> {
     console.log('pywebview API not ready, waiting for initialization...')
 
     let resolved = false
-    let timeoutId: number
-    let pollInterval: number
+    // eslint-disable-next-line prefer-const
+    let timeoutId: number | undefined
+    // eslint-disable-next-line prefer-const
+    let pollInterval: number | undefined
 
     const cleanupAndResolve = (api: Window['pywebview']['api']) => {
       if (resolved) return
       resolved = true
 
-      if (timeoutId) clearTimeout(timeoutId)
-      if (pollInterval) clearInterval(pollInterval)
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+      if (pollInterval !== undefined) clearInterval(pollInterval)
 
       console.log('pywebview API successfully acquired')
       resolve(api)
@@ -42,8 +44,8 @@ export function waitForPywebview(): Promise<Window['pywebview']['api']> {
       if (resolved) return
       resolved = true
 
-      if (timeoutId) clearTimeout(timeoutId)
-      if (pollInterval) clearInterval(pollInterval)
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+      if (pollInterval !== undefined) clearInterval(pollInterval)
 
       console.error('Failed to acquire pywebview API:', error.message)
       reject(error)
@@ -101,7 +103,7 @@ export function getAPI() {
   }
 
   const api = window.pywebview.api
-  const apiAny = api as any // Cast for debugging purposes
+  const apiAny = api as Record<string, unknown> // Cast for debugging purposes
 
   // Debug: log available methods and properties
   console.log('=== pywebview API Debug Info ===')

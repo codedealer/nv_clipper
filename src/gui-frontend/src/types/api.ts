@@ -49,6 +49,32 @@ export interface VideoInfo {
   version: string
 }
 
+// Cache API interfaces
+export interface CacheApiResponse {
+  status: 'success' | 'error'
+  message?: string
+  data?: unknown
+  video_id?: string
+  progress?: unknown
+}
+
+// Cache request types for API (to avoid circular imports)
+export interface ApiCacheDownloadRequest {
+  url: string
+  title?: string
+  use_settings_format?: boolean
+  auto_update?: boolean
+  format?: string
+  format_sort?: string[]
+  ytdl_location?: string
+}
+
+export interface ApiCachePurgeOptions {
+  older_than_days?: number
+  size_limit_mb?: number
+  keep_most_recent?: number
+}
+
 export interface ParseMarkupResult {
   status: 'success' | 'error'
   message?: string
@@ -90,6 +116,15 @@ declare global {
         reset_settings_to_defaults: () => Promise<SettingsApiResponse>
         export_settings_to_args_file: (filePath?: string) => Promise<SettingsApiResponse>
         import_settings_from_args_file: (filePath: string) => Promise<SettingsApiResponse>
+
+        // Cache management
+        get_cache_info: () => Promise<CacheApiResponse>
+        download_video_to_cache: (request: ApiCacheDownloadRequest) => Promise<CacheApiResponse>
+        get_download_progress: (videoId: string) => Promise<CacheApiResponse>
+        cancel_download: (videoId: string) => Promise<CacheApiResponse>
+        delete_cached_video: (videoId: string) => Promise<CacheApiResponse>
+        purge_cache: (options: ApiCachePurgeOptions) => Promise<CacheApiResponse>
+        update_video_access_time: (videoId: string) => Promise<CacheApiResponse>
       }
     }
   }
