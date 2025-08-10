@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import webview
+from webview.dom import DOMEventHandler
 
 # Use absolute imports so PyInstaller frozen app finds modules without package context
 from clipper.cache_manager import get_cache_manager
@@ -31,6 +32,9 @@ class ClipperGUI:
         self.logger = logging.getLogger(__name__)
         self.processing_jobs = {}      # Track processing jobs by ID
         self.job_lock = threading.Lock()
+
+        # Drag and drop state
+        self.current_files = []        # Store current dropped files for processing
 
     def _update_cache_manager_settings(self) -> None:
         """Update cache manager with current settings."""
@@ -470,6 +474,193 @@ class ClipperGUI:
                 'message': f'Failed to update video access time: {e!s}',
             }
 
+    # Drag and Drop Support
+
+    def on_drop(self, e: Dict[str, Any]) -> None:
+        """Handle drop events and extract file paths with proper validation"""
+        try:
+            self.logger.info("Drop event received")
+
+            # Validate event structure
+            if not isinstance(e, dict):
+                self.logger.error("Invalid drop event: not a dictionary")
+                return
+
+            data_transfer = e.get('dataTransfer')
+            if not isinstance(data_transfer, dict):
+                self.logger.error("Invalid drop event: no dataTransfer")
+                return
+
+            files = data_transfer.get('files')
+            if not isinstance(files, list) or not files:
+                self.logger.warning("No files found in drop event")
+                return
+
+            # Extract and validate file paths
+            file_paths = []
+            for i, file in enumerate(files):
+                if not isinstance(file, dict):
+                    self.logger.warning(f"Skipping invalid file entry at index {i}")
+                    continue
+
+                path = file.get('pywebviewFullPath')
+                if not isinstance(path, str) or not path.strip():
+                    self.logger.warning(f"Skipping file with invalid path at index {i}")
+                    continue
+
+                # Validate that the path exists
+                if not Path(path).exists():
+                    self.logger.warning(f"Skipping non-existent file: {path}")
+                    continue
+
+                file_paths.append(path)
+                self.logger.info(f"Validated dropped file: {path}")
+
+            if not file_paths:
+                self.logger.warning("No valid files found in drop event")
+                return
+
+            # Store validated files
+            self.current_files = file_paths
+            self.logger.info(f"Successfully stored {len(file_paths)} valid files")
+
+            # Safely notify frontend
+            self._notify_frontend_of_dropped_files(file_paths)
+
+        except Exception as ex:
+            self.logger.error(f"Error handling drop event: {ex}", exc_info=True)
+
+    def _notify_frontend_of_dropped_files(self, file_paths: List[str]) -> None:
+        """Safely notify frontend of dropped files"""
+        try:
+            if not webview.windows:
+                self.logger.error("No webview windows available for notification")
+                return
+
+            window = webview.windows[0]
+            if not window:
+                self.logger.error("Primary webview window is None")
+                return
+
+            # Safely serialize file paths for JavaScript
+            try:
+                files_json = json.dumps(file_paths)
+            except (TypeError, ValueError) as e:
+                self.logger.error(f"Failed to serialize file paths to JSON: {e}")
+                return
+
+            # Execute JavaScript with error handling
+            js_code = f"""
+            try {{
+                if (typeof window.handleDroppedFiles === 'function') {{
+                    window.handleDroppedFiles({files_json});
+                }} else {{
+                    console.warn('handleDroppedFiles function not available');
+                }}
+            }} catch (error) {{
+                console.error('Error calling handleDroppedFiles:', error);
+            }}
+            """
+
+            window.evaluate_js(js_code)
+            self.logger.info("Successfully notified frontend of dropped files")
+
+        except Exception as e:
+            self.logger.error(f"Failed to notify frontend: {e}", exc_info=True)
+
+    def get_current_files(self) -> Dict[str, Any]:
+        """Get current dropped files with validation"""
+        try:
+            # Validate that stored files still exist
+            valid_files = []
+            for file_path in self.current_files:
+                if Path(file_path).exists():
+                    valid_files.append(file_path)
+                else:
+                    self.logger.warning(f"Stored file no longer exists: {file_path}")
+
+            # Update stored files to only include valid ones
+            if len(valid_files) != len(self.current_files):
+                self.current_files = valid_files
+                self.logger.info(f"Updated stored files list, {len(valid_files)} valid files remain")
+
+            return {
+                'status': 'success',
+                'files': valid_files.copy(),
+                'count': len(valid_files)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting current files: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to get current files: {e!s}',
+                'files': [],
+                'count': 0
+            }
+
+    def clear_current_files(self) -> Dict[str, Any]:
+        """Clear the current dropped files"""
+        try:
+            previous_count = len(self.current_files)
+            self.current_files = []
+            self.logger.info(f"Cleared {previous_count} stored files")
+
+            return {
+                'status': 'success',
+                'message': f'Cleared {previous_count} files',
+                'previous_count': previous_count
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error clearing current files: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to clear files: {e!s}'
+            }
+
+    def setup_drag_drop(self) -> Dict[str, Any]:
+        """Setup drag and drop with comprehensive error handling"""
+        try:
+            self.logger.info("Setting up drag and drop events")
+
+            # Validate webview state
+            if not webview.windows:
+                error_msg = "No webview windows available"
+                self.logger.error(error_msg)
+                return {'status': 'error', 'message': error_msg}
+
+            window = webview.windows[0]
+            if not window:
+                error_msg = "Primary webview window is None"
+                self.logger.error(error_msg)
+                return {'status': 'error', 'message': error_msg}
+
+            # Check if DOM is available
+            if not hasattr(window, 'dom') or not window.dom:
+                error_msg = "DOM not available on webview window"
+                self.logger.error(error_msg)
+                return {'status': 'error', 'message': error_msg}
+
+            # Bind drop event with proper error handling
+            try:
+                window.dom.document.events.drop += DOMEventHandler(self.on_drop, True, True)  # type: ignore
+                self.logger.info("Drop event handler bound successfully")
+            except Exception as bind_error:
+                error_msg = f"Failed to bind drop event: {bind_error}"
+                self.logger.error(error_msg, exc_info=True)
+                return {'status': 'error', 'message': error_msg}
+
+            return {
+                'status': 'success',
+                'message': 'Drag and drop setup completed successfully'
+            }
+
+        except Exception as e:
+            error_msg = f"Failed to setup drag and drop: {e}"
+            self.logger.error(error_msg, exc_info=True)
+            return {'status': 'error', 'message': error_msg}
+
 
 def create_app(dev_mode: bool = False, dev_url: str = "http://localhost:5173") -> webview.Window:
     """Create and configure the webview application"""
@@ -524,7 +715,7 @@ def main() -> None:
     # Detect if running in PyInstaller frozen environment
     is_frozen = getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
-    create_app(dev_mode=dev_mode, dev_url=dev_url)
+    window = create_app(dev_mode=dev_mode, dev_url=dev_url)
 
     # Use debug=False for PyInstaller builds to avoid timeout issues
     debug_mode = not is_frozen

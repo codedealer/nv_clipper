@@ -43,24 +43,26 @@
     </div>
 
     <!-- Drop Zone -->
-    <el-upload
-      ref="uploadRef"
-      class="upload-drop-zone"
-      drag
-      :auto-upload="false"
-      :on-change="handleFileChange"
-      :show-file-list="false"
-      multiple
-      accept=".json,.mp4,.webm,.avi,.mkv,.mov"
+    <div
+      ref="dropZone"
+      class="custom-drop-zone"
+      :class="{
+        'drop-zone-error': setupError,
+        'drop-zone-active': isDragActive
+      }"
+      @dragenter="handleDragEnter"
+      @dragleave="handleDragLeave"
+      @dragover="handleDragOver"
     >
       <el-icon class="upload-icon"><UploadFilled /></el-icon>
       <div class="upload-text">
-        <p>Drop JSON markup here</p>
-        <p class="upload-hint">Optionally include video file</p>
+        <p v-if="!setupError && !isDragActive">Drop JSON markup here</p>
+        <p v-else-if="isDragActive" class="active-text">Release to drop files</p>
+        <p v-else class="error-text">Drag & Drop Error: {{ setupError }}</p>
+        <p class="upload-hint" v-if="!setupError && !isDragActive">Optionally include video file</p>
+        <p class="upload-hint" v-else-if="!isDragActive">Please check the console for details</p>
       </div>
-    </el-upload>
-
-    <!-- Selected Files Display -->
+    </div>    <!-- Selected Files Display -->
     <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
       <el-divider content-position="left">Selected Files</el-divider>
 
@@ -82,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { UploadFile } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import {
@@ -92,6 +94,7 @@ import {
   Document,
   Setting
 } from '@element-plus/icons-vue'
+import { waitForPywebview } from '@/utils/api'
 
 interface Props {
   selectedFiles: {
@@ -105,6 +108,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'files-selected': [filePaths: string[]]
+  'select-files-button': []
   'file-changed': [file: UploadFile]
   'clear-markup': []
   'clear-video': []
@@ -121,13 +125,110 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path
 }
 
+// Types for drag and drop
+interface DroppedFilesHandler {
+  (filePaths: string[]): void
+}
+
+// Extend window interface for TypeScript
+declare global {
+  interface Window {
+    handleDroppedFiles?: DroppedFilesHandler
+  }
+}
+
+// State for tracking setup and drag state
+const isDragDropSetup = ref(false)
+const setupError = ref<string | null>(null)
+const isDragActive = ref(false)
+const dragCounter = ref(0) // Track nested drag enter/leave events (prevents flicker)
+
 async function handleSelectFiles() {
   try {
-    // This would call the store method via emit
-    emit('files-selected', [])
+    // Emit event to request file dialog from parent
+    emit('select-files-button')
   } catch (error) {
     console.error('File selection failed:', error)
     ElMessage.error('File selection failed')
+  }
+}
+
+async function setupDragDrop(): Promise<void> {
+  if (isDragDropSetup.value) {
+    console.log('Drag and drop already setup, skipping')
+    return
+  }
+
+  try {
+    console.log('Setting up pywebview drag and drop...')
+    setupError.value = null
+
+    const api = await waitForPywebview()
+    if (!api) {
+      throw new Error('Failed to get pywebview API')
+    }
+
+    const result = await api.setup_drag_drop()
+    if (!result || result.status !== 'success') {
+      const errorMessage = result?.message || 'Unknown setup error'
+      throw new Error(`Setup failed: ${errorMessage}`)
+    }
+
+    console.log('Pywebview drag and drop setup successful')
+
+    // Setup secure global handler
+    const handleDroppedFiles: DroppedFilesHandler = (filePaths: string[]) => {
+      try {
+        console.log('handleDroppedFiles called with:', filePaths)
+
+        // Reset drag state
+        isDragActive.value = false
+        dragCounter.value = 0
+
+        // Validate input
+        if (!Array.isArray(filePaths) || filePaths.length === 0) {
+          console.warn('Invalid file paths received:', filePaths)
+          ElMessage.warning('No valid files were dropped')
+          return
+        }
+
+        // Filter valid paths
+        const validPaths = filePaths.filter(path =>
+          typeof path === 'string' && path.trim().length > 0
+        )
+
+        if (validPaths.length === 0) {
+          console.warn('No valid file paths after filtering:', filePaths)
+          ElMessage.warning('No valid files were dropped')
+          return
+        }
+
+        console.log(`Emitting files-selected with ${validPaths.length} files:`, validPaths)
+
+        // Emit to parent for processing
+        emit('files-selected', validPaths)
+
+      } catch (error) {
+        console.error('Error handling dropped files:', error)
+        ElMessage.error('Error processing dropped files')
+        // Reset drag state on error
+        isDragActive.value = false
+        dragCounter.value = 0
+      }
+    }    // Safely assign to window (replace any existing handler)
+    if (window.handleDroppedFiles) {
+      console.log('Replacing existing handleDroppedFiles handler')
+    }
+    window.handleDroppedFiles = handleDroppedFiles
+    isDragDropSetup.value = true
+
+    console.log('Drag and drop handler registered successfully')
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Error setting up drag and drop:', errorMessage)
+    setupError.value = errorMessage
+    ElMessage.error(`Failed to setup drag and drop: ${errorMessage}`)
   }
 }
 
@@ -142,6 +243,52 @@ function clearMarkupFile() {
 function clearVideoFile() {
   emit('clear-video')
 }
+
+// Drag event handlers for visual feedback only
+function handleDragEnter(event: DragEvent): void {
+  // Increment counter but cap at reasonable maximum to prevent overflow
+  if (dragCounter.value < 10) {
+    dragCounter.value++
+  }
+
+  // Only activate on first enter
+  if (!isDragActive.value) {
+    isDragActive.value = true
+  }
+}
+
+function handleDragLeave(event: DragEvent): void {
+  // Decrement counter but prevent going negative
+  if (dragCounter.value > 0) {
+    dragCounter.value--
+  }
+
+  // Only deactivate when counter reaches zero
+  if (dragCounter.value === 0) {
+    isDragActive.value = false
+  }
+}
+
+function handleDragOver(event: DragEvent): void {
+  // Prevent default to allow drop, but don't stop propagation
+  // This allows pywebview to still handle the event
+  event.preventDefault()
+}
+
+// Lifecycle hooks
+onMounted(() => {
+  setupDragDrop()
+})
+
+onUnmounted(() => {
+  // Clean up global handler when component is destroyed
+  if (window.handleDroppedFiles) {
+    console.log('Cleaning up drag and drop handler')
+    delete window.handleDroppedFiles
+    isDragDropSetup.value = false
+  }
+})
+
 </script>
 
 <style scoped>
@@ -170,13 +317,49 @@ function clearVideoFile() {
   width: 100%;
 }
 
-.upload-drop-zone :deep(.el-upload-dragger) {
+.custom-drop-zone {
   width: 100%;
   height: 120px;
+  border: 2px dashed var(--el-color-primary);
+  border-radius: 6px;
+  background-color: var(--el-fill-color-light);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.custom-drop-zone:hover {
+  border-color: var(--el-color-primary-light-3);
+  background-color: var(--el-color-primary-light-9);
+}
+
+.custom-drop-zone.drop-zone-active {
+  border-color: var(--el-color-success);
+  background-color: var(--el-color-success-light-9);
+  transform: scale(1.02);
+}
+
+.custom-drop-zone.drop-zone-error {
+  border-color: var(--el-color-danger);
+  background-color: var(--el-color-danger-light-9);
+}
+
+.custom-drop-zone.drop-zone-error:hover {
+  border-color: var(--el-color-danger-light-3);
+  background-color: var(--el-color-danger-light-8);
+}
+
+.error-text {
+  color: var(--el-color-danger);
+  font-weight: 500;
+}
+
+.active-text {
+  color: var(--el-color-success);
+  font-weight: 600;
 }
 
 .upload-icon {
