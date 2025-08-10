@@ -125,6 +125,11 @@ declare global {
         delete_cached_video: (videoId: string) => Promise<CacheApiResponse>
         purge_cache: (options: ApiCachePurgeOptions) => Promise<CacheApiResponse>
         update_video_access_time: (videoId: string) => Promise<CacheApiResponse>
+
+        // Drag and drop
+        setup_drag_drop: () => Promise<{ status: string; message?: string }>
+        get_current_files: () => Promise<{ status: string; files: string[]; count?: number }>
+        clear_current_files: () => Promise<{ status: string; message?: string; previous_count?: number }>
       }
     }
   }

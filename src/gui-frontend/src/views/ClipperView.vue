@@ -29,7 +29,8 @@
                 <FileSelection
                   :selected-files="selectedFiles"
                   :is-processing="isProcessing"
-                  @files-selected="handleSelectFiles"
+                  @files-selected="handleSelectedFiles"
+                  @select-files-button="handleSelectFiles"
                   @file-changed="handleFileChange"
                   @clear-markup="clearMarkupFile"
                   @clear-video="clearVideoFile"
