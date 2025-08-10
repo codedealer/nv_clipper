@@ -10,9 +10,10 @@ from typing import Any, Dict, List, Optional
 
 import webview
 
-from ..cache_manager import get_cache_manager
-from .engine import ClipperEngine
-from .settings_manager import SettingsManager
+# Use absolute imports so PyInstaller frozen app finds modules without package context
+from clipper.cache_manager import get_cache_manager
+from clipper.gui.engine import ClipperEngine
+from clipper.gui.settings_manager import SettingsManager
 
 
 class ClipperGUI:
@@ -520,8 +521,14 @@ def main() -> None:
             dev_url = sys.argv[i + 1]
             break
 
+    # Detect if running in PyInstaller frozen environment
+    is_frozen = getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
     create_app(dev_mode=dev_mode, dev_url=dev_url)
-    webview.start(debug=True)  # Enable debug mode
+
+    # Use debug=False for PyInstaller builds to avoid timeout issues
+    debug_mode = not is_frozen
+    webview.start(debug=debug_mode)
 
 
 def main_dev() -> None:

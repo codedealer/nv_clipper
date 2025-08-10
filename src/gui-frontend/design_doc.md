@@ -35,7 +35,9 @@ When the JSON file is dropped, we should have an option to select only some of t
 
 When the video source is available (was dropped along side JSON or was selected from the cache manually) have an option to select a clip from the parsed JSON file and apply ffmpeg filters to it.
 
-GUI should have an interface similar to a video player with filter options (hue/lightness/saturation/contrast for starters). When a user adjust the filter controls, the preview renders out the resulting clip with the corresponding ffmpeg filters applied.
+**Edge case.** If no json markup file was passed along with the video file, assume the whole file needs to be processed. When processing the video we will create a stub markup for the video clip - a single clip that spans the duration of the video file, no crop.
+
+GUI should have an interface similar to a video player with filter options (hue/lightness/saturation/contrast for starters). When a user adjusts the filter controls, the preview renders out the resulting clip with the corresponding ffmpeg filters applied.
 
 During the render, we pass the resulting filter string to the clipper core (the implementation of this is required as well) and the string is appended to the overall filder for the clip which allows the color grading on the clip by clip basis.
 

@@ -90,6 +90,41 @@ build-py-cpu-fast $UV_PREVIEW="1":
 cache-gpu-libs:
   $env:CACHED_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/yt_clipper.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/py/work-cache/ --distpath ./dist/py-cache/ --specpath ./dist/py/spec-cache --additional-hooks-dir ./hooks --name yt_clipper-cache --noconfirm
 
+# ========================= GUI (pywebview) Build Targets =========================
+# Helper: ensure frontend is built and copied into Python package so app.py finds dist/index.html
+_prepare-gui-frontend:
+  if ($env:FAST_GUI_SKIP_BUILD -eq "1") { Write-Host "Skipping GUI frontend rebuild (FAST_GUI_SKIP_BUILD=1)" -ForegroundColor Yellow } else { Write-Host "Building GUI frontend (fresh build)" -ForegroundColor Yellow; Push-Location src/gui-frontend; pnpm run build; Pop-Location }
+  # Vite already outputs directly to src/clipper/gui/dist via outDir; no copy needed
+  if (-not (Test-Path "src/clipper/gui/dist/index.html")) { throw "GUI frontend build failed: index.html not found in src/clipper/gui/dist" }
+  Write-Host "Verified GUI frontend at src/clipper/gui/dist" -ForegroundColor Green
+
+# Standalone GUI build (all libraries bundled, large exe similar to build-py)
+build-gui $UV_PREVIEW="1":
+  just _prepare-gui-frontend
+  uv run pyinstaller ./src/clipper/gui/app.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/gui/work/ --distpath ./dist/gui/ --specpath ./dist/gui/spec --additional-hooks-dir ./hooks --name yt_clipper_gui --noconfirm --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module gi --exclude-module cefpython3 --exclude-module wx --exclude-module wxPython --add-data "../../../src/clipper/gui/dist;dist"
+
+# Runtime GUI build (small exe + external CUDA DLLs loaded at runtime)
+build-gui-runtime $UV_PREVIEW="1":
+  just _prepare-gui-frontend
+  if (-not (Test-Path "./cache/gpu-libs/.cache_complete")) { Write-Host "Creating GPU library cache..."; just cache-gpu-libs; }
+  $env:RUNTIME_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/gui/app.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/gui/work-runtime/ --distpath ./dist/gui-runtime/ --specpath ./dist/gui/spec-runtime --additional-hooks-dir ./hooks --name yt_clipper_gui --noconfirm --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module gi --exclude-module cefpython3 --exclude-module wx --exclude-module wxPython --add-data "../../../src/clipper/gui/dist;dist"
+
+# Minimal CPU-only GUI build for CI (fast, excludes GPU heavy deps)
+build-gui-cpu-fast $UV_PREVIEW="1":
+  just _prepare-gui-frontend
+  $env:SKIP_GPU_LIBS = "1"; uv run pyinstaller ./src/clipper/gui/app.py --icon=../../../assets/image/pepe-clipper.gif --onefile --workpath ./dist/gui/work-cpu/ --distpath ./dist/gui-cpu/ --specpath ./dist/gui/spec-cpu --additional-hooks-dir ./hooks --exclude-module onnxruntime --name yt_clipper_gui --noconfirm --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 --exclude-module PySide6 --exclude-module gi --exclude-module cefpython3 --exclude-module wx --exclude-module wxPython --add-data "../../../src/clipper/gui/dist;dist"
+
+# Package GUI runtime build for release
+package-release-gui:
+  just build-gui-runtime
+  Write-Host "Created yt_clipper_gui.exe (~similar size to core runtime) + lib-cuda/ folder with GPU DLLs" -ForegroundColor Cyan
+
+# Combined release package (core + GUI runtime builds)
+package-release-all:
+  just build-py-runtime
+  just build-gui-runtime
+  Write-Host "Created core and GUI runtime executables" -ForegroundColor Cyan
+
 # Create deployment package (uses runtime loading for small executable)
 package-release:
   just build-py-runtime
