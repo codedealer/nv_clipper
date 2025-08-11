@@ -587,7 +587,7 @@ class ClipperGUI:
             return {
                 'status': 'success',
                 'files': valid_files.copy(),
-                'count': len(valid_files)
+                'count': len(valid_files),
             }
 
         except Exception as e:
@@ -596,7 +596,7 @@ class ClipperGUI:
                 'status': 'error',
                 'message': f'Failed to get current files: {e!s}',
                 'files': [],
-                'count': 0
+                'count': 0,
             }
 
     def clear_current_files(self) -> Dict[str, Any]:
@@ -609,14 +609,14 @@ class ClipperGUI:
             return {
                 'status': 'success',
                 'message': f'Cleared {previous_count} files',
-                'previous_count': previous_count
+                'previous_count': previous_count,
             }
 
         except Exception as e:
             self.logger.error(f"Error clearing current files: {e}", exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Failed to clear files: {e!s}'
+                'message': f'Failed to clear files: {e!s}',
             }
 
     def setup_drag_drop(self) -> Dict[str, Any]:
@@ -653,7 +653,7 @@ class ClipperGUI:
 
             return {
                 'status': 'success',
-                'message': 'Drag and drop setup completed successfully'
+                'message': 'Drag and drop setup completed successfully',
             }
 
         except Exception as e:
@@ -715,7 +715,7 @@ def main() -> None:
     # Detect if running in PyInstaller frozen environment
     is_frozen = getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
-    window = create_app(dev_mode=dev_mode, dev_url=dev_url)
+    create_app(dev_mode=dev_mode, dev_url=dev_url)
 
     # Use debug=False for PyInstaller builds to avoid timeout issues
     debug_mode = not is_frozen
