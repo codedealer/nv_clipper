@@ -43,24 +43,29 @@
     </div>
 
     <!-- Drop Zone -->
-    <div
-      ref="dropZone"
-      class="custom-drop-zone"
-      :class="{
-        'drop-zone-error': setupError,
-        'drop-zone-active': isDragActive
-      }"
-      @dragenter="handleDragEnter"
-      @dragleave="handleDragLeave"
-      @dragover="handleDragOver"
-    >
-      <el-icon class="upload-icon"><UploadFilled /></el-icon>
-      <div class="upload-text">
-        <p v-if="!setupError && !isDragActive">Drop JSON markup here</p>
-        <p v-else-if="isDragActive" class="active-text">Release to drop files</p>
-        <p v-else class="error-text">Drag & Drop Error: {{ setupError }}</p>
-        <p class="upload-hint" v-if="!setupError && !isDragActive">Optionally include video file</p>
-        <p class="upload-hint" v-else-if="!isDragActive">Please check the console for details</p>
+    <div class="drop-zone-container">
+      <div
+        ref="dropZoneOverlay"
+        class="custom-drop-zone-overlay"
+        @dragenter="handleDragEnter"
+        @dragleave="handleDragLeave"
+        @dragover="handleDragOver"
+      ></div>
+      <div
+        class="custom-drop-zone"
+        :class="{
+          'drop-zone-error': setupError,
+          'drop-zone-active': isDragActive
+        }"
+      >
+        <el-icon class="upload-icon"><UploadFilled /></el-icon>
+        <div class="upload-text">
+          <p v-if="!setupError && !isDragActive">Drop JSON markup here</p>
+          <p v-else-if="isDragActive" class="active-text">Release to drop files</p>
+          <p v-else class="error-text">Drag & Drop Error: {{ setupError }}</p>
+          <p class="upload-hint" v-if="!setupError && !isDragActive">Optionally include video file</p>
+          <p class="upload-hint" v-else-if="!isDragActive">Please check the console for details</p>
+        </div>
       </div>
     </div>    <!-- Selected Files Display -->
     <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
@@ -141,7 +146,7 @@ declare global {
 const isDragDropSetup = ref(false)
 const setupError = ref<string | null>(null)
 const isDragActive = ref(false)
-const dragCounter = ref(0) // Track nested drag enter/leave events (prevents flicker)
+// const dragCounter = ref(0) // Track nested drag enter/leave events (prevents flicker)
 
 async function handleSelectFiles() {
   try {
@@ -183,7 +188,6 @@ async function setupDragDrop(): Promise<void> {
 
         // Reset drag state
         isDragActive.value = false
-        dragCounter.value = 0
 
         // Validate input
         if (!Array.isArray(filePaths) || filePaths.length === 0) {
@@ -213,7 +217,6 @@ async function setupDragDrop(): Promise<void> {
         ElMessage.error('Error processing dropped files')
         // Reset drag state on error
         isDragActive.value = false
-        dragCounter.value = 0
       }
     }    // Safely assign to window (replace any existing handler)
     if (window.handleDroppedFiles) {
@@ -232,10 +235,6 @@ async function setupDragDrop(): Promise<void> {
   }
 }
 
-function handleFileChange(file: UploadFile) {
-  emit('file-changed', file)
-}
-
 function clearMarkupFile() {
   emit('clear-markup')
 }
@@ -245,28 +244,12 @@ function clearVideoFile() {
 }
 
 // Drag event handlers for visual feedback only
-function handleDragEnter(event: DragEvent): void {
-  // Increment counter but cap at reasonable maximum to prevent overflow
-  if (dragCounter.value < 10) {
-    dragCounter.value++
-  }
-
-  // Only activate on first enter
-  if (!isDragActive.value) {
-    isDragActive.value = true
-  }
+function handleDragEnter(): void {
+  isDragActive.value = true
 }
 
-function handleDragLeave(event: DragEvent): void {
-  // Decrement counter but prevent going negative
-  if (dragCounter.value > 0) {
-    dragCounter.value--
-  }
-
-  // Only deactivate when counter reaches zero
-  if (dragCounter.value === 0) {
-    isDragActive.value = false
-  }
+function handleDragLeave(): void {
+  isDragActive.value = false
 }
 
 function handleDragOver(event: DragEvent): void {
@@ -317,9 +300,24 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.custom-drop-zone {
+.drop-zone-container {
+  position: relative;
   width: 100%;
   height: 120px;
+}
+
+.custom-drop-zone-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+}
+
+.custom-drop-zone {
+  width: 100%;
+  height: 100%;
   border: 2px dashed var(--el-color-primary);
   border-radius: 6px;
   background-color: var(--el-fill-color-light);
