@@ -88,6 +88,34 @@ jobs:
 
       - run: just bundle-prod
 
+      # Build GUI frontend only on PRs (we don't package a GUI exe in releases)
+      - name: Setup pnpm (for GUI build on PRs)
+        if: github.event_name == 'pull_request'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Enable pnpm cache
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+          cache-dependency-path: 'src/gui-frontend/pnpm-lock.yaml'
+
+      - name: Install GUI deps (pnpm)
+        if: github.event_name == 'pull_request'
+        working-directory: src/gui-frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint GUI frontend (PR only)
+        if: github.event_name == 'pull_request'
+        run: just gui-lint
+
+      - name: Build GUI frontend (PR only)
+        if: github.event_name == 'pull_request'
+        run: just gui-build
+
       # Only run linter and tests for PRs, skip build and artifact steps
       - name: Install uv
         uses: astral-sh/setup-uv@v5
