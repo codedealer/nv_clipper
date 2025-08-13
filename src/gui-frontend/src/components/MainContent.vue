@@ -12,61 +12,105 @@
     </div>
 
     <div v-else class="content-area">
-      <!-- Video Preview Area -->
-      <el-card v-if="hasVideoFile" class="preview-card" shadow="hover">
-        <template #header>
-          <div class="card-header">
-            <el-icon><Monitor /></el-icon>
-            <span>Video Preview</span>
+      <el-container direction="horizontal" style="height: 100%;">
+        <!-- Main Content Area (Video Preview & Timeline) -->
+        <el-main class="central-content">
+          <!-- Video Preview Area -->
+          <el-card v-if="hasVideoFile" class="preview-card" shadow="hover">
+            <template #header>
+              <div class="card-header">
+                <el-icon><Monitor /></el-icon>
+                <span>Video Preview</span>
+              </div>
+            </template>
+
+            <div class="video-preview-placeholder">
+              <el-icon size="60"><VideoCamera /></el-icon>
+              <p>Video preview coming soon...</p>
+              <p class="preview-filename">{{ getFileName(videoFile || '') }}</p>
+            </div>
+          </el-card>
+
+          <!-- Timeline Area -->
+          <el-card v-if="clipCount > 0" class="timeline-card" shadow="hover">
+            <template #header>
+              <div class="card-header">
+                <el-icon><Timer /></el-icon>
+                <span>Timeline</span>
+              </div>
+            </template>
+
+            <div class="timeline-placeholder">
+              <el-icon size="60"><Timer /></el-icon>
+              <p>Timeline view coming soon...</p>
+              <p>{{ clipCount }} clips loaded</p>
+            </div>
+          </el-card>
+        </el-main>
+
+        <!-- Right Sidebar: Color Grading Panel -->
+        <el-aside width="520px" class="color-grading-sidebar" v-if="hasVideoFile && clipCount > 0">
+          <div class="sidebar-content">
+            <ColorGradingPanel
+              :selected-clip="selectedClip"
+              :video-path="videoFile"
+              :is-processing="isProcessing"
+              @color-grading-changed="handleColorGradingChanged"
+            />
           </div>
-        </template>
-
-        <div class="video-preview-placeholder">
-          <el-icon size="60"><VideoCamera /></el-icon>
-          <p>Video preview coming soon...</p>
-          <p class="preview-filename">{{ getFileName(videoFile || '') }}</p>
-        </div>
-      </el-card>
-
-      <!-- Timeline Area -->
-      <el-card v-if="clipCount > 0" class="timeline-card" shadow="hover">
-        <template #header>
-          <div class="card-header">
-            <el-icon><Timer /></el-icon>
-            <span>Timeline</span>
-          </div>
-        </template>
-
-        <div class="timeline-placeholder">
-          <el-icon size="60"><Timer /></el-icon>
-          <p>Timeline view coming soon...</p>
-          <p>{{ clipCount }} clips loaded</p>
-        </div>
-      </el-card>
+        </el-aside>
+      </el-container>
     </div>
   </el-main>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   Document,
   Monitor,
   VideoCamera,
   Timer
 } from '@element-plus/icons-vue'
+import ColorGradingPanel from './ColorGradingPanel.vue'
+import type { ClipInfo } from '@/types/api'
 
 interface Props {
   hasMarkupFile: boolean
   hasVideoFile: boolean
   videoFile: string | null
   clipCount: number
+  selectedClips: number[]
+  parsedClips: ClipInfo[]
+  isProcessing?: boolean
 }
 
-defineProps<Props>()
+interface Emits {
+  (e: 'color-grading-changed', clipNumber: number, filter: string): void
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isProcessing: false
+})
+
+const emit = defineEmits<Emits>()
+
+// Computed properties
+const selectedClip = computed(() => {
+  if (!props.parsedClips.length || !props.selectedClips.length) return null
+
+  // For now, use the first selected clip
+  const selectedIndex = props.selectedClips[0]
+  return props.parsedClips[selectedIndex] || null
+})
 
 // Methods
 function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path
+}
+
+function handleColorGradingChanged(clipNumber: number, filter: string) {
+  emit('color-grading-changed', clipNumber, filter)
 }
 </script>
 
@@ -85,9 +129,24 @@ function getFileName(path: string): string {
 
 .content-area {
   height: 100%;
+}
+
+.central-content {
+  padding-right: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.color-grading-sidebar {
+  border-left: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+}
+
+.sidebar-content {
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .card-header {

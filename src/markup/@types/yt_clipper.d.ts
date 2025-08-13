@@ -56,6 +56,7 @@ interface MarkerPair {
   enableZoomPan: boolean;
   cropRes: string;
   outputDuration: number;
+  colorGrading?: string;
   overrides: MarkerPairOverrides;
   startNumbering: SVGTextElement;
   endNumbering: SVGTextElement;
@@ -71,6 +72,7 @@ interface MarkerPairHistory {
   cropMap: CropPoint[];
   enableZoomPan: boolean;
   cropRes: string;
+  colorGrading?: string;
 }
 
 interface MarkerConfig {
@@ -108,6 +110,7 @@ interface MarkerPairOverrides {
   minterpProvider?: string;
   loop?: Loop;
   fadeDuration?: number;
+  colorGrading?: string;
   videoEnhancementEnabled?: boolean;
   videoEnhancementModel?: VideoEnhancement['model'];
   videoEnhancementCompression?: VideoEnhancement['compression'];

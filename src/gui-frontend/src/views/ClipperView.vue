@@ -76,6 +76,10 @@
         :has-video-file="hasVideoFile"
         :video-file="selectedFiles.video"
         :clip-count="parsedClips.length"
+        :selected-clips="selectedClips"
+        :parsed-clips="parsedClips"
+        :is-processing="isProcessing"
+        @color-grading-changed="handleColorGradingChanged"
       />
     </el-container>
 
@@ -381,6 +385,23 @@ async function handleExportSettings() {
 
 async function handleImportSettings() {
   ElMessage.info('Import from args file feature coming soon...')
+}
+
+// Color grading handler
+function handleColorGradingChanged(clipNumber: number, filter: string) {
+  // Find the clip and update its color grading
+  const clip = parsedClips.value.find(c => c.number === clipNumber)
+  if (clip) {
+    // Update the clip's color grading in the overrides
+    clip.overrides = {
+      ...clip.overrides,
+      colorGrading: filter || undefined
+    }
+
+    ElMessage.success(filter ? 'Color grading applied to clip' : 'Color grading removed from clip')
+  } else {
+    ElMessage.error('Clip not found')
+  }
 }
 </script>
 

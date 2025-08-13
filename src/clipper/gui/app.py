@@ -2,6 +2,8 @@
 
 import json
 import logging
+import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -660,6 +662,129 @@ class ClipperGUI:
             error_msg = f"Failed to setup drag and drop: {e}"
             self.logger.error(error_msg, exc_info=True)
             return {'status': 'error', 'message': error_msg}
+
+    def generate_frame_preview(self, video_path: str, timestamp: float,
+                             color_grading: Optional[str] = None,
+                             resolution_scale: float = 1.0) -> Dict[str, Any]:
+        """Generate a frame preview with optional color grading filters.
+
+        Args:
+            video_path: Path to the video file
+            timestamp: Time in seconds to extract frame from
+            color_grading: Optional FFmpeg color grading filter string
+            resolution_scale: Scale factor for output resolution (0.25, 0.5, 1.0)
+
+        Returns:
+            Dict with status, message, and base64_image for success
+        """
+        try:
+            import base64
+            from subprocess import PIPE
+
+            self.logger.info(f"Generating frame preview for {video_path} at {timestamp}s")
+
+            # Validate inputs
+            video_file = Path(video_path)
+            if not video_file.exists():
+                return {
+                    'status': 'error',
+                    'message': f'Video file not found: {video_path}'
+                }
+
+            if timestamp < 0:
+                return {
+                    'status': 'error',
+                    'message': 'Timestamp must be non-negative'
+                }
+
+            if resolution_scale not in [0.25, 0.5, 1.0]:
+                return {
+                    'status': 'error',
+                    'message': 'Resolution scale must be 0.25, 0.5, or 1.0'
+                }
+
+            # Build FFmpeg command to output JPEG to stdout
+            ffmpeg_cmd = [
+                'ffmpeg',
+                '-ss', str(timestamp),  # Seek to timestamp
+                '-i', str(video_file),  # Input video
+                '-vframes', '1',        # Extract one frame
+                '-f', 'image2pipe',     # Output as image pipe
+                '-vcodec', 'mjpeg',     # JPEG codec
+                '-q:v', '2'             # High quality JPEG
+            ]
+
+            # Build video filter chain
+            filters = []
+
+            # Add scaling if needed
+            if resolution_scale != 1.0:
+                filters.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}')
+
+            # Add color grading if provided
+            if color_grading:
+                from clipper.ffmpeg_filter import _validate_color_grading_filter
+                if _validate_color_grading_filter(color_grading):
+                    filters.append(color_grading)
+                else:
+                    return {
+                        'status': 'error',
+                        'message': 'Invalid color grading filter string'
+                    }
+
+            # Apply filters if any
+            if filters:
+                ffmpeg_cmd.extend(['-vf', ','.join(filters)])
+
+            # Output to stdout (pipe)
+            ffmpeg_cmd.append('pipe:1')
+
+            # Execute FFmpeg command and capture stdout
+            self.logger.debug(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
+            result = subprocess.run(
+                ffmpeg_cmd,
+                stdout=PIPE,
+                stderr=PIPE,
+                timeout=30  # 30 second timeout
+            )
+
+            if result.returncode != 0:
+                return {
+                    'status': 'error',
+                    'message': f'FFmpeg failed: {result.stderr.decode()}'
+                }
+
+            # Check if we got image data
+            if not result.stdout:
+                return {
+                    'status': 'error',
+                    'message': 'Frame extraction failed - no output generated'
+                }
+
+            # Encode the image data as base64
+            image_base64 = base64.b64encode(result.stdout).decode('utf-8')
+
+            self.logger.info(f"Frame preview generated successfully (base64, {len(image_base64)} chars)")
+            return {
+                'status': 'success',
+                'message': 'Frame preview generated',
+                'base64_image': image_base64,
+                'mime_type': 'image/jpeg',
+                'timestamp': timestamp,
+                'resolution_scale': resolution_scale
+            }
+
+        except subprocess.TimeoutExpired:
+            return {
+                'status': 'error',
+                'message': 'Frame extraction timed out'
+            }
+        except Exception as e:
+            self.logger.error(f"Error generating frame preview: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to generate frame preview: {e!s}'
+            }
 
 
 def create_app(dev_mode: bool = False, dev_url: str = "http://localhost:5173") -> webview.Window:

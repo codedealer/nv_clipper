@@ -18,6 +18,69 @@ from clipper.clipper_types import (
 from clipper.ytc_logger import logger
 
 
+def getColorGradingFilter(mp: DictStrAny, mps: DictStrAny) -> str:
+    """
+    Generate FFmpeg color grading filter string from clip settings.
+
+    Args:
+        mp: MarkerPair data dict
+        mps: Merged settings dict containing overrides
+
+    Returns:
+        str: FFmpeg filter string for color grading, empty if no color grading is set
+    """
+    # Check for color grading in overrides first, then in the marker pair itself
+    color_grading = None
+    if "colorGrading" in mps and mps["colorGrading"]:
+        color_grading = mps["colorGrading"]
+    elif "colorGrading" in mp and mp["colorGrading"]:
+        color_grading = mp["colorGrading"]
+
+    if not color_grading:
+        return ""
+
+    # Validate the filter string to ensure it's safe for FFmpeg
+    if not _validate_color_grading_filter(color_grading):
+        logger.warning(f"Invalid color grading filter string: {color_grading}")
+        return ""
+
+    logger.debug(f"Applying color grading filter: {color_grading}")
+    return f",{color_grading}"
+
+
+def _validate_color_grading_filter(filter_string: str) -> bool:
+    """
+    Validate color grading filter string for safety.
+
+    Args:
+        filter_string: The filter string to validate
+
+    Returns:
+        bool: True if the filter string is valid, False otherwise
+    """
+    if not filter_string or not isinstance(filter_string, str):
+        return False
+
+    # List of allowed color grading filters
+    allowed_filters = [
+        'hue', 'eq', 'colorbalance', 'curves', 'colorchannelmixer',
+        'vibrance', 'lutyuv', 'lutrgb', 'colorspace', 'colormatrix',
+        'geq', 'selectivecolor', 'tonemap'
+    ]
+
+    # Basic validation - check if the filter starts with one of the allowed filters
+    filter_name = filter_string.split('=')[0].strip()
+    if filter_name not in allowed_filters:
+        return False
+
+    # Additional safety checks
+    dangerous_chars = [';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>']
+    if any(char in filter_string for char in dangerous_chars):
+        return False
+
+    return True
+
+
 def autoScaleCropMap(cropMap: List[Dict[str, Any]], settings: Settings) -> None:
     for cropPoint in cropMap:
         cropString = cropPoint["crop"]
