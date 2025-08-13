@@ -27,6 +27,7 @@ from clipper.ffmpeg_filter import (
     autoScaleCropMap,
     getAutoScaledCropComponents,
     getAverageSpeed,
+    getColorGradingFilter,
     getCropFilter,
     getEasingExpression,
     getMinterpFilter,
@@ -693,9 +694,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     else:
         enhanceFilter = ""
 
+    colorGradingFilter = getColorGradingFilter(mp, mps)
+
     # because upscale is not supported, for performance reasons we enhance first, then interpolate
     # if later upscale is introduced, the filters should be reordered to minimize VRAM usage
-    postprocess_filter = enhanceFilter + minterpFilter
+    postprocess_filter = colorGradingFilter + enhanceFilter + minterpFilter
 
     overwriteArg = " -y " if mps["overwrite"] else " -n "
     vidstabEnabled = mps["videoStabilization"]["enabled"]

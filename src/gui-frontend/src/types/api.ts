@@ -93,6 +93,23 @@ export interface SettingsApiResponse {
   file_path?: string
 }
 
+// Frame preview API interfaces
+export interface FramePreviewRequest {
+  video_path: string
+  timestamp: number
+  color_grading?: string
+  resolution_scale?: number
+}
+
+export interface FramePreviewResult {
+  status: 'success' | 'error'
+  message?: string
+  base64_image?: string
+  mime_type?: string
+  timestamp?: number
+  resolution_scale?: number
+}
+
 // Pywebview API interface
 declare global {
   interface Window {
@@ -105,6 +122,9 @@ declare global {
         select_files: () => Promise<string[]>
         parse_markup_file: (filePath: string) => Promise<ParseMarkupResult>
         cleanup_old_jobs: () => Promise<{ cleaned: number }>
+
+        // Frame preview
+        generate_frame_preview: (videoPath: string, timestamp: number, colorGrading?: string, resolutionScale?: number) => Promise<FramePreviewResult>
 
         // Settings management
         get_general_settings: () => Promise<SettingsApiResponse>

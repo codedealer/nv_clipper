@@ -6,6 +6,8 @@ Vue frontend that is served by pywebview as a native Windows app. GUI serves as 
 
 It is paramount, that GUI is optional for the functioning of NV Clipper, and the app can still be run through CLI.
 
+The Python part that serves as a backend is located at `src/clipper/gui`. The frontend is located at `src/gui-frontend/src`.
+
 ## Barebones usecase
 
 1. Drop a JSON markup and a video source
@@ -35,11 +37,11 @@ When the JSON file is dropped, we should have an option to select only some of t
 
 When the video source is available (was dropped along side JSON or was selected from the cache manually) have an option to select a clip from the parsed JSON file and apply ffmpeg filters to it.
 
-**Edge case.** If no json markup file was passed along with the video file, assume the whole file needs to be processed. When processing the video we will create a stub markup for the video clip - a single clip that spans the duration of the video file, no crop.
+**Edge case.** If no json markup file was passed along with the video file, assume the whole file needs to be processed. When processing the video we will create a stub markup for the video file - a single clip that spans the duration of the video file, no crop.
 
 GUI should have an interface similar to a video player with filter options (hue/lightness/saturation/contrast for starters). When a user adjusts the filter controls, the preview renders out the resulting clip with the corresponding ffmpeg filters applied.
 
-During the render, we pass the resulting filter string to the clipper core (the implementation of this is required as well) and the string is appended to the overall filder for the clip which allows the color grading on the clip by clip basis.
+During the render, we pass the resulting filter string to the clipper core (the implementation of this is required as well) and the string is appended to the overall filter for the clip which allows the color grading on the clip by clip basis.
 
 **Later UX imprevements**
 - Allow to copy/paste resulting filter strings between clips/video sources to speed up the process of color grading
@@ -47,7 +49,3 @@ During the render, we pass the resulting filter string to the clipper core (the 
 ## Testing and building
 
 The target platform is Windows. The package manager for frontend is pnpm, for backend we use uv. The terminal is Powershell, so use Powershell syntax
-
-To build frontend: `pnpm run build`
-
-To launch the GUI: `uv run yt_clipper_gui`
