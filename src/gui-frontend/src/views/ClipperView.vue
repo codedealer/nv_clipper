@@ -19,6 +19,29 @@
             </el-button>
           </el-button-group>
         </div>
+        <div class="quick-download">
+          <el-input
+            v-model="quickDownloadUrl"
+            placeholder="Paste URL to quickly download to cache..."
+            size="small"
+            style="width: 300px;"
+            clearable
+            @keyup.enter="handleQuickDownload"
+            :loading="isQuickDownloading"
+          >
+            <template #append>
+              <el-button
+                @click="handleQuickDownload"
+                :disabled="!quickDownloadUrl.trim() || isQuickDownloading"
+                :loading="isQuickDownloading"
+                :icon="Download"
+                size="small"
+              >
+                Download
+              </el-button>
+            </template>
+          </el-input>
+        </div>
         <div class="status-indicator">
           <el-tag
             :type="getStatusType()"
@@ -163,12 +186,14 @@ import {
   ElButton,
   ElButtonGroup,
   ElAlert,
-  ElMessage
+  ElMessage,
+  ElInput
 } from 'element-plus'
-import { Coin, Setting } from '@element-plus/icons-vue'
+import { Coin, Setting, Download } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
 import { useSettingsStore } from '@/stores/settings'
+import { useCacheStore } from '@/stores/cache'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 import FileSelection from '@/components/FileSelection.vue'
 import ClipSelection from '@/components/ClipSelection.vue'
@@ -183,10 +208,13 @@ import type { ClipInfo } from '@/types/api'
 // Store
 const clipperStore = useClipperStore()
 const settingsStore = useSettingsStore()
+const cacheStore = useCacheStore()
 
 // Local state
 const showVideoCache = ref(false)
 const showSettings = ref(false)
+const quickDownloadUrl = ref('')
+const isQuickDownloading = ref(false)
 const parsedClips = ref<ClipInfo[]>([])
 const selectedClips = ref<number[]>([])
 const activeColorGradingClip = ref<number | null>(null) // Index of clip active for color grading
@@ -535,6 +563,36 @@ function handleVideoDownloadRequest() {
   ElMessage.info('Download started. Check the Video Cache for progress.')
 }
 
+async function handleQuickDownload() {
+  const url = quickDownloadUrl.value.trim()
+  if (!url) {
+    ElMessage.warning('Please enter a video URL')
+    return
+  }
+
+  isQuickDownloading.value = true
+
+  try {
+    const result = await cacheStore.downloadVideo({
+      url,
+      use_settings_format: false, // Use default format for quick download
+      auto_update: settingsStore.generalSettings?.ytdl_auto_update ?? true
+    })
+
+    if (result.status === 'success') {
+      ElMessage.success('Download started successfully!')
+      quickDownloadUrl.value = '' // Clear the input
+    } else {
+      ElMessage.error(`Download failed: ${result.message}`)
+    }
+  } catch (error) {
+    ElMessage.error('Failed to start download')
+    console.error('Quick download error:', error)
+  } finally {
+    isQuickDownloading.value = false
+  }
+}
+
 function handleCloseSettings() {
   showSettings.value = false
 }
@@ -624,6 +682,14 @@ function handleClipSelectedForColorGrading(clipIndex: number) {
 .header-controls {
   display: flex;
   align-items: center;
+}
+
+.quick-download {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  justify-content: center;
+  margin: 0 20px;
 }
 
 .app-title {
