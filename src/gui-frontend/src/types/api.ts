@@ -110,6 +110,30 @@ export interface FramePreviewResult {
   resolution_scale?: number
 }
 
+// Video info API interfaces
+export interface VideoInfo {
+  duration?: number
+  width?: number
+  height?: number
+  codec_name?: string
+  bit_rate?: number
+  frame_rate?: string
+  path: string
+}
+
+export interface VideoInfoResult {
+  status: 'success' | 'error'
+  message?: string
+  video_info?: VideoInfo
+}
+
+// Temp markup file interfaces
+export interface TempMarkupFileResult {
+  status: 'success' | 'error'
+  message?: string
+  temp_file_path?: string
+}
+
 // Pywebview API interface
 declare global {
   interface Window {
@@ -125,6 +149,12 @@ declare global {
 
         // Frame preview
         generate_frame_preview: (videoPath: string, timestamp: number, colorGrading?: string, resolutionScale?: number) => Promise<FramePreviewResult>
+
+        // Video info
+        get_video_info: (videoPath: string) => Promise<VideoInfoResult>
+
+        // Temp markup file creation
+        create_temp_markup_file: (markupData: Record<string, any>) => Promise<TempMarkupFileResult>
 
         // Settings management
         get_general_settings: () => Promise<SettingsApiResponse>

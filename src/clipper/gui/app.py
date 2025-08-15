@@ -663,6 +663,108 @@ class ClipperGUI:
             self.logger.error(error_msg, exc_info=True)
             return {'status': 'error', 'message': error_msg}
 
+    def get_video_info(self, video_path: str) -> Dict[str, Any]:
+        """Get video information including duration and other properties.
+
+        Args:
+            video_path: Path to the video file
+
+        Returns:
+            Dict with status, message, and video info for success
+        """
+        try:
+            from clipper.clipper_types import ClipperState, ClipperPaths
+            from clipper.ffprobe import ffprobeVideoProperties
+
+            self.logger.info(f"Getting video info for {video_path}")
+
+            # Validate video file exists
+            video_file = Path(video_path)
+            if not video_file.exists():
+                return {
+                    'status': 'error',
+                    'message': f'Video file not found: {video_path}'
+                }
+
+            # Create a clipper state with default paths and required settings for ffprobe
+            cs = ClipperState(
+                settings={
+                    'platform': 'ytc_generic'  # Required for ffprobe
+                },
+                clipper_paths=ClipperPaths()
+            )
+
+            # Use ffprobe to get video properties
+            video_properties = ffprobeVideoProperties(cs, str(video_file))
+
+            if not video_properties:
+                return {
+                    'status': 'error',
+                    'message': 'Failed to get video properties with ffprobe'
+                }
+
+            # Extract duration from format info if available
+            duration = None
+            if 'duration' in video_properties:
+                duration = float(video_properties['duration'])
+
+            # Return formatted video info
+            return {
+                'status': 'success',
+                'message': 'Video info retrieved successfully',
+                'video_info': {
+                    'duration': duration,
+                    'width': video_properties.get('width'),
+                    'height': video_properties.get('height'),
+                    'codec_name': video_properties.get('codec_name'),
+                    'bit_rate': video_properties.get('bit_rate'),
+                    'frame_rate': video_properties.get('r_frame_rate'),
+                    'path': str(video_file)
+                }
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error getting video info: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to get video info: {e!s}'
+            }
+
+    def create_temp_markup_file(self, markup_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a temporary markup file from markup data.
+
+        Args:
+            markup_data: Dictionary containing the markup structure
+
+        Returns:
+            Dict with status, message, and temp_file_path for success
+        """
+        try:
+            import json
+            import tempfile
+
+            self.logger.info("Creating temporary markup file for processing")
+
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                json.dump(markup_data, temp_file, indent=2)
+                temp_file_path = temp_file.name
+
+            self.logger.info(f"Created temporary markup file: {temp_file_path}")
+
+            return {
+                'status': 'success',
+                'message': 'Temporary markup file created',
+                'temp_file_path': temp_file_path
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error creating temporary markup file: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to create temporary markup file: {e!s}'
+            }
+
     def generate_frame_preview(self, video_path: str, timestamp: float,
                              color_grading: Optional[str] = None,
                              resolution_scale: float = 1.0) -> Dict[str, Any]:
