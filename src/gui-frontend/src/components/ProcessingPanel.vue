@@ -77,6 +77,9 @@ const overwriteFiles = computed({
 <style scoped>
 .processing-card {
   margin: 0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .processing-card :deep(.el-card__body) {

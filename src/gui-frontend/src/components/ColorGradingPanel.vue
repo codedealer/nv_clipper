@@ -1,123 +1,93 @@
 <template>
   <div class="color-grading-panel">
-    <el-card>
-      <template #header>
-        <div class="panel-header">
-          <h3>Color Grading</h3>
-          <div class="header-controls">
-            <el-button
-              v-if="!isEnabled"
-              type="primary"
-              size="small"
-              @click="enableColorGrading"
-              :disabled="!hasVideoAndClip"
-            >
-              Enable
-            </el-button>
-            <el-button
-              v-else
-              type="info"
-              size="small"
-              @click="disableColorGrading"
-            >
-              Disable
-            </el-button>
-            <el-button
-              v-if="isEnabled"
-              size="small"
-              @click="resetToDefaults"
-            >
-              Reset
-            </el-button>
-          </div>
-        </div>
-      </template>
-
+    <div class="panel-content">
       <div v-if="!hasVideoAndClip" class="no-content">
         <el-empty description="Select a video file and clip to enable color grading" />
       </div>
 
-      <div v-else-if="!isEnabled" class="disabled-state">
-        <p>Enable color grading to adjust video appearance</p>
-      </div>
+      <div v-else class="color-grading-content">
+          <!-- Left Column: Preview + Timeline -->
+          <div class="preview-timeline-column">
+            <!-- Preview Controls -->
+            <div class="preview-section">
+            <div class="preview-header">
+              <h4>Preview</h4>
+              <div class="preview-controls">
+                <el-select
+                  v-model="previewResolution"
+                  size="small"
+                  style="width: 100px"
+                  @change="updatePreview"
+                >
+                  <el-option label="25%" :value="0.25" />
+                  <el-option label="50%" :value="0.5" />
+                  <el-option label="100%" :value="1.0" />
+                </el-select>
+                <el-button
+                  size="small"
+                  @click="updatePreview"
+                  :loading="isGeneratingPreview"
+                >
+                  Refresh
+                </el-button>
+              </div>
+            </div>
 
-      <div v-else class="controls-container">
-        <!-- Preview Controls -->
-        <div class="preview-section">
-          <div class="preview-header">
-            <h4>Preview</h4>
-            <div class="preview-controls">
-              <el-select
-                v-model="previewResolution"
-                size="small"
-                style="width: 100px"
-                @change="updatePreview"
-              >
-                <el-option label="25%" :value="0.25" />
-                <el-option label="50%" :value="0.5" />
-                <el-option label="100%" :value="1.0" />
-              </el-select>
-              <el-button
-                size="small"
-                @click="updatePreview"
-                :loading="isGeneratingPreview"
-              >
-                Refresh
-              </el-button>
+            <div class="preview-container">
+              <div v-if="isGeneratingPreview" class="preview-loading">
+                <el-spinner />
+                <p>Generating preview...</p>
+              </div>
+              <div v-else-if="previewError" class="preview-error">
+                <el-alert
+                  type="error"
+                  :title="previewError"
+                  show-icon
+                  :closable="false"
+                />
+              </div>
+              <div v-else-if="previewImageUrl" class="preview-image">
+                <img
+                  :src="previewImageUrl"
+                  alt="Color grading preview"
+                  @error="handleImageError"
+                />
+              </div>
+              <div v-else class="no-preview">
+                <el-empty description="Click refresh to generate preview" />
+              </div>
             </div>
           </div>
 
-          <div class="preview-container">
-            <div v-if="isGeneratingPreview" class="preview-loading">
-              <el-spinner />
-              <p>Generating preview...</p>
-            </div>
-            <div v-else-if="previewError" class="preview-error">
-              <el-alert
-                type="error"
-                :title="previewError"
-                show-icon
-                :closable="false"
+          <!-- Timeline Scrubber -->
+          <div class="timeline-section">
+            <div class="timeline-controls">
+              <span class="time-display">{{ formatTime(previewTimestamp) }}</span>
+              <el-slider
+                v-model="previewTimestamp"
+                :min="effectiveTimestampRange.min"
+                :max="effectiveTimestampRange.max"
+                :step="0.1"
+                :show-tooltip="false"
+                @input="handleTimelineInput"
+                class="timeline-slider"
               />
-            </div>
-            <div v-else-if="previewImageUrl" class="preview-image">
-              <img
-                :src="previewImageUrl"
-                alt="Color grading preview"
-                @error="handleImageError"
-              />
-            </div>
-            <div v-else class="no-preview">
-              <el-empty description="Click refresh to generate preview" />
-            </div>
+              <span class="time-range">
+                  {{ formatTime(effectiveTimestampRange.start) }} - {{ formatTime(effectiveTimestampRange.end) }}
+                </span>
+              </div>
           </div>
-        </div>
+          </div>
 
-        <!-- Timestamp Control -->
-        <div class="timestamp-section">
-          <el-form-item label="Preview Time">
-            <el-input-number
-              v-model="previewTimestamp"
-              :min="selectedClip?.start || 0"
-              :max="selectedClip?.end || 60"
-              :step="0.1"
-              :precision="1"
-              size="small"
-              @change="updatePreview"
-            />
-            <span class="timestamp-info">
-              ({{ formatTime(selectedClip?.start || 0) }} - {{ formatTime(selectedClip?.end || 60) }})
-            </span>
-          </el-form-item>
-        </div>
+          <!-- Color Controls -->
+          <div class="color-controls">
+            <el-scrollbar height="100%">
+              <div class="color-controls-content">
+                <h4>Color Adjustments</h4>
 
-        <!-- Color Controls -->
-        <div class="color-controls">
-          <h4>Color Adjustments</h4>
-
-          <!-- Brightness -->
-          <div class="control-group">
-            <el-form-item label="Brightness">
+            <!-- Brightness -->
+            <div class="control-group">
+              <div class="control-label">Brightness</div>
               <el-slider
                 v-model="brightness"
                 :min="-1"
@@ -127,12 +97,11 @@
                 show-input
                 input-size="small"
               />
-            </el-form-item>
-          </div>
+            </div>
 
-          <!-- Contrast -->
-          <div class="control-group">
-            <el-form-item label="Contrast">
+            <!-- Contrast -->
+            <div class="control-group">
+              <div class="control-label">Contrast</div>
               <el-slider
                 v-model="contrast"
                 :min="0"
@@ -142,12 +111,11 @@
                 show-input
                 input-size="small"
               />
-            </el-form-item>
-          </div>
+            </div>
 
-          <!-- Saturation -->
-          <div class="control-group">
-            <el-form-item label="Saturation">
+            <!-- Saturation -->
+            <div class="control-group">
+              <div class="control-label">Saturation</div>
               <el-slider
                 v-model="saturation"
                 :min="0"
@@ -157,12 +125,11 @@
                 show-input
                 input-size="small"
               />
-            </el-form-item>
-          </div>
+            </div>
 
-          <!-- Hue -->
-          <div class="control-group">
-            <el-form-item label="Hue">
+            <!-- Hue -->
+            <div class="control-group">
+              <div class="control-label">Hue</div>
               <el-slider
                 v-model="hue"
                 :min="-180"
@@ -172,12 +139,11 @@
                 show-input
                 input-size="small"
               />
-            </el-form-item>
-          </div>
+            </div>
 
-          <!-- Gamma -->
-          <div class="control-group">
-            <el-form-item label="Gamma">
+            <!-- Gamma -->
+            <div class="control-group">
+              <div class="control-label">Gamma</div>
               <el-slider
                 v-model="gamma"
                 :min="0.1"
@@ -187,41 +153,48 @@
                 show-input
                 input-size="small"
               />
-            </el-form-item>
+            </div>
+
+            <!-- Filter String Display -->
+            <div class="filter-display">
+              <el-form-item label="Generated Filter">
+                <el-input
+                  v-model="generatedFilter"
+                  type="textarea"
+                  :rows="2"
+                  readonly
+                  placeholder="Color grading filter will appear here"
+                />
+              </el-form-item>
+            </div>
+
+            <!-- Copy/Paste Controls -->
+            <div class="copy-paste-controls">
+              <el-button
+                size="small"
+                @click="copyFilter"
+                :disabled="!generatedFilter"
+              >
+                Copy Filter
+              </el-button>
+              <el-button
+                size="small"
+                @click="showPasteDialog"
+              >
+                Paste Filter
+              </el-button>
+              <el-button
+                size="small"
+                @click="resetToDefaults"
+              >
+                Reset
+              </el-button>
+            </div>
+              </div>
+            </el-scrollbar>
           </div>
         </div>
-
-        <!-- Filter String Display -->
-        <div class="filter-display">
-          <el-form-item label="Generated Filter">
-            <el-input
-              v-model="generatedFilter"
-              type="textarea"
-              :rows="2"
-              readonly
-              placeholder="Color grading filter will appear here"
-            />
-          </el-form-item>
-        </div>
-
-        <!-- Copy/Paste Controls -->
-        <div class="copy-paste-controls">
-          <el-button
-            size="small"
-            @click="copyFilter"
-            :disabled="!generatedFilter"
-          >
-            Copy Filter
-          </el-button>
-          <el-button
-            size="small"
-            @click="showPasteDialog"
-          >
-            Paste Filter
-          </el-button>
-        </div>
       </div>
-    </el-card>
 
     <!-- Paste Filter Dialog -->
     <el-dialog
@@ -248,9 +221,19 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ClipInfo } from '@/types/api'
 
+// Simple debounce function
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
+  let timeout: ReturnType<typeof setTimeout>
+  return ((...args: any[]) => {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func(...args), wait)
+  }) as T
+}
+
 interface Props {
   selectedClip?: ClipInfo | null
   videoPath?: string | null
+  videoDuration?: number | null
   isProcessing?: boolean
 }
 
@@ -261,13 +244,13 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   selectedClip: null,
   videoPath: null,
+  videoDuration: null,
   isProcessing: false
 })
 
 const emit = defineEmits<Emits>()
 
 // State
-const isEnabled = ref(false)
 const previewResolution = ref(0.5)
 const previewTimestamp = ref(0)
 const isGeneratingPreview = ref(false)
@@ -290,9 +273,36 @@ const hasVideoAndClip = computed(() =>
   !!(props.videoPath && props.selectedClip)
 )
 
-const generatedFilter = computed(() => {
-  if (!isEnabled.value) return ''
+// Get the effective timestamp range considering video duration limits
+const effectiveTimestampRange = computed(() => {
+  if (!props.selectedClip) return { min: 0, max: 60, start: 0, end: 60 }
 
+  const clip = props.selectedClip
+  const videoDuration = props.videoDuration
+
+  if (videoDuration && videoDuration > 0) {
+    // Constrain clip times to video duration
+    const effectiveStart = Math.min(clip.start, videoDuration - 0.1)
+    const effectiveEnd = Math.min(clip.end, videoDuration)
+
+    return {
+      min: Math.max(0, effectiveStart),
+      max: effectiveEnd,
+      start: effectiveStart,
+      end: effectiveEnd
+    }
+  }
+
+  // No video duration info - use clip times as-is
+  return {
+    min: clip.start,
+    max: clip.end,
+    start: clip.start,
+    end: clip.end
+  }
+})
+
+const generatedFilter = computed(() => {
   const filters = []
 
   // Build eq filter for brightness, contrast, saturation, gamma
@@ -315,20 +325,6 @@ const generatedFilter = computed(() => {
 })
 
 // Methods
-const enableColorGrading = () => {
-  isEnabled.value = true
-  initializeTimestamp()
-  updatePreview()
-}
-
-const disableColorGrading = () => {
-  isEnabled.value = false
-  previewImageUrl.value = ''
-  if (props.selectedClip) {
-    emit('color-grading-changed', props.selectedClip.number, '')
-  }
-}
-
 const resetToDefaults = () => {
   brightness.value = 0
   contrast.value = 1
@@ -339,16 +335,46 @@ const resetToDefaults = () => {
   updatePreview()
 }
 
+// Debounced function for timeline scrubbing
+const debouncedUpdatePreview = debounce(() => {
+  updatePreview()
+}, 300) // 300ms delay
+
+const handleTimelineInput = (value: number) => {
+  previewTimestamp.value = value
+  debouncedUpdatePreview()
+}
+
 const initializeTimestamp = () => {
   if (props.selectedClip) {
-    // Set timestamp to middle of clip
-    const clipDuration = props.selectedClip.end - props.selectedClip.start
-    previewTimestamp.value = props.selectedClip.start + clipDuration / 2
+    const clip = props.selectedClip
+    const videoDuration = props.videoDuration
+
+    // Check if timestamps are valid for the video duration
+    if (videoDuration && videoDuration > 0) {
+      if (clip.start >= videoDuration) {
+        previewTimestamp.value = Math.max(0, videoDuration - 1) // Go to near the end
+        previewError.value = `Clip start time (${Math.round(clip.start)}s) exceeds video duration (${Math.round(videoDuration)}s). Using fallback timestamp.`
+        return
+      }
+
+      if (clip.end > videoDuration) {
+        // Start is valid but end exceeds duration - use start time
+        previewTimestamp.value = clip.start
+        previewError.value = `Clip end time (${Math.round(clip.end)}s) exceeds video duration (${Math.round(videoDuration)}s). Using clip start time.`
+        return
+      }
+    }
+
+    // Normal case - timestamps are within bounds or no duration info
+    const clipDuration = clip.end - clip.start
+    previewTimestamp.value = clip.start + clipDuration / 2
+    previewError.value = '' // Clear any previous errors
   }
 }
 
 const updateColorGrading = () => {
-  if (!isEnabled.value || !props.selectedClip) return
+  if (!props.selectedClip) return
 
   const filter = generatedFilter.value
   emit('color-grading-changed', props.selectedClip.number, filter)
@@ -366,7 +392,7 @@ const updateColorGrading = () => {
 updateColorGrading.debounceTimer = null as number | null
 
 const updatePreview = async () => {
-  if (!hasVideoAndClip.value || !isEnabled.value || !window.pywebview?.api) return
+  if (!hasVideoAndClip.value || !window.pywebview?.api) return
 
   isGeneratingPreview.value = true
   previewError.value = ''
@@ -483,15 +509,13 @@ const formatTime = (seconds: number): string => {
 watch(() => props.selectedClip, (newClip, oldClip) => {
   if (newClip && newClip !== oldClip) {
     initializeTimestamp()
-    if (isEnabled.value) {
-      updatePreview()
-    }
+    updatePreview()
   }
 })
 
 // Watch for video path changes
 watch(() => props.videoPath, () => {
-  if (isEnabled.value && hasVideoAndClip.value) {
+  if (hasVideoAndClip.value) {
     updatePreview()
   }
 })
@@ -499,6 +523,7 @@ watch(() => props.videoPath, () => {
 onMounted(() => {
   if (hasVideoAndClip.value) {
     initializeTimestamp()
+    updatePreview()
   }
 })
 </script>
@@ -506,26 +531,61 @@ onMounted(() => {
 <style scoped>
 .color-grading-panel {
   width: 100%;
-  max-width: 500px;
-}
-
-.panel-header {
+  height: 100%;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  margin: 0 auto;
 }
 
-.panel-header h3 {
-  margin: 0;
+.panel-content {
+  padding: 16px;
+  height: 100%;
+  min-height: 0;
 }
 
-.header-controls {
-  display: flex;
-  gap: 8px;
+/* Responsive layout for larger screens */
+@media (min-width: 1024px) {
+  .color-grading-content {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 20px;
+    height: 100%;
+  }
+
+  .preview-timeline-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preview-section {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preview-container {
+    height: 100%;
+  }
+
+  .timeline-section {
+    flex-shrink: 0;
+    max-height: 120px;
+  }
+
+  .color-controls {
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
 }
 
-.no-content,
-.disabled-state {
+.no-content {
   text-align: center;
   padding: 40px 20px;
   color: var(--el-text-color-secondary);
@@ -561,12 +621,13 @@ onMounted(() => {
 }
 
 .preview-container {
-  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--el-fill-color-lighter);
   border-radius: 4px;
+  overflow: hidden;
+  height: 100%;
 }
 
 .preview-loading {
@@ -576,16 +637,49 @@ onMounted(() => {
   gap: 12px;
 }
 
+.preview-image {
+  display: contents;
+}
+
 .preview-image img {
   max-width: 100%;
-  max-height: 300px;
+  max-height: 100%;
+  height: auto;
+  width: auto;
+  object-fit: contain;
   border-radius: 4px;
 }
 
-.timestamp-section .timestamp-info {
-  margin-left: 8px;
+.timeline-section {
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.time-display {
+  font-weight: 600;
+  min-width: 60px;
+  text-align: center;
+  font-family: monospace;
+}
+
+.timeline-slider {
+  flex: 1;
+}
+
+.time-range {
   color: var(--el-text-color-secondary);
   font-size: 12px;
+  min-width: 120px;
+  text-align: right;
+  font-family: monospace;
 }
 
 .color-controls h4 {
@@ -596,6 +690,13 @@ onMounted(() => {
 
 .control-group {
   margin-bottom: 16px;
+}
+
+.control-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
 .filter-display {

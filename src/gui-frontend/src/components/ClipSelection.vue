@@ -1,5 +1,5 @@
 <template>
-  <el-card v-if="clips.length > 0" class="section-card" shadow="hover">
+  <el-card v-if="clips.length > 0" class="section-card">
     <template #header>
       <div class="card-header">
         <el-icon><VideoPlay /></el-icon>
@@ -12,7 +12,7 @@
         v-model="selectAllClips"
         @change="handleSelectAllClips"
         :indeterminate="isIndeterminate"
-        style="margin-bottom: 12px;"
+        style="margin-bottom: 8px;"
       >
         Select All
       </el-checkbox>
@@ -23,13 +23,19 @@
             v-for="(clip, index) in clips"
             :key="index"
             class="clip-item"
+            :class="{ 'active-color-grading': activeColorGradingClip === index }"
           >
-            <el-checkbox :value="index">
-              <div class="clip-info">
-                <div class="clip-title">{{ clip.title || `Clip ${clip.number || index + 1}` }}</div>
-                <div class="clip-duration">{{ formatDuration(clip) }}</div>
+            <el-checkbox
+              :value="index"
+              @click.stop
+              @change="(checked: boolean) => handleCheckboxChange(index, checked)"
+            />
+            <div class="clip-info" @click="handleClipClick(index)">
+              <div class="clip-title">
+                {{ clip.title || `Clip ${clip.number || index + 1}` }}
               </div>
-            </el-checkbox>
+              <div class="clip-duration">{{ formatDuration(clip) }}</div>
+            </div>
           </div>
         </el-checkbox-group>
       </el-scrollbar>
@@ -56,12 +62,14 @@ interface Clip {
 interface Props {
   clips: Clip[]
   modelValue: number[]
+  activeColorGradingClip?: number | null
 }
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: number[]]
+  'clip-selected-for-color-grading': [clipIndex: number]
 }>()
 
 // Local state
@@ -104,6 +112,22 @@ function handleSelectAllClips(value: boolean) {
   }
 }
 
+function handleCheckboxChange(index: number, checked: boolean) {
+  // Handle individual checkbox selection for processing
+  const currentSelection = [...selectedClips.value]
+  if (checked) {
+    if (!currentSelection.includes(index)) {
+      currentSelection.push(index)
+    }
+  } else {
+    const indexPos = currentSelection.indexOf(index)
+    if (indexPos !== -1) {
+      currentSelection.splice(indexPos, 1)
+    }
+  }
+  selectedClips.value = currentSelection
+}
+
 function formatDuration(clip: Clip): string {
   if (typeof clip.start === 'number' && typeof clip.end === 'number') {
     const duration = clip.end - clip.start
@@ -120,11 +144,19 @@ function formatTime(seconds: number): string {
   const secs = (seconds % 60).toFixed(2)
   return `${mins}:${secs.padStart(5, '0')}`
 }
+
+function handleClipClick(index: number) {
+  // Emit event to notify parent that this clip was selected for color grading
+  emit('clip-selected-for-color-grading', index)
+}
 </script>
 
 <style scoped>
 .section-card {
-  margin-bottom: 16px;
+  margin-bottom: 0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .card-header {
@@ -141,8 +173,20 @@ function formatTime(seconds: number): string {
 .clip-item {
   display: flex;
   align-items: center;
-  padding: 8px 0;
+  padding: 6px;
   border-bottom: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  margin-bottom: 2px;
+  transition: background-color 0.2s;
+}
+
+.clip-item:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.clip-item.active-color-grading {
+  background-color: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-7);
 }
 
 .clip-item:last-child {
@@ -151,7 +195,15 @@ function formatTime(seconds: number): string {
 
 .clip-info {
   flex: 1;
-  margin-left: 8px;
+  margin-left: 6px;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.clip-info:hover {
+  background-color: var(--el-fill-color-lighter);
 }
 
 .clip-title {

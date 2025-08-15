@@ -3,7 +3,22 @@
     <!-- Header -->
     <el-header height="60px" class="app-header">
       <div class="header-content">
-        <h1 class="app-title">🎬 NV Clipper GUI</h1>
+        <div class="header-controls">
+          <el-button-group>
+            <el-button
+              @click="showVideoCache = true"
+              :icon="Coin"
+            >
+              Video Cache
+            </el-button>
+            <el-button
+              @click="showSettings = true"
+              :icon="Setting"
+            >
+              Settings
+            </el-button>
+          </el-button-group>
+        </div>
         <div class="status-indicator">
           <el-tag
             :type="getStatusType()"
@@ -34,8 +49,6 @@
                   @file-changed="handleFileChange"
                   @clear-markup="clearMarkupFile"
                   @clear-video="clearVideoFile"
-                  @show-video-cache="showVideoCache = true"
-                  @show-settings="showSettings = true"
                 />
 
                 <!-- Video URL Extractor -->
@@ -46,10 +59,15 @@
                   @download-requested="handleVideoDownloadRequest"
                 />
 
+                <!-- Separator -->
+                <div class="sidebar-separator"></div>
+
                 <!-- Clip Selection Component -->
                 <ClipSelection
                   :clips="parsedClips"
                   v-model="selectedClips"
+                  :active-color-grading-clip="activeColorGradingClip"
+                  @clip-selected-for-color-grading="handleClipSelectedForColorGrading"
                 />
               </div>
             </el-scrollbar>
@@ -78,6 +96,8 @@
         :clip-count="parsedClips.length"
         :selected-clips="selectedClips"
         :parsed-clips="parsedClips"
+        :active-color-grading-clip="activeColorGradingClip"
+        :video-duration="videoDuration"
         :is-processing="isProcessing"
         @color-grading-changed="handleColorGradingChanged"
       />
@@ -141,9 +161,11 @@ import {
   ElFooter,
   ElDialog,
   ElButton,
+  ElButtonGroup,
   ElAlert,
   ElMessage
 } from 'element-plus'
+import { Coin, Setting } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
 import { useSettingsStore } from '@/stores/settings'
@@ -167,8 +189,10 @@ const showVideoCache = ref(false)
 const showSettings = ref(false)
 const parsedClips = ref<ClipInfo[]>([])
 const selectedClips = ref<number[]>([])
+const activeColorGradingClip = ref<number | null>(null) // Index of clip active for color grading
 const selectedCacheVideoId = ref<string | undefined>(undefined)
 const parsedMarkupData = ref<MarkupData | null>(null)
+const videoDuration = ref<number | null>(null) // Duration of current video in seconds
 
 // Computed properties from store
 const selectedFiles = computed(() => clipperStore.selectedFiles)
@@ -181,7 +205,7 @@ const hasVideoFile = computed(() => clipperStore.hasVideoFile)
 
 // Local computed properties
 const canProcess = computed(() =>
-  hasMarkupFile.value && selectedClips.value.length > 0 && !isProcessing.value
+  (hasMarkupFile.value || parsedClips.value.length > 0) && selectedClips.value.length > 0 && !isProcessing.value
 )
 
 // Initialize engine status and settings on mount
@@ -234,6 +258,11 @@ function handleSelectedFiles(filePaths: string[]) {
   }
   if (newFiles.video) {
     clipperStore.selectedFiles.video = newFiles.video
+
+    // If we have video but no markup, check if we should create a mock markup
+    if (!newFiles.markup && !clipperStore.hasMarkupFile) {
+      createMockMarkupForVideo(newFiles.video)
+    }
   }
 }
 
@@ -248,11 +277,14 @@ async function parseMarkupFile(filePath: string) {
 
       // Store video info if available
       if (result.video_info) {
-        // Could store video info here if needed
+        videoDuration.value = result.video_info.duration ?? null
         console.log('Video info:', result.video_info)
       }
 
-      ElMessage.success(`Loaded ${result.clips.length} clips from markup`)
+      // Set the first valid clip as active for color grading
+      activeColorGradingClip.value = findFirstValidClip(result.clips, videoDuration.value)
+
+      ElMessage.success(`Loaded ${result.clips.length} clips from markup (replacing any mock markup)`)
     } else {
       throw new Error(result.message || 'Failed to parse markup file')
     }
@@ -263,6 +295,85 @@ async function parseMarkupFile(filePath: string) {
     // Fallback to empty clips
     parsedClips.value = []
     selectedClips.value = []
+    activeColorGradingClip.value = null
+    parsedMarkupData.value = null
+  }
+}
+
+// Create a mock markup for video-only scenarios
+async function createMockMarkupForVideo(videoPath: string) {
+  try {
+    ElMessage.info('Creating mock markup for video file...')
+
+    // Get video information to determine duration
+    const videoInfo = await window.pywebview.api.get_video_info(videoPath)
+
+    if (videoInfo.status !== 'success' || !videoInfo.video_info?.duration) {
+      throw new Error(videoInfo.message || 'Failed to get video duration')
+    }
+
+    const duration = videoInfo.video_info.duration
+    const videoName = videoPath.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'video'
+
+    // Create a single clip that spans the entire video
+    const mockClip = {
+      number: 1,
+      title: `Full Video - ${videoName}`,
+      start: 0,
+      end: duration,
+      duration: duration,
+      speed: 1.0,
+      crop: '',
+      enableZoomPan: false,
+      overrides: {}
+    }
+
+    // Set the parsed clips
+    parsedClips.value = [mockClip]
+    selectedClips.value = [0] // Select the mock clip by default
+
+    // For mock clips, we know the duration matches the video, so it's always valid
+    activeColorGradingClip.value = 0 // Set as active for color grading
+
+    // Create mock markup data structure that follows the proper schema
+    parsedMarkupData.value = {
+      platform: 'ytc_generic',
+      videoID: 'unknown',
+      videoTitle: videoName,
+      videoUrl: '',
+      videoTag: '[ytc_generic@unknown]',
+      newMarkerSpeed: 1,
+      newMarkerCrop: '',
+      titleSuffix: 'mock',
+      version: '5.32.0',
+      markerPairs: [{
+        number: 1,
+        start: 0,
+        end: duration,
+        speed: 1,
+        crop: '',
+        enableZoomPan: false,
+        overrides: {}
+      }],
+      // Legacy structure for compatibility
+      markers: [{
+        start: 0,
+        end: duration,
+        title: mockClip.title
+      }],
+      totalDuration: duration
+    }
+
+    ElMessage.success(`Created mock markup for ${videoName} (${Math.round(duration)}s)`)
+
+  } catch (error) {
+    console.error('Failed to create mock markup:', error)
+    ElMessage.error(`Failed to create mock markup: ${error}`)
+
+    // Fallback to empty state
+    parsedClips.value = []
+    selectedClips.value = []
+    activeColorGradingClip.value = null
     parsedMarkupData.value = null
   }
 }
@@ -297,26 +408,97 @@ function handleFileChange(file: UploadFile) {
   }
 }
 
+// Helper function to find the first clip with valid timestamps
+function findFirstValidClip(clips: ClipInfo[], videoDuration: number | null): number | null {
+  if (clips.length === 0) return null
+
+  // If no video duration info, use first clip
+  if (!videoDuration || videoDuration <= 0) return 0
+
+  // Find first clip that starts within video bounds
+  for (let i = 0; i < clips.length; i++) {
+    const clip = clips[i]
+    if (clip.start < videoDuration) {
+      return i
+    }
+  }
+
+  // If no valid clips found, still return 0 but the ColorGradingPanel will handle bounds
+  return 0
+}
+
 function clearMarkupFile() {
   clipperStore.selectedFiles.markup = null
   parsedClips.value = []
   selectedClips.value = []
+  activeColorGradingClip.value = null
   parsedMarkupData.value = null
+
+  // If we still have a video file, create mock markup as fallback
+  if (clipperStore.hasVideoFile && clipperStore.selectedFiles.video) {
+    ElMessage.info('Markup file removed - creating mock markup for video')
+    createMockMarkupForVideo(clipperStore.selectedFiles.video)
+  }
 }
 
 function clearVideoFile() {
   clipperStore.selectedFiles.video = null
+  videoDuration.value = null
 }
 
 async function handleProcessFiles() {
   if (!canProcess.value) return
 
   try {
-    await clipperStore.startProcessing(selectedClips.value)
-    ElMessage.success('Processing started successfully')
+    // Handle mock markup scenario - create a temporary markup file
+    let markupPath = clipperStore.selectedFiles.markup
+
+    if (!markupPath && parsedMarkupData.value) {
+      // We have mock markup data but no file - create a temporary markup file
+      markupPath = await createTempMarkupFile(parsedMarkupData.value)
+
+      if (!markupPath) {
+        throw new Error('Failed to create temporary markup file for processing')
+      }
+    }
+
+    if (!markupPath) {
+      throw new Error('No markup file or data available for processing')
+    }
+
+    // Temporarily set the markup path for processing
+    const originalMarkupPath = clipperStore.selectedFiles.markup
+    clipperStore.selectedFiles.markup = markupPath
+
+    try {
+      await clipperStore.startProcessing(selectedClips.value)
+      ElMessage.success('Processing started successfully')
+    } finally {
+      // Restore original markup path (might be null for mock scenarios)
+      clipperStore.selectedFiles.markup = originalMarkupPath
+    }
+
   } catch (error) {
     console.error('Processing failed:', error)
     ElMessage.error('Processing failed to start')
+  }
+}
+
+// Create a temporary markup file for mock markup scenarios
+async function createTempMarkupFile(markupData: any): Promise<string | null> {
+  try {
+    // Call a new API method to create a temporary markup file
+    const result = await window.pywebview.api.create_temp_markup_file(markupData)
+
+    if (result.status === 'success' && result.temp_file_path) {
+      return result.temp_file_path
+    } else {
+      console.error('Failed to create temp markup file:', result.message)
+      return null
+    }
+  } catch (error) {
+    console.error('Error creating temp markup file:', error)
+    return null
   }
 }
 
@@ -341,6 +523,11 @@ function handleVideoSelected(video: CachedVideo) {
 
   ElMessage.success(`Selected video: ${video.title}`)
   showVideoCache.value = false
+
+  // If no markup file is loaded, create a mock markup for this video
+  if (!clipperStore.hasMarkupFile) {
+    createMockMarkupForVideo(video.file_path)
+  }
 }
 
 function handleVideoDownloadRequest() {
@@ -403,6 +590,14 @@ function handleColorGradingChanged(clipNumber: number, filter: string) {
     ElMessage.error('Clip not found')
   }
 }
+
+// Handle clip selection for color grading (separate from processing selection)
+function handleClipSelectedForColorGrading(clipIndex: number) {
+  if (clipIndex >= 0 && clipIndex < parsedClips.value.length) {
+    activeColorGradingClip.value = clipIndex
+    ElMessage.info(`Switched to clip ${clipIndex + 1} for color grading`)
+  }
+}
 </script>
 
 <style scoped>
@@ -426,6 +621,11 @@ function handleColorGradingChanged(clipNumber: number, filter: string) {
   width: 100%;
 }
 
+.header-controls {
+  display: flex;
+  align-items: center;
+}
+
 .app-title {
   margin: 0;
   font-size: 24px;
@@ -446,13 +646,38 @@ function handleColorGradingChanged(clipNumber: number, filter: string) {
 }
 
 .sidebar-content {
-  padding: 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar-separator {
+  height: 1px;
+  background-color: var(--el-border-color-light);
+  margin: 0;
+}
+
+/* Responsive sidebar adjustments */
+@media (min-width: 1024px) {
+  .sidebar {
+    width: 350px !important;
+    min-width: 350px;
+    max-width: 400px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .sidebar {
+    width: 350px !important;
+    max-width: 400px;
+  }
 }
 
 .processing-footer {
   border-top: 1px solid var(--el-border-color);
   background: var(--el-bg-color);
-  padding: 8px;
+  padding: 0;
 }
 
 .cache-content {

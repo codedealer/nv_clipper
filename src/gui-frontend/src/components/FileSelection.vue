@@ -1,12 +1,5 @@
 <template>
-  <el-card class="section-card" shadow="hover">
-    <template #header>
-      <div class="card-header">
-        <el-icon><FolderOpened /></el-icon>
-        <span>File Selection</span>
-      </div>
-    </template>
-
+  <el-card class="section-card" shadow="hover" :header="false">
     <!-- File Selection Buttons -->
     <div class="button-group">
       <el-button
@@ -14,32 +7,10 @@
         :loading="isProcessing"
         type="primary"
         :icon="FolderOpened"
-        style="width: 100%; margin-bottom: 8px;"
+        style="width: 100%;"
       >
         Select Files
       </el-button>
-
-      <div class="button-row">
-        <el-button
-          @click="$emit('show-video-cache')"
-          type="default"
-          :icon="VideoCamera"
-          style="flex: 1;"
-          plain
-        >
-          Video Cache
-        </el-button>
-
-        <el-button
-          @click="$emit('show-settings')"
-          type="default"
-          :icon="Setting"
-          style="flex: 1; margin-left: 8px;"
-          plain
-        >
-          Settings
-        </el-button>
-      </div>
     </div>
 
     <!-- Drop Zone -->
@@ -69,21 +40,29 @@
       </div>
     </div>    <!-- Selected Files Display -->
     <div v-if="hasMarkupFile || hasVideoFile" class="selected-files">
-      <el-divider content-position="left">Selected Files</el-divider>
-
-      <el-space direction="vertical" style="width: 100%;" size="small">
-        <div v-if="selectedFiles.markup" class="file-item">
-          <el-tag type="warning" :icon="Document" closable @close="clearMarkupFile">
-            {{ getFileName(selectedFiles.markup) }}
-          </el-tag>
-        </div>
-
-        <div v-if="selectedFiles.video" class="file-item">
-          <el-tag type="danger" :icon="VideoCamera" closable @close="clearVideoFile">
-            {{ getFileName(selectedFiles.video) }}
-          </el-tag>
-        </div>
-      </el-space>
+      <div class="files-header">Selected Files</div>
+      <div class="file-tags">
+        <el-tag
+          v-if="selectedFiles.markup"
+          type="warning"
+          size="small"
+          :icon="Document"
+          closable
+          @close="clearMarkupFile"
+        >
+          {{ getFileName(selectedFiles.markup) }}
+        </el-tag>
+        <el-tag
+          v-if="selectedFiles.video"
+          type="danger"
+          size="small"
+          :icon="VideoCamera"
+          closable
+          @close="clearVideoFile"
+        >
+          {{ getFileName(selectedFiles.video) }}
+        </el-tag>
+      </div>
     </div>
   </el-card>
 </template>
@@ -96,8 +75,7 @@ import {
   FolderOpened,
   VideoCamera,
   UploadFilled,
-  Document,
-  Setting
+  Document
 } from '@element-plus/icons-vue'
 import { waitForPywebview } from '@/utils/api'
 
@@ -117,8 +95,6 @@ const emit = defineEmits<{
   'file-changed': [file: UploadFile]
   'clear-markup': []
   'clear-video': []
-  'show-video-cache': []
-  'show-settings': []
 }>()
 
 // Computed
@@ -276,7 +252,10 @@ onUnmounted(() => {
 
 <style scoped>
 .section-card {
-  margin-bottom: 16px;
+  margin-bottom: 0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .card-header {
@@ -380,7 +359,20 @@ onUnmounted(() => {
 }
 
 .selected-files {
-  margin-top: 16px;
+  margin-top: 12px;
+}
+
+.files-header {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-regular);
+  margin-bottom: 6px;
+}
+
+.file-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .file-item {

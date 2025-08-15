@@ -1,9 +1,9 @@
 <template>
   <el-main class="main-content">
-    <div v-if="!hasMarkupFile" class="welcome-area">
+    <div v-if="!hasMarkupFile && props.parsedClips.length === 0" class="welcome-area">
       <el-empty
         :image-size="120"
-        description="Drop a JSON markup file to get started"
+        description="Drop a JSON markup file or video file to get started"
       >
         <template #image>
           <el-icon size="120"><Document /></el-icon>
@@ -11,67 +11,27 @@
       </el-empty>
     </div>
 
-    <div v-else class="content-area">
-      <el-container direction="horizontal" style="height: 100%;">
-        <!-- Main Content Area (Video Preview & Timeline) -->
-        <el-main class="central-content">
-          <!-- Video Preview Area -->
-          <el-card v-if="hasVideoFile" class="preview-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <el-icon><Monitor /></el-icon>
-                <span>Video Preview</span>
-              </div>
-            </template>
+    <!-- Color Grading Panel (Full Area) -->
+    <div v-else-if="hasVideoFile && clipCount > 0" class="color-grading-area">
+      <ColorGradingPanel
+        :selected-clip="selectedClip"
+        :video-path="videoFile"
+        :video-duration="videoDuration"
+        :is-processing="isProcessing"
+        @color-grading-changed="handleColorGradingChanged"
+      />
+    </div>
 
-            <div class="video-preview-placeholder">
-              <el-icon size="60"><VideoCamera /></el-icon>
-              <p>Video preview coming soon...</p>
-              <p class="preview-filename">{{ getFileName(videoFile || '') }}</p>
-            </div>
-          </el-card>
-
-          <!-- Timeline Area -->
-          <el-card v-if="clipCount > 0" class="timeline-card" shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <el-icon><Timer /></el-icon>
-                <span>Timeline</span>
-              </div>
-            </template>
-
-            <div class="timeline-placeholder">
-              <el-icon size="60"><Timer /></el-icon>
-              <p>Timeline view coming soon...</p>
-              <p>{{ clipCount }} clips loaded</p>
-            </div>
-          </el-card>
-        </el-main>
-
-        <!-- Right Sidebar: Color Grading Panel -->
-        <el-aside width="520px" class="color-grading-sidebar" v-if="hasVideoFile && clipCount > 0">
-          <div class="sidebar-content">
-            <ColorGradingPanel
-              :selected-clip="selectedClip"
-              :video-path="videoFile"
-              :is-processing="isProcessing"
-              @color-grading-changed="handleColorGradingChanged"
-            />
-          </div>
-        </el-aside>
-      </el-container>
+    <!-- Fallback state -->
+    <div v-else class="empty-state">
+      <el-empty description="Load a video file and markup to start color grading" />
     </div>
   </el-main>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  Document,
-  Monitor,
-  VideoCamera,
-  Timer
-} from '@element-plus/icons-vue'
+import { Document } from '@element-plus/icons-vue'
 import ColorGradingPanel from './ColorGradingPanel.vue'
 import type { ClipInfo } from '@/types/api'
 
@@ -82,6 +42,8 @@ interface Props {
   clipCount: number
   selectedClips: number[]
   parsedClips: ClipInfo[]
+  activeColorGradingClip?: number | null
+  videoDuration?: number | null
   isProcessing?: boolean
 }
 
@@ -90,6 +52,7 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  videoDuration: null,
   isProcessing: false
 })
 
@@ -97,11 +60,16 @@ const emit = defineEmits<Emits>()
 
 // Computed properties
 const selectedClip = computed(() => {
-  if (!props.parsedClips.length || !props.selectedClips.length) return null
+  if (!props.parsedClips.length) return null
 
-  // For now, use the first selected clip
-  const selectedIndex = props.selectedClips[0]
-  return props.parsedClips[selectedIndex] || null
+  // Use the active color grading clip if set, otherwise use the first selected clip
+  let targetIndex = props.activeColorGradingClip
+  if (targetIndex === null || targetIndex === undefined) {
+    if (!props.selectedClips.length) return null
+    targetIndex = props.selectedClips[0]
+  }
+
+  return props.parsedClips[targetIndex] || null
 })
 
 // Methods
@@ -117,67 +85,36 @@ function handleColorGradingChanged(clipNumber: number, filter: string) {
 <style scoped>
 .main-content {
   background: var(--el-bg-color-page);
-  padding: 16px;
+  padding: 0;
+  height: calc(100vh - 60px); /* Full height minus header */
+  overflow: hidden;
 }
 
-.welcome-area {
+.welcome-area,
+.empty-state {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
 }
 
-.content-area {
-  height: 100%;
+.color-grading-area {
+  height: calc(100vh - 60px); /* Full height minus header */
+  max-width: 100%;
+  overflow: hidden;
 }
 
-.central-content {
-  padding-right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* Responsive adjustments */
+@media (max-width: 1023px) {
+  .color-grading-area {
+    max-width: 100%;
+  }
 }
 
-.color-grading-sidebar {
-  border-left: 1px solid var(--el-border-color);
-  background: var(--el-bg-color);
-}
-
-.sidebar-content {
-  padding: 16px;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.preview-card {
-  flex: 1;
-  min-height: 300px;
-}
-
-.timeline-card {
-  height: 200px;
-}
-
-.video-preview-placeholder,
-.timeline-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--el-text-color-secondary);
-}
-
-.preview-filename {
-  font-size: 12px;
-  color: var(--el-color-primary);
-  margin-top: 8px;
+@media (min-width: 1024px) {
+  .color-grading-area {
+    max-width: 2000px;
+    margin: 0 auto;
+  }
 }
 </style>
