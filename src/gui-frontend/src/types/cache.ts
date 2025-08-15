@@ -44,6 +44,7 @@ export interface CacheOperationResult {
   status: 'success' | 'error'
   message: string
   video?: CachedVideo
+  video_id?: string
 }
 
 export interface CachePurgeOptions {

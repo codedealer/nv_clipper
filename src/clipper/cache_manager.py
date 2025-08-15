@@ -219,7 +219,7 @@ class VideoCacheManager:
                 logger.error(error_msg)
                 raise Exception(error_msg) from e
             except Exception as e:
-                error_msg = f"Failed to get video info: {e!s}"
+                error_msg = f"Failed to download video: {e!s}"
                 logger.error(error_msg)
                 raise Exception(error_msg) from e
 
@@ -293,7 +293,7 @@ class VideoCacheManager:
             if "yt-dlp failed" in error_msg:
                 user_error_msg = f"Failed to download '{video_identifier}': Video might be private, deleted, or not available in your region."
             elif "Download failed - no file found" in error_msg:
-                user_error_msg = f"Download of '{video_identifier}' completed but no file was found. This might be a temporary issue - please try again."
+                user_error_msg = f"Download of '{video_identifier}' completed but no file found. This might be a temporary issue - please try again."
             elif "Failed to get video info" in error_msg:
                 user_error_msg = f"Could not access video information for '{video_identifier}'. Please check the URL and try again."
             else:
@@ -379,20 +379,6 @@ class VideoCacheManager:
                 'status': 'success',
                 'downloads': downloads,
                 'total_count': len(downloads),
-            }
-
-    def cancel_download(self, video_id: str) -> Dict[str, Any]:
-        """Cancel an active download."""
-        with self._download_lock:
-            if video_id in self._download_progress:
-                del self._download_progress[video_id]
-                return {
-                    'status': 'success',
-                    'message': 'Download cancelled',
-                }
-            return {
-                'status': 'error',
-                'message': 'Download not found',
             }
 
     def clear_stuck_downloads(self) -> Dict[str, Any]:
