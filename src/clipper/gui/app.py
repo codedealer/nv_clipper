@@ -427,17 +427,6 @@ class ClipperGUI:
                 'message': f'Failed to get download progress: {e!s}',
             }
 
-    def cancel_download(self, video_id: str) -> Dict[str, Any]:
-        """Cancel a video download"""
-        try:
-            return self.cache_manager.cancel_download(video_id)
-        except Exception as e:
-            self.logger.error(f"Failed to cancel download: {e}")
-            return {
-                'status': 'error',
-                'message': f'Failed to cancel download: {e!s}',
-            }
-
     def delete_cached_video(self, video_id: str) -> Dict[str, Any]:
         """Delete a cached video"""
         try:

@@ -1,5 +1,5 @@
 <template>
-  <el-card class="section-card" shadow="hover" :header="false">
+  <el-card class="section-card" shadow="hover">
     <!-- File Selection Buttons -->
     <div class="button-group">
       <el-button

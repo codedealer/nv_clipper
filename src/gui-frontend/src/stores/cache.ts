@@ -140,25 +140,6 @@ export const useCacheStore = defineStore('cache', () => {
     }
   }
 
-  async function cancelDownload(videoId: string): Promise<CacheOperationResult> {
-    try {
-      const api = await waitForPywebview()
-      const result = await api.cancel_download(videoId)
-
-      if (result.status === 'success') {
-        downloadProgress.value.delete(videoId)
-      }
-
-      return result as CacheOperationResult
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      return {
-        status: 'error',
-        message: errorMsg
-      }
-    }
-  }
-
   async function deleteVideo(videoId: string): Promise<CacheOperationResult> {
     lastError.value = null
 
@@ -278,7 +259,6 @@ export const useCacheStore = defineStore('cache', () => {
     // Actions
     loadCacheInfo,
     downloadVideo,
-    cancelDownload,
     deleteVideo,
     purgeCache,
     selectVideoFromCache,
