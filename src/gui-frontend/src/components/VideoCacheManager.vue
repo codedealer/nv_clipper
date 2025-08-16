@@ -99,15 +99,6 @@
           >
             Dismiss
           </el-button>
-          <el-button
-            v-else
-            @click="cancelDownload(download.video_id)"
-            size="small"
-            type="danger"
-            :loading="isCancelling.has(download.video_id)"
-          >
-            Cancel
-          </el-button>
         </div>
       </div>
     </div>
@@ -227,7 +218,6 @@ const cacheStore = useCacheStore()
 const showDownloadDialog = ref(false)
 const showPurgeDialog = ref(false)
 const isDeleting = ref<Set<string>>(new Set())
-const isCancelling = ref<Set<string>>(new Set())
 
 // Computed
 const sortedVideos = computed(() => {
@@ -327,41 +317,6 @@ async function deleteVideo(videoId: string) {
     }
   } finally {
     isDeleting.value.delete(videoId)
-  }
-}
-
-async function cancelDownload(videoId: string) {
-  const download = cacheStore.downloadProgress.get(videoId)
-  const downloadTitle = download?.url || 'this download'
-
-  try {
-    await ElMessageBox.confirm(
-      `Are you sure you want to cancel "${downloadTitle}"?`,
-      'Cancel Download',
-      {
-        confirmButtonText: 'Cancel Download',
-        cancelButtonText: 'Keep Downloading',
-        type: 'warning',
-        confirmButtonClass: 'el-button--warning'
-      }
-    )
-
-    isCancelling.value.add(videoId)
-
-    const result = await cacheStore.cancelDownload(videoId)
-
-    if (result.status === 'success') {
-      ElMessage.success('Download cancelled successfully')
-    } else {
-      ElMessage.error(`Failed to cancel download: ${result.message}`)
-    }
-  } catch (error) {
-    // User cancelled - no message needed
-    if (error !== 'cancel') {
-      ElMessage.error('Failed to cancel download')
-    }
-  } finally {
-    isCancelling.value.delete(videoId)
   }
 }
 
