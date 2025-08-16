@@ -134,6 +134,15 @@ export interface TempMarkupFileResult {
   temp_file_path?: string
 }
 
+// Window state management interfaces
+export interface WindowStateResult {
+  status: 'success' | 'error'
+  message?: string
+  width?: number
+  height?: number
+  maximized?: boolean
+}
+
 // Pywebview API interface
 declare global {
   interface Window {
@@ -180,6 +189,10 @@ declare global {
         setup_drag_drop: () => Promise<{ status: string; message?: string }>
         get_current_files: () => Promise<{ status: string; files: string[]; count?: number }>
         clear_current_files: () => Promise<{ status: string; message?: string; previous_count?: number }>
+
+        // Window state management
+        save_window_state: (width: number, height: number, maximized?: boolean) => Promise<WindowStateResult>
+        get_window_state: () => Promise<WindowStateResult>
       }
     }
   }
