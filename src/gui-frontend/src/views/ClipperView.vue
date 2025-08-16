@@ -19,39 +19,7 @@
             </el-button>
           </el-button-group>
         </div>
-        <div class="quick-download">
-          <div class="quick-download-input">
-            <el-input
-              v-model="quickDownloadUrl"
-              :placeholder="isQuickDownloading ? quickDownloadStatus : 'Paste URL to quickly download to cache...'"
-              size="small"
-              style="width: 300px;"
-              clearable
-              @keyup.enter="handleQuickDownload"
-              :loading="isQuickDownloading"
-              :disabled="isQuickDownloading"
-            >
-              <template #append>
-                <el-button
-                  @click="handleQuickDownload"
-                  :disabled="(!quickDownloadUrl.trim() && !isQuickDownloading) || isQuickDownloading"
-                  :loading="isQuickDownloading"
-                  :icon="Download"
-                  size="small"
-                  :type="isQuickDownloading ? 'info' : 'primary'"
-                >
-                  {{ isQuickDownloading ? 'Downloading...' : 'Download' }}
-                </el-button>
-              </template>
-            </el-input>
-          </div>
-          <div v-if="isQuickDownloading && currentQuickDownload" class="quick-download-progress">
-            <el-icon class="download-spinner" :size="16">
-              <Loading />
-            </el-icon>
-            <span class="progress-text">{{ quickDownloadStatus }}</span>
-          </div>
-        </div>
+        <QuickDownload @video-selected="selectVideoAndUpdateUI" />
         <div class="status-indicator">
           <el-tag
             :type="getStatusType()"
@@ -196,12 +164,11 @@ import {
   ElButton,
   ElButtonGroup,
   ElAlert,
-  ElMessage,
-  ElInput,
-  ElIcon
+  ElMessage
 } from 'element-plus'
-import { Coin, Setting, Download, Loading } from '@element-plus/icons-vue'
+import { Coin, Setting } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
+import QuickDownload from '@/components/QuickDownload.vue'
 import { useClipperStore } from '@/stores/counter'
 import { useSettingsStore } from '@/stores/settings'
 import { useCacheStore } from '@/stores/cache'
@@ -224,8 +191,6 @@ const cacheStore = useCacheStore()
 // Local state
 const showVideoCache = ref(false)
 const showSettings = ref(false)
-const quickDownloadUrl = ref('')
-const quickDownloadVideoId = ref<string | null>(null)
 const parsedClips = ref<ClipInfo[]>([])
 const selectedClips = ref<number[]>([])
 const activeColorGradingClip = ref<number | null>(null) // Index of clip active for color grading
@@ -244,47 +209,7 @@ const selectedCacheVideoId = computed(() => {
   return cachedVideo?.id
 })
 
-const currentQuickDownload = computed(() => {
-  if (!quickDownloadVideoId.value) return null
-  return cacheStore.downloadProgress.get(quickDownloadVideoId.value)
-})
-
-const isQuickDownloading = computed(() => {
-  return currentQuickDownload.value?.status &&
-         ['starting', 'initializing', 'downloading', 'processing', 'finalizing'].includes(currentQuickDownload.value.status)
-})
-
-const quickDownloadStatus = computed(() => {
-  if (!currentQuickDownload.value) return ''
-
-  const progress = currentQuickDownload.value
-  switch (progress.status) {
-    case 'starting':
-      return 'Initializing download...'
-    case 'initializing':
-      return 'Preparing download...'
-    case 'downloading':
-      return `Downloading ${progress.progress.toFixed(1)}%${progress.speed ? ` (${progress.speed})` : ''}${progress.eta ? ` - ETA: ${progress.eta}` : ''}`
-    case 'processing':
-      return 'Processing video...'
-    case 'finalizing':
-      return 'Finalizing...'
-    default:
-      return ''
-  }
-})
-
-// Watchers
-watch(currentQuickDownload, (newProgress, oldProgress) => {
-  if (!newProgress) return
-
-  // Handle completion and error states
-  if (newProgress.status === 'completed') {
-    handleQuickDownloadComplete(newProgress)
-  } else if (newProgress.status === 'error') {
-    handleQuickDownloadError(newProgress)
-  }
-}, { immediate: false })
+// Video duration watcher to update active color grading clip
 
 // Watch for video file changes to clean up clips panel
 watch(
@@ -659,51 +584,6 @@ function handleVideoDownloadRequest() {
   ElMessage.info('Download started. Check the Video Cache for progress.')
 }
 
-async function handleQuickDownload() {
-  const url = quickDownloadUrl.value.trim()
-  if (!url) {
-    ElMessage.warning('Please enter a video URL')
-    return
-  }
-
-  try {
-    const result = await cacheStore.downloadVideo({
-      url,
-      use_settings_format: false, // Use default format for quick download
-      auto_update: settingsStore.generalSettings?.ytdl_auto_update ?? true
-    })
-
-    if (result.status === 'success') {
-      if (result.video_id) {
-        // New download started - track progress
-        quickDownloadVideoId.value = result.video_id
-        quickDownloadUrl.value = '' // Clear the input
-
-        ElMessage.success({
-          message: 'Download started!',
-          duration: 2000
-        })
-      } else if (result.video) {
-        // Video already exists in cache
-        quickDownloadUrl.value = '' // Clear the input
-
-        ElMessage.info({
-          message: `Video already in cache: ${result.video.title}`,
-          duration: 3000
-        })
-
-        // Auto-select the existing video
-        selectVideoAndUpdateUI(result.video)
-      }
-    } else {
-      ElMessage.error(`Download failed: ${result.message}`)
-    }
-  } catch (error) {
-    ElMessage.error('Failed to start download')
-    console.error('Quick download error:', error)
-  }
-}
-
 // Shared function for video selection logic
 function selectVideoAndUpdateUI(video: CachedVideo) {
   // Set the selected video using the proper store method
@@ -720,54 +600,6 @@ function selectVideoAndUpdateUI(video: CachedVideo) {
     message: `Selected: ${video.title}`,
     duration: 3000
   })
-}
-
-function handleQuickDownloadComplete(progress: any) {
-  const videoTitle = progress.title || progress.url
-  ElMessage.success({
-    message: `Download completed: ${videoTitle}`,
-    duration: 5000
-  })
-
-  // Auto-select video if no files are currently selected (UX shortcut)
-  const hasSelectedVideo = clipperStore.selectedFiles.video
-  if (!hasSelectedVideo) {
-    // Find the completed video in cache and select it
-    const selectCompletedVideo = async () => {
-      try {
-        // Wait for cache to be updated
-        await cacheStore.loadCacheInfo()
-        const completedVideo = cacheStore.cachedVideos.find(v => v.id === quickDownloadVideoId.value)
-
-        if (completedVideo) {
-          selectVideoAndUpdateUI(completedVideo)
-          console.log('Auto-selected video:', completedVideo.title, completedVideo.file_path)
-        } else {
-          console.warn('Could not find completed video in cache:', quickDownloadVideoId.value)
-          console.log('Available videos:', cacheStore.cachedVideos.map(v => ({ id: v.id, video_id: v.video_id, title: v.title })))
-        }
-      } catch (error) {
-        console.error('Failed to auto-select video:', error)
-      }
-    }
-
-    // Execute immediately since the completion handler is only called when cache is ready
-    selectCompletedVideo()
-  } else {
-    console.log('Video already selected, skipping auto-selection:', hasSelectedVideo)
-  }
-}
-
-function handleQuickDownloadError(progress: any) {
-  const errorMessage = progress.message || 'Download failed with unknown error'
-  ElMessage.error({
-    message: `Download failed: ${errorMessage}`,
-    duration: 10000,
-    showClose: true
-  })
-
-  // Clean up tracking state
-  quickDownloadVideoId.value = null
 }
 
 function handleCloseSettings() {
@@ -859,49 +691,6 @@ function handleClipSelectedForColorGrading(clipIndex: number) {
 .header-controls {
   display: flex;
   align-items: center;
-}
-
-.quick-download {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  justify-content: center;
-  margin: 0 20px;
-}
-
-.quick-download-input {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
-
-.quick-download-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 300px;
-  margin-top: 4px;
-}
-
-.quick-download-progress .el-progress {
-  flex: 1;
-}
-
-.download-spinner {
-  color: var(--el-color-primary);
-  animation: rotate 1s linear infinite;
-}
-
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.progress-text {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  white-space: nowrap;
 }
 
 .app-title {
