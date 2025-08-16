@@ -877,10 +877,68 @@ class ClipperGUI:
                 'message': f'Failed to generate frame preview: {e!s}'
             }
 
+    # Window State Management API
+
+    def save_window_state(self, width: int, height: int, maximized: bool = False) -> Dict[str, Any]:
+        """Save the current window state to settings"""
+        try:
+            success = self.settings_manager.update_general_settings({
+                'window_width': width,
+                'window_height': height,
+                'window_maximized': maximized
+            })
+
+            if success:
+                return {
+                    'status': 'success',
+                    'message': 'Window state saved successfully'
+                }
+            else:
+                return {
+                    'status': 'error',
+                    'message': 'Failed to save window state'
+                }
+        except Exception as e:
+            self.logger.error(f"Error saving window state: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to save window state: {e!s}'
+            }
+
+    def get_window_state(self) -> Dict[str, Any]:
+        """Get the saved window state from settings"""
+        try:
+            settings = self.settings_manager.get_general_settings()
+            return {
+                'status': 'success',
+                'width': settings.get('window_width', 1000),
+                'height': settings.get('window_height', 800),
+                'maximized': settings.get('window_maximized', False)
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting window state: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to get window state: {e!s}',
+                'width': 1000,  # fallback defaults
+                'height': 800,
+                'maximized': False
+            }
+
 
 def create_app(dev_mode: bool = False, dev_url: str = "http://localhost:5173") -> webview.Window:
     """Create and configure the webview application"""
     api = ClipperGUI()
+
+    # Get saved window state
+    window_state = api.get_window_state()
+    width = window_state.get('width', 1000)
+    height = window_state.get('height', 800)
+    maximized = window_state.get('maximized', False)
+
+    # Debouncing mechanism for window state changes
+    window_state_timer = None
+    last_saved_state = {'width': width, 'height': height, 'maximized': maximized}
 
     if dev_mode:
         # Development mode: use Vite dev server
@@ -902,11 +960,81 @@ def create_app(dev_mode: bool = False, dev_url: str = "http://localhost:5173") -
         'NV Clipper GUI',
         url,
         js_api=api,
-        width=1000,
-        height=800,
+        width=width,
+        height=height,
         resizable=True,
         min_size=(800, 600),
+        maximized=maximized,
     )
+
+    def save_window_state_debounced(new_width: int, new_height: int, new_maximized: bool) -> None:
+        """Save window state with debouncing to avoid excessive I/O"""
+        nonlocal window_state_timer, last_saved_state
+
+        # Cancel existing timer if any
+        if window_state_timer is not None:
+            window_state_timer.cancel()
+
+        # Only save if state has actually changed to avoid unnecessary I/O
+        current_state = {'width': new_width, 'height': new_height, 'maximized': new_maximized}
+        if current_state == last_saved_state:
+            return
+
+        def save_state():
+            try:
+                result = api.save_window_state(new_width, new_height, new_maximized)
+                if result['status'] == 'success':
+                    last_saved_state.update(current_state)
+                    api.logger.debug(f"Window state saved: {new_width}x{new_height}, maximized: {new_maximized}")
+                else:
+                    api.logger.warning(f"Failed to save window state: {result.get('message')}")
+            except Exception as e:
+                api.logger.error(f"Error saving window state: {e}", exc_info=True)
+
+        # Start new debounced timer (500ms delay)
+        window_state_timer = threading.Timer(0.5, save_state)
+        window_state_timer.start()
+
+    # Define event handlers for window state management
+    def on_window_resized(width: int, height: int) -> None:
+        """Handle window resize events and save new size to settings (debounced)"""
+        try:
+            # Save the new window size (not maximized since it was resized)
+            save_window_state_debounced(width, height, False)
+        except Exception as e:
+            api.logger.error(f"Error in window resize handler: {e}", exc_info=True)
+
+    def on_window_maximized() -> None:
+        """Handle window maximize events"""
+        try:
+            # When maximized, preserve the last known restored size for when it's restored later
+            save_window_state_debounced(last_saved_state['width'], last_saved_state['height'], True)
+        except Exception as e:
+            api.logger.error(f"Error in window maximize handler: {e}", exc_info=True)
+
+    def on_window_restored() -> None:
+        """Handle window restore events (from maximized or minimized)"""
+        try:
+            api.logger.info("Window restored")
+            # When restored from maximized, it's no longer maximized
+            # The size will be updated by the resize event that typically follows
+            save_window_state_debounced(last_saved_state['width'], last_saved_state['height'], False)
+        except Exception as e:
+            api.logger.error(f"Error in window restore handler: {e}", exc_info=True)
+
+    def on_window_minimized() -> None:
+        """Handle window minimize events"""
+        try:
+            api.logger.info("Window minimized")
+            # Don't change maximized state when minimizing, just log the event
+        except Exception as e:
+            api.logger.error(f"Error in window minimize handler: {e}", exc_info=True)
+
+    # Register window event handlers
+    window.events.resized += on_window_resized
+    window.events.maximized += on_window_maximized
+    window.events.restored += on_window_restored
+    window.events.minimized += on_window_minimized
 
     return window
 

@@ -65,6 +65,11 @@ class GeneralSettings:
     cache_folder_path: str = ""
     cache_max_size_mb: int = 5000
 
+    # === WINDOW OPTIONS ===
+    window_width: int = 1000  # Default window width
+    window_height: int = 800  # Default window height
+    window_maximized: bool = False  # Whether window is maximized
+
     def __post_init__(self) -> None:
         """Initialize default values that require complex objects."""
         if self.format_sort is None:
