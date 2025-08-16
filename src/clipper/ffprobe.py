@@ -78,6 +78,10 @@ def ffprobeVideoProperties(cs: ClipperState, videoURL: str) -> Optional[DictStrA
                 ffprobeStreamData,
             )
 
+        # Include duration from format section if available
+        if "duration" in ffprobeData["format"]:
+            ffprobeStreamData["duration"] = ffprobeData["format"]["duration"]
+
         return ffprobeStreamData
 
     return None

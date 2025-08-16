@@ -231,6 +231,7 @@ const selectedClips = ref<number[]>([])
 const activeColorGradingClip = ref<number | null>(null) // Index of clip active for color grading
 const parsedMarkupData = ref<MarkupData | null>(null)
 const videoDuration = ref<number | null>(null) // Duration of current video in seconds
+const isCreatingMockMarkup = ref(false) // Flag to prevent concurrent mock markup creation
 
 // Computed properties
 const selectedCacheVideoId = computed(() => {
@@ -284,6 +285,24 @@ watch(currentQuickDownload, (newProgress, oldProgress) => {
     handleQuickDownloadError(newProgress)
   }
 }, { immediate: false })
+
+// Watch for video file changes to clean up clips panel
+watch(
+  () => clipperStore.selectedFiles.video,
+  (newVideo, oldVideo) => {
+    // If video was removed (but not just changed to a different video)
+    if (oldVideo && !newVideo) {
+      // Clear clips panel data
+      parsedClips.value = []
+      selectedClips.value = []
+      activeColorGradingClip.value = null
+      if (!clipperStore.selectedFiles.markup) {
+        // Only clear parsed markup if we don't have a real markup file
+        parsedMarkupData.value = null
+      }
+    }
+  }
+)
 
 // Computed properties from store
 const selectedFiles = computed(() => clipperStore.selectedFiles)
@@ -351,7 +370,7 @@ function handleSelectedFiles(filePaths: string[]) {
     clipperStore.selectedFiles.video = newFiles.video
 
     // If we have video but no markup, check if we should create a mock markup
-    if (!newFiles.markup && !clipperStore.hasMarkupFile) {
+    if (!newFiles.markup && !clipperStore.hasMarkupFile && !isCreatingMockMarkup.value) {
       createMockMarkupForVideo(newFiles.video)
     }
   }
@@ -393,17 +412,31 @@ async function parseMarkupFile(filePath: string) {
 
 // Create a mock markup for video-only scenarios
 async function createMockMarkupForVideo(videoPath: string) {
+  // Prevent concurrent calls
+  if (isCreatingMockMarkup.value) {
+    console.log('Mock markup creation already in progress, skipping...')
+    return
+  }
+
   try {
+    isCreatingMockMarkup.value = true
     ElMessage.info('Creating mock markup for video file...')
 
     // Get video information to determine duration
     const videoInfo = await window.pywebview.api.get_video_info(videoPath)
 
-    if (videoInfo.status !== 'success' || !videoInfo.video_info?.duration) {
-      throw new Error(videoInfo.message || 'Failed to get video duration')
+    // Add debug logging
+    console.log('Video info response:', videoInfo)
+
+    if (videoInfo.status !== 'success') {
+      throw new Error(videoInfo.message || 'Failed to get video information')
     }
 
-    const duration = videoInfo.video_info.duration
+    // Get duration from video_info
+    const duration = videoInfo.video_info?.duration
+    if (!duration || duration <= 0) {
+      throw new Error('Video duration not available in response')
+    }
     const videoName = videoPath.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'video'
 
     // Create a single clip that spans the entire video
@@ -466,6 +499,8 @@ async function createMockMarkupForVideo(videoPath: string) {
     selectedClips.value = []
     activeColorGradingClip.value = null
     parsedMarkupData.value = null
+  } finally {
+    isCreatingMockMarkup.value = false
   }
 }
 
@@ -526,7 +561,7 @@ function clearMarkupFile() {
   parsedMarkupData.value = null
 
   // If we still have a video file, create mock markup as fallback
-  if (clipperStore.hasVideoFile && clipperStore.selectedFiles.video) {
+  if (clipperStore.hasVideoFile && clipperStore.selectedFiles.video && !isCreatingMockMarkup.value) {
     ElMessage.info('Markup file removed - creating mock markup for video')
     createMockMarkupForVideo(clipperStore.selectedFiles.video)
   }
@@ -535,6 +570,12 @@ function clearMarkupFile() {
 function clearVideoFile() {
   clipperStore.selectedFiles.video = null
   videoDuration.value = null
+
+  // Clear clips panel data when video is removed
+  parsedClips.value = []
+  selectedClips.value = []
+  activeColorGradingClip.value = null
+  parsedMarkupData.value = null
 }
 
 async function handleProcessFiles() {
@@ -670,7 +711,7 @@ function selectVideoAndUpdateUI(video: CachedVideo) {
 
   // Auto-select video if no files are currently selected
   const hasSelectedVideo = clipperStore.selectedFiles.video
-  if (hasSelectedVideo && !clipperStore.hasMarkupFile) {
+  if (hasSelectedVideo && !clipperStore.hasMarkupFile && !isCreatingMockMarkup.value) {
     // Create mock markup for this video to enable UI functionality
     createMockMarkupForVideo(video.file_path)
   }
