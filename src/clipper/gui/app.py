@@ -802,15 +802,18 @@ class ClipperGUI:
                 '-vframes', '1',        # Extract one frame
                 '-f', 'image2pipe',     # Output as image pipe
                 '-vcodec', 'mjpeg',     # JPEG codec
+                '-pix_fmt', 'yuvj420p', # Compatible pixel format for JPEG
                 '-q:v', '2'             # High quality JPEG
             ]
 
             # Build video filter chain
             filters = []
 
-            # Add scaling if needed
+            # Add scaling if needed (ensure even dimensions)
             if resolution_scale != 1.0:
-                filters.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}')
+                # Use scale filter with force_original_aspect_ratio and pad to ensure even dimensions
+                filters.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}:force_original_aspect_ratio=decrease')
+                filters.append('pad=ceil(iw/2)*2:ceil(ih/2)*2:(ow-iw)/2:(oh-ih)/2:color=black')
 
             # Add color grading if provided
             if color_grading:
@@ -840,11 +843,43 @@ class ClipperGUI:
             )
 
             if result.returncode != 0:
-                return {
-                    'status': 'error',
-                    'message': f'FFmpeg failed: {result.stderr.decode()}'
-                }
+                self.logger.error(f"FFmpeg command failed with return code {result.returncode}")
+                self.logger.error(f"FFmpeg stderr: {result.stderr.decode()}")
 
+                # Try fallback approach with different settings
+                self.logger.info("Attempting fallback with different MJPEG settings")
+
+                fallback_cmd = [
+                    'ffmpeg',
+                    '-ss', str(timestamp),
+                    '-i', str(video_file),
+                    '-vframes', '1',
+                    '-f', 'image2pipe',
+                    '-vcodec', 'mjpeg',
+                    '-pix_fmt', 'yuv420p',  # More compatible format
+                    '-q:v', '5',            # Lower quality but more compatible
+                ]
+
+                # Add same filters if they exist
+                if filters:
+                    fallback_cmd.extend(['-vf', ','.join(filters)])
+
+                fallback_cmd.append('pipe:1')
+
+                self.logger.debug(f"Fallback FFmpeg command: {' '.join(fallback_cmd)}")
+                result = subprocess.run(
+                    fallback_cmd,
+                    stdout=PIPE,
+                    stderr=PIPE,
+                    timeout=30
+                )
+
+                if result.returncode != 0:
+                    self.logger.error(f"Fallback FFmpeg command also failed: {result.stderr.decode()}")
+                    return {
+                        'status': 'error',
+                        'message': f'FFmpeg failed: {result.stderr.decode()}'
+                    }
             # Check if we got image data
             if not result.stdout:
                 return {
