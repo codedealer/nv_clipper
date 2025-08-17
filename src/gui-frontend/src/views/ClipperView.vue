@@ -99,6 +99,7 @@
         :parsed-clips="parsedClips"
         :active-color-grading-clip="activeColorGradingClip"
         :video-duration="videoDuration"
+        :video-info="videoInfo"
         :is-processing="isProcessing"
         @color-grading-changed="handleColorGradingChanged"
       />
@@ -181,7 +182,7 @@ import VideoCacheManager from '@/components/VideoCacheManager.vue'
 import VideoUrlExtractor from '@/components/VideoUrlExtractor.vue'
 import type { CachedVideo } from '@/types/cache'
 import type { MarkupData } from '@/utils/markup'
-import type { ClipInfo } from '@/types/api'
+import type { ClipInfo, VideoInfo } from '@/types/api'
 
 // Store
 const clipperStore = useClipperStore()
@@ -196,6 +197,7 @@ const selectedClips = ref<number[]>([])
 const activeColorGradingClip = ref<number | null>(null) // Index of clip active for color grading
 const parsedMarkupData = ref<MarkupData | null>(null)
 const videoDuration = ref<number | null>(null) // Duration of current video in seconds
+const videoInfo = ref<VideoInfo | null>(null) // Full video information from ffprobe
 const isCreatingMockMarkup = ref(false) // Flag to prevent concurrent mock markup creation
 
 // Computed properties
@@ -313,6 +315,7 @@ async function parseMarkupFile(filePath: string) {
       // Store video info if available
       if (result.video_info) {
         videoDuration.value = result.video_info.duration ?? null
+        videoInfo.value = result.video_info
         console.log('Video info:', result.video_info)
       }
 
@@ -348,20 +351,24 @@ async function createMockMarkupForVideo(videoPath: string) {
     ElMessage.info('Creating mock markup for video file...')
 
     // Get video information to determine duration
-    const videoInfo = await window.pywebview.api.get_video_info(videoPath)
+    const videoInfoResponse = await window.pywebview.api.get_video_info(videoPath)
 
     // Add debug logging
-    console.log('Video info response:', videoInfo)
+    console.log('Video info response:', videoInfoResponse)
 
-    if (videoInfo.status !== 'success') {
-      throw new Error(videoInfo.message || 'Failed to get video information')
+    if (videoInfoResponse.status !== 'success') {
+      throw new Error(videoInfoResponse.message || 'Failed to get video information')
     }
 
-    // Get duration from video_info
-    const duration = videoInfo.video_info?.duration
+    // Get duration from video_info and store full video info
+    const duration = videoInfoResponse.video_info?.duration
     if (!duration || duration <= 0) {
       throw new Error('Video duration not available in response')
     }
+
+    // Store the full video info
+    videoInfo.value = videoInfoResponse.video_info ?? null
+    videoDuration.value = duration
     const videoName = videoPath.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'video'
 
     // Create a single clip that spans the entire video
@@ -495,6 +502,7 @@ function clearMarkupFile() {
 function clearVideoFile() {
   clipperStore.selectedFiles.video = null
   videoDuration.value = null
+  videoInfo.value = null
 
   // Clear clips panel data when video is removed
   parsedClips.value = []

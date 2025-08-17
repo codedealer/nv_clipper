@@ -763,7 +763,7 @@ class ClipperGUI:
             video_path: Path to the video file
             timestamp: Time in seconds to extract frame from
             color_grading: Optional FFmpeg color grading filter string
-            resolution_scale: Scale factor for output resolution (0.25, 0.5, 1.0)
+            resolution_scale: Scale factor for output resolution (0.1, 0.25, 0.5, 1.0)
 
         Returns:
             Dict with status, message, and base64_image for success
@@ -788,10 +788,10 @@ class ClipperGUI:
                     'message': 'Timestamp must be non-negative'
                 }
 
-            if resolution_scale not in [0.25, 0.5, 1.0]:
+            if resolution_scale not in [0.1, 0.25, 0.5, 1.0]:
                 return {
                     'status': 'error',
-                    'message': 'Resolution scale must be 0.25, 0.5, or 1.0'
+                    'message': 'Resolution scale must be 0.1, 0.25, 0.5, or 1.0'
                 }
 
             # Build FFmpeg command to output JPEG to stdout
