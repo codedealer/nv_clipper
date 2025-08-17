@@ -12,30 +12,38 @@
             <div class="preview-section">
             <div class="preview-header">
               <h4>Preview</h4>
-              <div class="preview-controls">
-                <el-select
-                  v-model="previewResolution"
-                  size="small"
-                  style="width: 100px"
-                  @change="updatePreview"
-                >
-                  <el-option label="25%" :value="0.25" />
-                  <el-option label="50%" :value="0.5" />
-                  <el-option label="100%" :value="1.0" />
-                </el-select>
-                <el-button
-                  size="small"
-                  @click="updatePreview"
-                  :loading="isGeneratingPreview"
-                >
-                  Refresh
-                </el-button>
+              <div class="preview-header-right">
+                <div v-if="videoInfoDisplay" class="video-info">
+                  {{ videoInfoDisplay }}
+                </div>
+                <div class="preview-controls">
+                  <el-select
+                    v-model="previewResolution"
+                    size="small"
+                    style="width: 100px"
+                    @change="updatePreview"
+                  >
+                    <el-option label="10%" :value="0.1" />
+                    <el-option label="25%" :value="0.25" />
+                    <el-option label="50%" :value="0.5" />
+                    <el-option label="100%" :value="1.0" />
+                  </el-select>
+                  <el-button
+                    size="small"
+                    @click="updatePreview"
+                    :loading="isGeneratingPreview"
+                  >
+                    Refresh
+                  </el-button>
+                </div>
               </div>
             </div>
 
             <div class="preview-container">
               <div v-if="isGeneratingPreview" class="preview-loading">
-                <el-spinner />
+                <el-icon class="is-loading" :size="24">
+                  <Loading />
+                </el-icon>
                 <p>Generating preview...</p>
               </div>
               <div v-else-if="previewError" class="preview-error">
@@ -219,7 +227,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { ClipInfo } from '@/types/api'
+import { Loading } from '@element-plus/icons-vue'
+import type { ClipInfo, VideoInfo } from '@/types/api'
 
 // Simple debounce function
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
@@ -234,6 +243,7 @@ interface Props {
   selectedClip?: ClipInfo | null
   videoPath?: string | null
   videoDuration?: number | null
+  videoInfo?: VideoInfo | null
   isProcessing?: boolean
 }
 
@@ -245,6 +255,7 @@ const props = withDefaults(defineProps<Props>(), {
   selectedClip: null,
   videoPath: null,
   videoDuration: null,
+  videoInfo: null,
   isProcessing: false
 })
 
@@ -323,6 +334,63 @@ const generatedFilter = computed(() => {
 
   return filters.join(',')
 })
+
+// Video information display
+const videoInfoDisplay = computed(() => {
+  if (!props.videoInfo) return null
+
+  const info = props.videoInfo
+  const parts = []
+
+  // Original resolution
+  if (info.width && info.height) {
+    parts.push(`${info.width}×${info.height}`)
+  }
+
+  // Preview resolution (if not 100%)
+  if (previewResolution.value !== 1.0 && info.width && info.height) {
+    const previewWidth = Math.round(info.width * previewResolution.value)
+    const previewHeight = Math.round(info.height * previewResolution.value)
+    parts.push(`Preview: ${previewWidth}×${previewHeight}`)
+  }
+
+  // Frame rate
+  if (info.frame_rate) {
+    const frameRateStr = formatFrameRate(info.frame_rate)
+    parts.push(frameRateStr)
+  }
+
+  return parts.length > 0 ? parts.join(' • ') : null
+})
+
+const formatFrameRate = (frameRate: string): string => {
+  try {
+    // Handle common frame rate formats
+    if (frameRate.includes('/')) {
+      // Fractional format like "30000/1001" or "24/1"
+      const [num, den] = frameRate.split('/').map(Number)
+      if (den === 1) {
+        return `${num}fps`
+      } else {
+        const fps = num / den
+        // Check for common NTSC rates
+        if (Math.abs(fps - 23.976) < 0.01) return '23.98fps'
+        if (Math.abs(fps - 29.970) < 0.01) return '29.97fps'
+        if (Math.abs(fps - 59.940) < 0.01) return '59.94fps'
+
+        // For other fractional rates, show with decimal
+        return fps % 1 === 0 ? `${fps}fps` : `${fps.toFixed(2)}fps`
+      }
+    } else {
+      // Simple decimal format
+      const fps = parseFloat(frameRate)
+      return fps % 1 === 0 ? `${fps}fps` : `${fps.toFixed(2)}fps`
+    }
+  } catch {
+    // If parsing fails, return as-is with fps suffix
+    return `${frameRate}fps`
+  }
+}
 
 // Methods
 const resetToDefaults = () => {
@@ -520,6 +588,16 @@ watch(() => props.videoPath, () => {
   }
 })
 
+// Watch for video info changes
+watch(() => props.videoInfo, () => {
+  // Video info display will automatically update via computed property
+})
+
+// Watch for preview resolution changes to update video info display
+watch(() => previewResolution.value, () => {
+  // Video info display will automatically update via computed property
+})
+
 onMounted(() => {
   if (hasVideoAndClip.value) {
     initializeTimestamp()
@@ -612,6 +690,20 @@ onMounted(() => {
 
 .preview-header h4 {
   margin: 0;
+}
+
+.preview-header-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-info {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-family: monospace;
+  white-space: nowrap;
 }
 
 .preview-controls {

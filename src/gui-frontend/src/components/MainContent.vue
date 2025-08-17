@@ -17,6 +17,7 @@
         :selected-clip="selectedClip"
         :video-path="videoFile"
         :video-duration="videoDuration"
+        :video-info="videoInfo"
         :is-processing="isProcessing"
         @color-grading-changed="handleColorGradingChanged"
       />
@@ -33,7 +34,7 @@
 import { computed } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import ColorGradingPanel from './ColorGradingPanel.vue'
-import type { ClipInfo } from '@/types/api'
+import type { ClipInfo, VideoInfo } from '@/types/api'
 
 interface Props {
   hasMarkupFile: boolean
@@ -44,6 +45,7 @@ interface Props {
   parsedClips: ClipInfo[]
   activeColorGradingClip?: number | null
   videoDuration?: number | null
+  videoInfo?: VideoInfo | null
   isProcessing?: boolean
 }
 
@@ -53,6 +55,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   videoDuration: null,
+  videoInfo: null,
   isProcessing: false
 })
 
