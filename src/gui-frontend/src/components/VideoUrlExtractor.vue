@@ -124,10 +124,6 @@ async function copyUrlToClipboard() {
 </script>
 
 <style scoped>
-.video-url-extractor {
-  margin-top: 1rem;
-}
-
 .video-url-info {
   margin-bottom: 1rem;
 }
