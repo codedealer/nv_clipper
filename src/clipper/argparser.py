@@ -290,14 +290,6 @@ def getArgParser() -> argparse.ArgumentParser:
         help=("Fade the audio in at start and out at end by the specified duration in seconds."),
     )
     vfilter_options.add_argument(
-        "--crf",
-        type=int,
-        help=" ".join([
-            "Set constant rate factor (crf). Default is 30 for video file input.",
-            "Automatically set to a factor of the detected video bitrate",
-        ]),
-    )
-    vfilter_options.add_argument(
         "--two-pass",
         "-tp",
         dest="twoPass",
@@ -571,6 +563,14 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "default": None,
                 "cli_args": ["--target-fps", "-tfps"],
             },
+            "crf": {
+                "type": "integer",
+                "description": "Set constant rate factor (crf). Default is 30 for video file input. Automatically set to a factor of the detected video bitrate",
+                "min": 0,
+                "max": 51,
+                "default": None,
+                "cli_args": ["--crf"],
+            },
             "overwrite": {
                 "type": "boolean",
                 "description": "Regenerate and overwrite existing clips",
@@ -822,6 +822,7 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:  # noqa: PLR0912
         'extra_audio_filters': output_options,
         'target_size': output_options,
         'target_fps': output_options,
+        'crf': output_options,
         'overwrite': output_options,
 
         # AI/GPU Processing Options

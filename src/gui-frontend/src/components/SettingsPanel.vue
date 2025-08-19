@@ -148,6 +148,18 @@
               />
               <el-text class="setting-help" type="info">Force the video's frame rate to this value (affects interpolation calculations)</el-text>
             </el-form-item>
+            <el-form-item label="CRF (0-51)">
+              <el-input-number
+                :model-value="props.settings?.crf || null"
+                @change="(value) => handleNumberChange('crf', value)"
+                :min="0"
+                :max="51"
+                :disabled="isLoading"
+                style="width: 150px"
+                placeholder="Auto"
+              />
+              <el-text class="setting-help" type="info">Constant Rate Factor for quality control. Lower = higher quality, larger files. Default is 30 for video input.</el-text>
+            </el-form-item>
           </el-form>
 
           <h4>H.264 Settings</h4>
