@@ -149,7 +149,7 @@ declare global {
     pywebview: {
       api: {
         // File processing
-        process_files: (markupPath: string, videoPath?: string, selectedClips?: number[]) => Promise<ProcessingResult>
+        process_files: (markupPath?: string, videoPath?: string, selectedClips?: number[], markupData?: Record<string, any>) => Promise<ProcessingResult>
         get_job_status: (jobId: string) => Promise<JobStatus>
         get_status: () => Promise<EngineStatus>
         select_files: () => Promise<string[]>

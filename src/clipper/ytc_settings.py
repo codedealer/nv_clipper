@@ -4,7 +4,7 @@ import re
 import sys
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from rich.text import Text
 
@@ -48,54 +48,66 @@ def safe_fps_to_float(fps_value: Union[int, float, str, Fraction, None]) -> floa
         return 0.0
 
 
-def loadSettings(settings: Settings) -> None:
-    markers_json_path = Path(settings["json"])
-    with Path.open(markers_json_path, encoding="utf-8-sig") as file:
-        markersJson = file.read()
-        try:
-            markersDict = json.loads(markersJson)
-        except json.JSONDecodeError as e:
-            logger.critical(f"CRITICAL: Markers JSON file is invalid.\n    {e}")
-            print()
-            if markers_json_path.suffix != ".json":
-                print(f"WARNING: Markers JSON file does not have expected extension .json.")
+def loadSettings(settings: Settings, markup_data: Optional[Dict[str, Any]] = None) -> None:
+    """Load settings from JSON file or directly from markup_data dict."""
+
+    if markup_data:
+        # Use provided markup data directly
+        markersDict = markup_data
+        markersDataFileStem = settings.get("titleSuffix", "mock-markup")
+        print(f"DEBUG: Using direct markup data with titleSuffix: {markersDataFileStem}")
+    else:
+        # Load from JSON file (original behavior)
+        markers_json_path = Path(settings["json"])
+        with Path.open(markers_json_path, encoding="utf-8-sig") as file:
+            markersJson = file.read()
+            try:
+                markersDict = json.loads(markersJson)
+            except json.JSONDecodeError as e:
+                logger.critical(f"CRITICAL: Markers JSON file is invalid.\n    {e}")
                 print()
-            print(
-                f"DEBUG: Markers JSON file at path '{settings["json"]}' has initial content:\n {markersJson[:200]}]\n...",
-            )
-            sys.exit(1)
+                if markers_json_path.suffix != ".json":
+                    print(f"WARNING: Markers JSON file does not have expected extension .json.")
+                    print()
+                print(
+                    f"DEBUG: Markers JSON file at path '{settings["json"]}' has initial content:\n {markersJson[:200]}]\n...",
+                )
+                sys.exit(1)
 
-        settings.update(markersDict)
+        markersDataFileStem = markers_json_path.stem
 
-        if "markers" in settings and "markerPairs" not in settings:
-            settings["markerPairs"] = settings["markers"]
-        settings["platform"] = settings.get("platform", "youtube")
-
-        settings["videoPageURL"] = getVideoPageURL(
-            settings,
-            settings["platform"],
-            settings["videoID"],
-        )
-
-        settings["videoTitle"] = re.sub('"', "", settings["videoTitle"])
-        settings["markersDataFileStem"] = markers_json_path.stem
-
-        if settings["markersDataFileStem"] != settings["markersDataFileStem"].rstrip():
+        # Validate file stem for JSON files only
+        if markersDataFileStem != markersDataFileStem.rstrip():
             logger.fatal(
                 "FATAL: Markers data file name stem (excluding .json extension) must not end in whitespace.",
             )
             logger.fatal(
-                f"""markersDataFileStem={settings["markersDataFileStem"]!r}.""",
+                f"""markersDataFileStem={markersDataFileStem!r}.""",
             )
             logger.fatal("Exiting...")
             sys.exit(1)
-        settings["titleSuffix"] = settings["markersDataFileStem"]
 
-        settings["downloadVideoNameStem"] = f'{settings["titleSuffix"]}-full'
+    # Common post-processing for both cases
+    settings.update(markersDict)
 
-        settings["mergedStreams"] = False
-        if "enableSpeedMaps" not in settings:
-            settings["enableSpeedMaps"] = not settings.get("noSpeedMaps", False)
+    if "markers" in settings and "markerPairs" not in settings:
+        settings["markerPairs"] = settings["markers"]
+    settings["platform"] = settings.get("platform", "youtube")
+
+    settings["videoPageURL"] = getVideoPageURL(
+        settings,
+        settings["platform"],
+        settings["videoID"],
+    )
+
+    settings["videoTitle"] = re.sub('"', "", settings["videoTitle"])
+    settings["markersDataFileStem"] = markersDataFileStem
+    settings["titleSuffix"] = markersDataFileStem
+    settings["downloadVideoNameStem"] = f'{settings["titleSuffix"]}-full'
+    settings["mergedStreams"] = False
+
+    if "enableSpeedMaps" not in settings:
+        settings["enableSpeedMaps"] = not settings.get("noSpeedMaps", False)
 
 
 def getInputVideo(cs: ClipperState) -> None:

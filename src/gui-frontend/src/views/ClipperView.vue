@@ -391,6 +391,9 @@ async function createMockMarkupForVideo(videoPath: string) {
     // For mock clips, we know the duration matches the video, so it's always valid
     activeColorGradingClip.value = 0 // Set as active for color grading
 
+    // Extract directory from video path for output location
+    const videoDir = videoPath.substring(0, videoPath.lastIndexOf(/[/\\]/.exec(videoPath)?.[0] || '/'))
+
     // Create mock markup data structure that follows the proper schema
     parsedMarkupData.value = {
       platform: 'ytc_generic',
@@ -400,24 +403,25 @@ async function createMockMarkupForVideo(videoPath: string) {
       videoTag: '[ytc_generic@unknown]',
       newMarkerSpeed: 1,
       newMarkerCrop: '',
-      titleSuffix: 'mock',
-      version: '5.32.0',
+      titleSuffix: videoName,
+      isVerticalVideo: false, // Default to false, could be detected from video info if needed
+      markerPairMergeList: '',
+      cropResWidth: videoInfo.value?.width || 1920,
+      cropResHeight: videoInfo.value?.height || 1080,
+      cropRes: `${videoInfo.value?.width || 1920}x${videoInfo.value?.height || 1080}`,
+      version: '0.0.0',
       markerPairs: [{
         number: 1,
         start: 0,
         end: duration,
         speed: 1,
-        crop: '',
+        crop: '0:0:iw:ih',
         enableZoomPan: false,
         overrides: {}
       }],
-      // Legacy structure for compatibility
-      markers: [{
-        start: 0,
-        end: duration,
-        title: mockClip.title
-      }],
-      totalDuration: duration
+      totalDuration: duration,
+      // Add custom output path hint - use same directory as input video
+      outputDirectory: videoDir
     }
 
     ElMessage.success(`Created mock markup for ${videoName} (${Math.round(duration)}s)`)
@@ -515,55 +519,22 @@ async function handleProcessFiles() {
   if (!canProcess.value) return
 
   try {
-    // Handle mock markup scenario - create a temporary markup file
-    let markupPath = clipperStore.selectedFiles.markup
-
-    if (!markupPath && parsedMarkupData.value) {
-      // We have mock markup data but no file - create a temporary markup file
-      markupPath = await createTempMarkupFile(parsedMarkupData.value)
-
-      if (!markupPath) {
-        throw new Error('Failed to create temporary markup file for processing')
-      }
-    }
-
-    if (!markupPath) {
+    // Handle mock markup scenario - pass data directly instead of creating temp file
+    if (!clipperStore.selectedFiles.markup && parsedMarkupData.value) {
+      // We have mock markup data but no file - pass it directly to the processing
+      await clipperStore.startProcessing(selectedClips.value, parsedMarkupData.value)
+    } else if (clipperStore.selectedFiles.markup) {
+      // We have a real markup file - use normal processing
+      await clipperStore.startProcessing(selectedClips.value)
+    } else {
       throw new Error('No markup file or data available for processing')
     }
 
-    // Temporarily set the markup path for processing
-    const originalMarkupPath = clipperStore.selectedFiles.markup
-    clipperStore.selectedFiles.markup = markupPath
-
-    try {
-      await clipperStore.startProcessing(selectedClips.value)
-      ElMessage.success('Processing started successfully')
-    } finally {
-      // Restore original markup path (might be null for mock scenarios)
-      clipperStore.selectedFiles.markup = originalMarkupPath
-    }
+    ElMessage.success('Processing started successfully')
 
   } catch (error) {
     console.error('Processing failed:', error)
     ElMessage.error('Processing failed to start')
-  }
-}
-
-// Create a temporary markup file for mock markup scenarios
-async function createTempMarkupFile(markupData: any): Promise<string | null> {
-  try {
-    // Call a new API method to create a temporary markup file
-    const result = await window.pywebview.api.create_temp_markup_file(markupData)
-
-    if (result.status === 'success' && result.temp_file_path) {
-      return result.temp_file_path
-    } else {
-      console.error('Failed to create temp markup file:', result.message)
-      return null
-    }
-  } catch (error) {
-    console.error('Error creating temp markup file:', error)
-    return null
   }
 }
 
