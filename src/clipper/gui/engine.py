@@ -260,6 +260,8 @@ class ClipperEngine:
             'audio': 'audio',
             'fast_trim': 'fastTrim',
             'target_max_bitrate': 'targetMaxBitrate',
+            'target_fps': 'targetFPS',
+            'crf': 'crf',
             'h264_disable_reduce_stutter': 'h264DisableReduceStutter',
             'auto_subs_lang': 'autoSubsLang',
             'subs_file_path': 'subsFilePath',
@@ -290,6 +292,10 @@ class ClipperEngine:
             'ytdl_password': 'password',
             'ytdl_auto_update': 'ytdlAutoUpdate',
             'cookiefile': 'cookiefile',
+
+            # Cache settings
+            'cache_folder_path': 'cacheFolderPath',
+            'cache_max_size_mb': 'cacheMaxSizeMb',
         }
 
         applied_count = 0

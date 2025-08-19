@@ -27,6 +27,7 @@ export interface GeneralSettings {
   extra_audio_filters?: string
   target_size: number // Target file size in MB, 0 = unlimited
   target_fps?: number // Force the video's frame rate to this value
+  crf?: number // Constant rate factor (0-51), default is auto-calculated
   overwrite: boolean
 
   // === OTHER OPTIONS ===
@@ -102,7 +103,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     name: 'Quality & Encoding',
     description: 'Video and audio quality settings',
     icon: 'Picture',
-    settings: ['crf', 'target_max_bitrate', 'two_pass', 'video_codec', 'audio_codec']
+    settings: ['crf', 'target_max_bitrate', 'target_size', 'target_fps']
   },
   {
     id: 'processing',

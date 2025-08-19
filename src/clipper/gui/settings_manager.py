@@ -40,6 +40,7 @@ class GeneralSettings:
     extra_audio_filters: str = ""
     target_size: float = 0.0  # Target file size in MB, 0 = unlimited
     target_fps: Optional[float] = None  # Force the video's frame rate to this value
+    crf: Optional[int] = None  # Constant rate factor (0-51), default is auto-calculated
     overwrite: bool = False
 
     # === OTHER OPTIONS ===
