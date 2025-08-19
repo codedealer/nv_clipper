@@ -54,9 +54,13 @@ class ClipperGUI:
         except Exception as e:
             self.logger.error(f"Failed to update cache manager settings: {e}")
 
-    def process_files(self, markup_path: str, video_path: Optional[str] = None,
-                     selected_clips: Optional[List[int]] = None) -> Dict[str, Any]:
+    def process_files(self, markup_path: Optional[str] = None, video_path: Optional[str] = None,
+                     selected_clips: Optional[List[int]] = None,
+                     markup_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process files using the engine in a separate thread"""
+        if markup_path is None and markup_data is None:
+            return {"status": "error", "message": "Either markup_path or markup_data must be provided"}
+
         # Create a unique job ID
         job_id = str(uuid.uuid4())
 
@@ -89,7 +93,12 @@ class ClipperGUI:
                     settings_overrides['only'] = selected_clips
 
                 # Call the engine processing with settings
-                result = self.engine.process_files(markup_path, video_path, settings_overrides)
+                result = self.engine.process_files(
+                    markup_path=markup_path,
+                    video_path=video_path,
+                    settings_overrides=settings_overrides,
+                    markup_data=markup_data
+                )
 
                 # Update with final result
                 with self.job_lock:

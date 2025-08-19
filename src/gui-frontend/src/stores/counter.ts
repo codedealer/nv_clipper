@@ -42,8 +42,8 @@ export const useClipperStore = defineStore('clipper', () => {
     }
   }
 
-  async function startProcessing(selectedClips?: number[]): Promise<ProcessingResult> {
-    if (!canProcess.value) {
+  async function startProcessing(selectedClips?: number[], markupData?: Record<string, any>): Promise<ProcessingResult> {
+    if (!canProcess.value && !markupData) {
       throw new Error('Cannot start processing: no markup file selected or already processing')
     }
 
@@ -64,9 +64,10 @@ export const useClipperStore = defineStore('clipper', () => {
       }
 
       const result = await api.process_files(
-        selectedFiles.value.markup!,
+        selectedFiles.value.markup || undefined,  // Optional now
         selectedFiles.value.video || undefined,
-        selectedClips || undefined
+        selectedClips || undefined,
+        markupData || undefined  // Pass markup data directly
       )
 
       if (result.status === 'accepted' && result.job_id) {

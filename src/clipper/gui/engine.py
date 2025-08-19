@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Optional
@@ -31,25 +32,36 @@ class ClipperEngine:
         self.cs: Optional[ClipperState] = None
         self.logger = logging.getLogger(__name__)
 
-    def process_files(self, markup_path: str, video_path: Optional[str] = None,  # noqa: PLR0912
-                     settings_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def process_files(self, markup_path: Optional[str] = None, video_path: Optional[str] = None,  # noqa: PLR0912
+                     settings_overrides: Optional[Dict[str, Any]] = None,
+                     markup_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process markup and optionally video files using exact CLI logic with GUI settings.
 
         Args:
-            markup_path: Path to the markup JSON file
+            markup_path: Path to the markup JSON file (optional if markup_data provided)
             video_path: Optional path to input video file
             settings_overrides: Dict containing ONLY specific overrides not in GUI settings:
                 - 'only': List of clip indices to process (0-indexed, will be converted to 1-indexed)
                 - 'overwrite': Boolean to force overwrite existing clips
                 - 'preview': Boolean to enable preview mode
+            markup_data: Direct markup data (alternative to markup_path)
         """
+        if markup_path is None and markup_data is None:
+            return {"status": "error", "message": "Either markup_path or markup_data must be provided"}
+
         try:
             print(f"DEBUG: Starting file processing with CLI-identical logic and GUI settings...")
 
-            # Validate markup file
-            markup_file = Path(markup_path)
-            if not markup_file.exists():
-                return {"status": "error", "message": f"Markup file not found: {markup_path}"}
+            # Validate inputs - either markup_path OR markup_data must be provided
+            if markup_path:
+                markup_file = Path(markup_path)
+                if not markup_file.exists():
+                    return {"status": "error", "message": f"Markup file not found: {markup_path}"}
+                print(f"DEBUG: Using markup file: {markup_path}")
+            elif markup_data:
+                print("DEBUG: Using direct markup data")
+            else:
+                return {"status": "error", "message": "Either markup_path or markup_data must be provided"}
 
             # Create a fresh clipper state for this processing session
             self.cs = clipper_types.ClipperState()
@@ -62,10 +74,14 @@ class ClipperEngine:
             print(f"DEBUG: Loaded GUI settings: {len(gui_settings)} settings")
 
             # Build minimal argv for required arguments only (no settings)
-            simulated_argv = [
-                "yt_clipper",
-                "--markers-json", str(markup_file.absolute()),
-            ]
+            simulated_argv = ["yt_clipper"]
+
+            # Add markup file argument if using file path, otherwise we'll inject data later
+            if markup_path:
+                simulated_argv.extend(["--markers-json", str(Path(markup_path).absolute())])
+            else:
+                # For markup_data, we need a placeholder that won't be used
+                simulated_argv.extend(["--markers-json", "placeholder.json"])
 
             if video_path:
                 video_file = Path(video_path)
@@ -115,8 +131,16 @@ class ClipperEngine:
                 print(f"DEBUG: Applying GUI settings to clipper state...")
                 self._apply_gui_settings_to_clipper_state(gui_settings)
 
-                # Load settings from markup JSON (this will override GUI settings where applicable)
-                ytc_settings.loadSettings(self.cs.settings)
+                # Load settings - either from markup data or JSON file
+                if markup_data:
+                    print("DEBUG: Loading settings with direct markup data")
+                    # Handle custom output directory from markup data before setting up paths
+                    if 'outputDirectory' in markup_data:
+                        self.cs.settings['outputDirectory'] = markup_data['outputDirectory']
+                    ytc_settings.loadSettings(self.cs.settings, markup_data)
+                else:
+                    print("DEBUG: Loading settings from JSON file")
+                    ytc_settings.loadSettings(self.cs.settings)
 
                 # Preserve persistent RIFE cache across processing sessions
                 if self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"]:
@@ -127,7 +151,18 @@ class ClipperEngine:
                 from clipper.yt_clipper import setupDepPaths, setupOutputPaths
 
                 setupDepPaths(self.cs)
-                setupOutputPaths(self.cs)
+
+                # Handle custom output directory from mock markup before setting up paths
+                if 'outputDirectory' in self.cs.settings and self.cs.settings['outputDirectory']:
+                    # Use the custom output directory instead of default webms
+                    self.cs.clipper_paths.clipsPath = self.cs.settings['outputDirectory']
+                    self.cs.settings["titleSuffix"] = self.cs.settings.get("videoTitle", "standalone-video")
+                    self.cs.settings["downloadVideoNameStem"] = f"{self.cs.settings["titleSuffix"]}"
+                    self.cs.settings["downloadVideoPath"] = f'{self.cs.clipper_paths.clipsPath}/{self.cs.settings["downloadVideoNameStem"]}'
+                    os.makedirs(f"{self.cs.clipper_paths.clipsPath}/temp", exist_ok=True)
+                else:
+                    setupOutputPaths(self.cs)
+
                 ytc_logger.setUpLogger(self.cs)
 
                 # Inject persistent RIFE cache into clip_maker module before processing
@@ -268,69 +303,3 @@ class ClipperEngine:
 
         print(f"DEBUG: Applied {applied_count} GUI settings to clipper state (safe settings only)")
         print(f"DEBUG: Markup JSON will load next and can override these settings")
-
-    def _setupDepPaths(self, cs: ClipperState) -> None:
-        """Setup dependency paths (copied from yt_clipper.py)."""
-        settings = cs.settings
-        cp = cs.clipper_paths
-
-        if getattr(sys, "frozen", False):
-            cp.ffmpegPath = "./bin/ffmpeg"
-            cp.ffprobePath = "./bin/ffprobe"
-            cp.ffplayPath = "./bin/ffplay"
-            cp.ytdlPath = "./bin/yt-dlp"
-
-            if sys.platform == "win32":
-                cp.ffmpegPath += ".exe"
-                cp.ffprobePath += ".exe"
-                cp.ffplayPath += ".exe"
-                cp.ytdlPath += ".exe"
-
-            if sys.platform == "darwin":
-                cp.ytdlPath += "_macos"
-
-                import certifi
-                certifi_cacert_path = certifi.where()
-                os.environ["SSL_CERT_FILE"] = certifi_cacert_path
-                os.environ["REQUESTS_CA_BUNDLE"] = certifi_cacert_path
-
-        if settings.get("ytdlLocation"):
-            cp.ytdlPath = settings["ytdlLocation"]
-
-        # Handle Topaz if needed
-        self._prepareTopazFFmpeg(cs)
-
-    def _prepareTopazFFmpeg(self, cs: ClipperState) -> None:
-        """Prepare Topaz FFmpeg if configured."""
-        topaz_path = cs.settings.get("topazAIPath", "")
-        if not topaz_path:
-            return
-
-        topaz_dir = Path(topaz_path)
-        if not topaz_dir.is_dir():
-            topaz_dir = topaz_dir.parent
-
-        ffmpeg_path = Path(str(topaz_dir / "ffmpeg.exe"))
-        if not ffmpeg_path.is_file():
-            raise FileNotFoundError(f"ffmpeg.exe not found in {topaz_dir}")
-
-        cs.clipper_paths.ffmpegPath = str(ffmpeg_path).replace("\\", "/")
-
-        model_data_dir = cs.settings.get("topazModelDataDir", "")
-        model_dir = cs.settings.get("topazModelDir", "")
-        if model_data_dir and model_dir:
-            os.environ["TVAI_MODEL_DATA_DIR"] = model_data_dir
-            os.environ["TVAI_MODEL_DIR"] = model_dir
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-            os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "2"
-
-    def _setupOutputPaths(self, cs: ClipperState) -> None:
-        """Setup output paths (copied from yt_clipper.py)."""
-        settings = cs.settings
-        cp = cs.clipper_paths
-        title_suffix = settings.get("titleSuffix", "")
-        cp.clipsPath += f'/{title_suffix}' if title_suffix else ""
-
-        os.makedirs(f"{cp.clipsPath}/temp", exist_ok=True)
-        download_name_stem = settings.get("downloadVideoNameStem", "video")
-        settings["downloadVideoPath"] = f'{cp.clipsPath}/{download_name_stem}'
