@@ -52,15 +52,14 @@
                   @clear-video="clearVideoFile"
                 />
 
-                <!-- Video URL Extractor -->
+                <!-- Video URL Extractor - only show when markup has URL but no video is selected -->
                 <VideoUrlExtractor
-                  v-if="parsedMarkupData"
+                  v-if="parsedMarkupData && !hasVideoFile"
                   :markup-data="parsedMarkupData"
                   :has-video-source="hasVideoFile"
                   @download-requested="handleVideoDownloadRequest"
                 />
 
-                <!-- Separator -->
                 <div class="sidebar-separator"></div>
 
                 <!-- Clip Selection Component -->
@@ -275,7 +274,7 @@ function getStatusMessage() {
 }
 
 // File handling
-function handleSelectedFiles(filePaths: string[]) {
+async function handleSelectedFiles(filePaths: string[]) {
   const newFiles = { markup: null as string | null, video: null as string | null }
 
   for (const filePath of filePaths) {
@@ -291,14 +290,36 @@ function handleSelectedFiles(filePaths: string[]) {
   // Update store
   if (newFiles.markup) {
     clipperStore.selectedFiles.markup = newFiles.markup
-    parseMarkupFile(newFiles.markup)
+    // Clear mock markup data when real markup file is selected
+    parsedMarkupData.value = null
   }
   if (newFiles.video) {
     clipperStore.selectedFiles.video = newFiles.video
 
+    // Always get video info when a video file is selected
+    // This ensures video info is available regardless of markup file presence
+    try {
+      const videoInfoResponse = await window.pywebview.api.get_video_info(newFiles.video)
+      if (videoInfoResponse.status === 'success' && videoInfoResponse.video_info) {
+        videoInfo.value = videoInfoResponse.video_info
+        videoDuration.value = videoInfoResponse.video_info.duration ?? null
+      }
+    } catch (error) {
+      console.error('Failed to get video info:', error)
+      // Don't fail the entire operation, just log the error
+    }
+
     // If we have video but no markup, check if we should create a mock markup
     if (!newFiles.markup && !clipperStore.hasMarkupFile && !isCreatingMockMarkup.value) {
       createMockMarkupForVideo(newFiles.video)
+    }
+  }
+
+  // Parse markup file if we have one (either newly dropped or existing)
+  if (newFiles.markup || clipperStore.selectedFiles.markup) {
+    const markupPath = newFiles.markup || clipperStore.selectedFiles.markup
+    if (markupPath) {
+      parseMarkupFile(markupPath)
     }
   }
 }
@@ -312,11 +333,25 @@ async function parseMarkupFile(filePath: string) {
       parsedClips.value = result.clips
       selectedClips.value = Array.from({ length: result.clips.length }, (_, i) => i)
 
-      // Store video info if available
-      if (result.video_info) {
-        videoDuration.value = result.video_info.duration ?? null
-        videoInfo.value = result.video_info
-        console.log('Video info:', result.video_info)
+      // Video info is managed separately by handleSelectedFiles/selectVideoAndUpdateUI
+      // Don't clear it here - preserve existing video info from actual file probing
+
+      // Load the complete markup structure to enable color grading modifications
+      try {
+        const fullMarkupData = await window.pywebview.api.load_markup_file_data(filePath)
+        if (fullMarkupData.status === 'success' && fullMarkupData.data) {
+          parsedMarkupData.value = fullMarkupData.data
+        } else {
+          // API returned error status - color grading changes won't be tracked
+          parsedMarkupData.value = null
+          if (fullMarkupData.message) {
+            ElMessage.warning(`Color grading may not work: ${fullMarkupData.message}`)
+          }
+        }
+      } catch (error) {
+        // API call failed completely - color grading changes won't be tracked
+        parsedMarkupData.value = null
+        ElMessage.warning('Color grading changes may not persist due to file loading error')
       }
 
       // Set the first valid clip as active for color grading
@@ -342,7 +377,6 @@ async function parseMarkupFile(filePath: string) {
 async function createMockMarkupForVideo(videoPath: string) {
   // Prevent concurrent calls
   if (isCreatingMockMarkup.value) {
-    console.log('Mock markup creation already in progress, skipping...')
     return
   }
 
@@ -353,9 +387,6 @@ async function createMockMarkupForVideo(videoPath: string) {
     // Get video information to determine duration
     const videoInfoResponse = await window.pywebview.api.get_video_info(videoPath)
 
-    // Add debug logging
-    console.log('Video info response:', videoInfoResponse)
-
     if (videoInfoResponse.status !== 'success') {
       throw new Error(videoInfoResponse.message || 'Failed to get video information')
     }
@@ -363,7 +394,7 @@ async function createMockMarkupForVideo(videoPath: string) {
     // Get duration from video_info and store full video info
     const duration = videoInfoResponse.video_info?.duration
     if (!duration || duration <= 0) {
-      throw new Error('Video duration not available in response')
+      throw new Error('Video duration not available or invalid')
     }
 
     // Store the full video info
@@ -388,8 +419,8 @@ async function createMockMarkupForVideo(videoPath: string) {
     parsedClips.value = [mockClip]
     selectedClips.value = [0] // Select the mock clip by default
 
-    // For mock clips, we know the duration matches the video, so it's always valid
-    activeColorGradingClip.value = 0 // Set as active for color grading
+    // Set as active for color grading since we know the duration matches the video
+    activeColorGradingClip.value = 0
 
     // Extract directory from video path for output location
     const videoDir = videoPath.substring(0, videoPath.lastIndexOf(/[/\\]/.exec(videoPath)?.[0] || '/'))
@@ -519,12 +550,14 @@ async function handleProcessFiles() {
   if (!canProcess.value) return
 
   try {
-    // Handle mock markup scenario - pass data directly instead of creating temp file
-    if (!clipperStore.selectedFiles.markup && parsedMarkupData.value) {
-      // We have mock markup data but no file - pass it directly to the processing
+    // Always check if we have modified markup data to send
+    const hasModifiedMarkup = parsedMarkupData.value !== null
+
+    if (hasModifiedMarkup && parsedMarkupData.value) {
+      // We have markup data (either mock or modified real markup) - pass it directly
       await clipperStore.startProcessing(selectedClips.value, parsedMarkupData.value)
     } else if (clipperStore.selectedFiles.markup) {
-      // We have a real markup file - use normal processing
+      // We have a real markup file with no modifications - use normal processing
       await clipperStore.startProcessing(selectedClips.value)
     } else {
       throw new Error('No markup file or data available for processing')
@@ -564,9 +597,20 @@ function handleVideoDownloadRequest() {
 }
 
 // Shared function for video selection logic
-function selectVideoAndUpdateUI(video: CachedVideo) {
+async function selectVideoAndUpdateUI(video: CachedVideo) {
   // Set the selected video using the proper store method
   clipperStore.setVideoFile(video.file_path)
+
+  // Always get video info when a video file is selected
+  try {
+    const videoInfoResponse = await window.pywebview.api.get_video_info(video.file_path)
+    if (videoInfoResponse.status === 'success' && videoInfoResponse.video_info) {
+      videoInfo.value = videoInfoResponse.video_info
+      videoDuration.value = videoInfoResponse.video_info.duration ?? null
+    }
+  } catch (error) {
+    console.error('Failed to get video info:', error)
+  }
 
   // Auto-select video if no files are currently selected
   const hasSelectedVideo = clipperStore.selectedFiles.video
@@ -629,6 +673,17 @@ function handleColorGradingChanged(clipNumber: number, filter: string) {
     clip.overrides = {
       ...clip.overrides,
       colorGrading: filter || undefined
+    }
+
+    // Also update the markup data structure to ensure backend receives changes
+    if (parsedMarkupData.value?.markerPairs && Array.isArray(parsedMarkupData.value.markerPairs)) {
+      const markerPair = parsedMarkupData.value.markerPairs.find((mp: any) => mp.number === clipNumber)
+      if (markerPair) {
+        markerPair.overrides = {
+          ...markerPair.overrides,
+          colorGrading: filter || undefined
+        }
+      }
     }
 
     ElMessage.success(filter ? 'Color grading applied to clip' : 'Color grading removed from clip')

@@ -54,7 +54,7 @@ def loadSettings(settings: Settings, markup_data: Optional[Dict[str, Any]] = Non
     if markup_data:
         # Use provided markup data directly
         markersDict = markup_data
-        markersDataFileStem = settings.get("titleSuffix", "mock-markup")
+        markersDataFileStem = markersDict.get("titleSuffix", "mock-markup")
         print(f"DEBUG: Using direct markup data with titleSuffix: {markersDataFileStem}")
     else:
         # Load from JSON file (original behavior)
