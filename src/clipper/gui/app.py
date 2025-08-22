@@ -208,10 +208,10 @@ class ClipperGUI:
                 }
                 clips.append(clip)
 
-            return {
+            result = {
                 'status': 'success',
                 'clips': clips,
-                'video_info': {
+                'markup_info': {
                     'title': video_title,
                     'video_url': data.get('videoUrl', ''),
                     'video_id': data.get('videoID', ''),
@@ -222,11 +222,76 @@ class ClipperGUI:
                 },
             }
 
+            # If there's a selected video file, always probe it for actual video properties
+            # This ensures the GUI displays current, accurate video information
+            from clipper.clipper_types import ClipperState, ClipperPaths
+            from clipper.ffprobe import ffprobeVideoProperties
+
+            # Check if we have a current video file from the GUI state
+            # We need to check the current_files list which stores dropped files
+            video_file_path = None
+            for file_path in self.current_files:
+                if any(Path(file_path).suffix.lower().endswith(ext) for ext in ['.mp4', '.webm', '.avi', '.mkv', '.mov']):
+                    video_file_path = file_path
+                    break
+
+            if video_file_path and Path(video_file_path).exists():
+                try:
+                    # Create minimal clipper state for ffprobe
+                    cs = ClipperState(
+                        settings={'platform': 'ytc_generic'},
+                        clipper_paths=ClipperPaths()
+                    )
+
+                    # Probe the actual video file
+                    video_properties = ffprobeVideoProperties(cs, str(video_file_path))
+
+                    if video_properties:
+                        duration = None
+                        if 'duration' in video_properties:
+                            duration = float(video_properties['duration'])
+
+                        result['video_info'] = {
+                            'duration': duration,
+                            'width': video_properties.get('width'),
+                            'height': video_properties.get('height'),
+                            'codec_name': video_properties.get('codec_name'),
+                            'bit_rate': video_properties.get('bit_rate'),
+                            'frame_rate': video_properties.get('r_frame_rate'),
+                            'path': str(video_file_path)
+                        }
+                        self.logger.info(f"Successfully probed video file: {video_file_path}")
+                    else:
+                        self.logger.warning(f"Failed to probe video file: {video_file_path}")
+
+                except Exception as e:
+                    self.logger.warning(f"Error probing video file {video_file_path}: {e}")
+
+            return result
+
         except Exception as e:
             self.logger.error(f"Failed to parse markup file {file_path}: {e}")
             return {
                 'status': 'error',
                 'message': f"Failed to parse markup file: {e!s}",
+            }
+
+    def load_markup_file_data(self, file_path: str) -> Dict[str, Any]:
+        """Load the complete markup file data structure for color grading tracking"""
+        try:
+            with open(file_path, encoding='utf-8') as f:
+                data = json.load(f)
+
+            return {
+                'status': 'success',
+                'data': data,
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to load markup file data {file_path}: {e}")
+            return {
+                'status': 'error',
+                'message': f"Failed to load markup file data: {e!s}",
             }
 
     # Settings Management API

@@ -82,6 +82,12 @@ export interface ParseMarkupResult {
   video_info?: VideoInfo
 }
 
+export interface LoadMarkupDataResult {
+  status: 'success' | 'error'
+  message?: string
+  data?: Record<string, any>
+}
+
 // Settings API response types
 export interface SettingsApiResponse {
   status: 'success' | 'error'
@@ -154,6 +160,7 @@ declare global {
         get_status: () => Promise<EngineStatus>
         select_files: () => Promise<string[]>
         parse_markup_file: (filePath: string) => Promise<ParseMarkupResult>
+        load_markup_file_data: (filePath: string) => Promise<LoadMarkupDataResult>
         cleanup_old_jobs: () => Promise<{ cleaned: number }>
 
         // Frame preview
