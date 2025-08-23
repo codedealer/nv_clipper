@@ -41,11 +41,10 @@ import { computed } from 'vue'
 import { ElMessage, ElButton, ElTooltip, ElIcon } from 'element-plus'
 import { Download, CopyDocument, Warning } from '@element-plus/icons-vue'
 import { useCacheStore } from '@/stores/cache'
-import type { MarkupData } from '@/utils/markup'
 
 // Props
 interface Props {
-  markupData: MarkupData | null
+  markupData: { videoUrl?: string; title?: string; [key: string]: unknown } | null
   hasVideoSource: boolean
 }
 
