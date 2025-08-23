@@ -152,7 +152,7 @@ function selectVideo(video: CachedVideo) {
   }
 }
 
-function handleQuickDownloadComplete(progress: any) {
+function handleQuickDownloadComplete(progress: { title?: string; url?: string; [key: string]: unknown }) {
   const videoTitle = progress.title || progress.url
   ElMessage.success({
     message: `Download completed: ${videoTitle}`,
@@ -188,7 +188,7 @@ function handleQuickDownloadComplete(progress: any) {
   }
 }
 
-function handleQuickDownloadError(progress: any) {
+function handleQuickDownloadError(progress: { message?: string; [key: string]: unknown }) {
   const errorMessage = progress.message || 'Download failed with unknown error'
   ElMessage.error({
     message: `Download failed: ${errorMessage}`,
