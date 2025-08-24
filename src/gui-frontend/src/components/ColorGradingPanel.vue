@@ -163,71 +163,90 @@
               />
             </div>
 
-            <!-- Filter String Display -->
-            <div class="filter-display">
-              <el-form-item label="Generated Filter">
+            <!-- Filter Output & Controls Card -->
+            <div class="filter-output-card">
+              <div class="filter-card-header">
+                <h5>Generated Filter</h5>
+                <div class="filter-header-controls">
+                  <el-checkbox
+                    v-model="previewEnabled"
+                    @change="updatePreview"
+                    size="small"
+                  >
+                    Preview
+                  </el-checkbox>
+                </div>
+              </div>
+
+              <div class="filter-display">
                 <el-input
                   v-model="generatedFilter"
                   type="textarea"
                   :rows="2"
                   readonly
                   placeholder="Color grading filter will appear here"
+                  class="filter-textarea"
                 />
-              </el-form-item>
-            </div>
+              </div>
 
-            <!-- Copy/Paste Controls -->
-            <div class="copy-paste-controls">
-              <el-button
-                size="small"
-                @click="copyFilter"
-                :disabled="!generatedFilter"
-              >
-                Copy Filter
-              </el-button>
-              <el-button
-                size="small"
-                @click="showPasteDialog"
-              >
-                Paste Filter
-              </el-button>
-              <el-button
-                size="small"
-                @click="resetToDefaults"
-              >
-                Reset
-              </el-button>
+              <div class="filter-actions">
+                <div class="action-group primary-actions">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    @click="copyFilter"
+                    :disabled="!generatedFilter"
+                    plain
+                  >
+                    <el-icon><DocumentCopy /></el-icon>
+                    Copy Filter
+                  </el-button>
+                  <el-button
+                    size="small"
+                    @click="showPasteDialog"
+                    plain
+                  >
+                    <el-icon><Document /></el-icon>
+                    Paste Filter
+                  </el-button>
+                </div>
+
+                <div class="action-group secondary-actions">
+                  <el-button
+                    size="small"
+                    type="success"
+                    @click="copyToAllClips"
+                    :disabled="!generatedFilter || isMockMarkup"
+                    plain
+                    v-if="!isMockMarkup"
+                  >
+                    <el-icon><CopyDocument /></el-icon>
+                    Copy to All Clips
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="warning"
+                    @click="handleReset"
+                    plain
+                  >
+                    <el-icon><RefreshLeft /></el-icon>
+                    Reset
+                  </el-button>
+                </div>
+              </div>
             </div>
               </div>
             </el-scrollbar>
           </div>
         </div>
       </div>
-
-    <!-- Paste Filter Dialog -->
-    <el-dialog
-      v-model="pasteDialogVisible"
-      title="Paste Color Grading Filter"
-      width="500px"
-    >
-      <el-input
-        v-model="pasteFilterText"
-        type="textarea"
-        :rows="3"
-        placeholder="Paste FFmpeg color grading filter string here"
-      />
-      <template #footer>
-        <el-button @click="pasteDialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="pasteFilter">Apply</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, DocumentCopy, Document, CopyDocument, RefreshLeft } from '@element-plus/icons-vue'
 import type { ClipInfo, VideoInfo } from '@/types/api'
 
 // Simple debounce function
@@ -245,10 +264,13 @@ interface Props {
   videoDuration?: number | null
   videoInfo?: VideoInfo | null
   isProcessing?: boolean
+  isMockMarkup?: boolean
+  getClipColorGrading?: (clipNumber: number) => string | undefined
 }
 
 interface Emits {
   (e: 'color-grading-changed', clipNumber: number, filter: string): void
+  (e: 'copy-to-all-clips', filter: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -256,7 +278,9 @@ const props = withDefaults(defineProps<Props>(), {
   videoPath: null,
   videoDuration: null,
   videoInfo: null,
-  isProcessing: false
+  isProcessing: false,
+  isMockMarkup: false,
+  getClipColorGrading: undefined
 })
 
 const emit = defineEmits<Emits>()
@@ -267,6 +291,7 @@ const previewTimestamp = ref(0)
 const isGeneratingPreview = ref(false)
 const previewImageUrl = ref('')
 const previewError = ref('')
+const previewEnabled = ref(true)
 
 // Color parameters
 const brightness = ref(0)
@@ -274,10 +299,6 @@ const contrast = ref(1)
 const saturation = ref(1)
 const hue = ref(0)
 const gamma = ref(1)
-
-// Dialog state
-const pasteDialogVisible = ref(false)
-const pasteFilterText = ref('')
 
 // Computed properties
 const hasVideoAndClip = computed(() =>
@@ -393,14 +414,49 @@ const formatFrameRate = (frameRate: string): string => {
 }
 
 // Methods
+const handleReset = () => {
+  resetToDefaults()
+  updateColorGrading()
+  updatePreview()
+}
+
+const loadClipColorGrading = () => {
+  if (!props.selectedClip) {
+    resetToDefaults()
+    return
+  }
+
+  // Get existing color grading filter for this clip
+  let existingFilter: string | undefined
+
+  // Use the provided method if available, otherwise fall back to clip data
+  if (props.getClipColorGrading) {
+    existingFilter = props.getClipColorGrading(props.selectedClip.number)
+  } else {
+    existingFilter = props.selectedClip.overrides?.colorGrading as string | undefined
+  }
+
+  if (existingFilter && existingFilter.trim()) {
+    // Parse the existing filter to populate controls (without triggering updates)
+    try {
+      parseFilterToControls(existingFilter)
+    } catch (error) {
+      console.error('Failed to parse existing color grading filter:', error)
+      resetToDefaults()
+    }
+  } else {
+    // No existing filter - reset to defaults
+    resetToDefaults()
+  }
+}
+
 const resetToDefaults = () => {
   brightness.value = 0
   contrast.value = 1
   saturation.value = 1
   hue.value = 0
   gamma.value = 1
-  updateColorGrading()
-  updatePreview()
+  // Don't call updateColorGrading() here to avoid unnecessary updates
 }
 
 // Debounced function for timeline scrubbing
@@ -466,10 +522,13 @@ const updatePreview = async () => {
   previewError.value = ''
 
   try {
+    // Use filter only if preview is enabled
+    const filterToApply = previewEnabled.value ? generatedFilter.value || undefined : undefined
+
     const result = await window.pywebview.api.generate_frame_preview(
       props.videoPath!,
       previewTimestamp.value,
-      generatedFilter.value || undefined,
+      filterToApply,
       previewResolution.value
     )
 
@@ -505,30 +564,56 @@ const copyFilter = async () => {
   }
 }
 
-const showPasteDialog = () => {
-  pasteFilterText.value = ''
-  pasteDialogVisible.value = true
+const showPasteDialog = async () => {
+  try {
+    const clipboardText = await navigator.clipboard.readText()
+    if (clipboardText.trim()) {
+      pasteFilter(clipboardText.trim())
+    } else {
+      ElMessage.warning('Clipboard is empty')
+    }
+  } catch (error) {
+    ElMessage.error('Failed to access clipboard. Please check permissions.')
+    console.error('Clipboard access failed:', error)
+  }
 }
 
-const pasteFilter = () => {
-  const filterText = pasteFilterText.value.trim()
-  if (!filterText) {
-    ElMessage.warning('Please enter a filter string')
+const copyToAllClips = () => {
+  if (!generatedFilter.value || props.isMockMarkup) {
     return
   }
 
-  // Try to parse and apply the filter
+  emit('copy-to-all-clips', generatedFilter.value)
+}
+
+const pasteFilter = async (filterText?: string) => {
+  let textToPaste = filterText
+
+  if (!textToPaste) {
+    try {
+      textToPaste = await navigator.clipboard.readText()
+    } catch (error) {
+      ElMessage.error('Failed to access clipboard. Please check permissions.')
+      return
+    }
+  }
+
+  const trimmedText = textToPaste.trim()
+  if (!trimmedText) {
+    ElMessage.warning('No filter text to paste')
+    return
+  }
+
+  // Try to parse and apply the filter to the current clip
   try {
-    parseAndApplyFilter(filterText)
-    pasteDialogVisible.value = false
-    ElMessage.success('Filter applied successfully')
+    parseAndApplyFilter(trimmedText)
     updatePreview()
   } catch (error) {
     ElMessage.error(`Failed to apply filter: ${error}`)
   }
 }
 
-const parseAndApplyFilter = (filterString: string) => {
+const parseFilterToControls = (filterString: string) => {
   // Reset values first
   resetToDefaults()
 
@@ -563,7 +648,10 @@ const parseAndApplyFilter = (filterString: string) => {
       hue.value = parseInt(trimmed.substring(6))
     }
   }
+}
 
+const parseAndApplyFilter = (filterString: string) => {
+  parseFilterToControls(filterString)
   updateColorGrading()
 }
 
@@ -576,8 +664,14 @@ const formatTime = (seconds: number): string => {
 // Watch for clip changes
 watch(() => props.selectedClip, (newClip, oldClip) => {
   if (newClip && newClip !== oldClip) {
-    initializeTimestamp()
-    updatePreview()
+    // Load the color grading settings for this clip
+
+    // Use nextTick to ensure the reactive updates have settled
+    nextTick(() => {
+      loadClipColorGrading()
+      initializeTimestamp()
+      updatePreview()
+    })
   }
 })
 
@@ -600,6 +694,7 @@ watch(() => previewResolution.value, () => {
 
 onMounted(() => {
   if (hasVideoAndClip.value) {
+    loadClipColorGrading()
     initializeTimestamp()
     updatePreview()
   }
@@ -794,6 +889,67 @@ onMounted(() => {
 .filter-display {
   border-top: 1px solid var(--el-border-color);
   padding-top: 16px;
+}
+
+.filter-output-card {
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--el-bg-color);
+  margin-top: 16px;
+}
+
+.filter-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.filter-card-header h5 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.filter-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-textarea {
+  margin-bottom: 16px;
+}
+
+.filter-textarea :deep(.el-textarea__inner) {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--el-fill-color-lighter);
+}
+
+.filter-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.primary-actions .el-button {
+  flex: 1;
+  min-width: 120px;
+}
+
+.secondary-actions .el-button {
+  flex: 1;
+  min-width: 100px;
 }
 
 .copy-paste-controls {

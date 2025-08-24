@@ -18,7 +18,7 @@ export function useColorGrading(
 
   // Use passed composables or create new instances (for backward compatibility)
   const { videoDuration, findFirstValidClip } = videoOps || useVideoOperations()
-  const { parsedClips, updateClipColorGrading, getActiveClip } = markupOps || useMarkupOperations()
+  const { parsedClips, updateClipColorGrading, applyColorGradingToAllClips, getActiveClip, isMockMarkup } = markupOps || useMarkupOperations()
 
   // Computed properties
   const selectedClip = computed(() => getActiveClip(activeColorGradingClip.value))
@@ -86,18 +86,18 @@ export function useColorGrading(
   }
 
   /**
-   * Get color grading filter for a specific clip
+   * Get color grading filter for a specific clip by clip number (1-based)
    */
-  function getClipColorGrading(clipIndex: number): string | undefined {
-    const clip = parsedClips.value[clipIndex]
+  function getClipColorGrading(clipNumber: number): string | undefined {
+    const clip = parsedClips.value.find(c => c.number === clipNumber)
     return clip?.overrides?.colorGrading as string | undefined
   }
 
   /**
-   * Check if a clip has color grading applied
+   * Check if a clip has color grading applied by clip number (1-based)
    */
-  function clipHasColorGrading(clipIndex: number): boolean {
-    const filter = getClipColorGrading(clipIndex)
+  function clipHasColorGrading(clipNumber: number): boolean {
+    const filter = getClipColorGrading(clipNumber)
     return !!filter && filter.trim().length > 0
   }
 
@@ -122,6 +122,17 @@ export function useColorGrading(
   }
 
   /**
+   * Apply color grading filter to all clips
+   */
+  function handleCopyToAllClips(filter: string): boolean {
+    if (isMockMarkup.value) {
+      ElMessage.warning('Mock markup only has one clip')
+      return false
+    }
+
+    return applyColorGradingToAllClips(filter)
+  }
+  /**
    * Move to previous clip for color grading
    */
   function previousClip() {
@@ -139,11 +150,13 @@ export function useColorGrading(
     // Computed
     selectedClip,
     hasActiveClip,
+    isMockMarkup,
 
     // Methods
     setActiveClip,
     handleClipSelectedForColorGrading,
     handleColorGradingChanged,
+    handleCopyToAllClips,
     initializeActiveClip,
     resetColorGradingState,
     getClipColorGrading,

@@ -49,7 +49,10 @@
         :video-duration="videoOps.videoDuration.value"
         :video-info="videoOps.videoInfo.value"
         :is-processing="fileHandler.isProcessing.value"
+        :is-mock-markup="colorGrading.isMockMarkup.value"
+        :get-clip-color-grading="colorGrading.getClipColorGrading"
         @color-grading-changed="colorGrading.handleColorGradingChanged"
+        @copy-to-all-clips="colorGrading.handleCopyToAllClips"
       />
     </el-container>
 

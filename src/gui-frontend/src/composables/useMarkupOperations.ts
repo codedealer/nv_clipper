@@ -1,11 +1,12 @@
-import { ref, readonly } from 'vue'
+import { ref, readonly, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
 import type { ClipInfo } from '@/types/api'
 import type { MarkupData } from '@/utils/markup'
 import {
   SUPPORTED_MARKUP_EXTENSIONS,
-  UI_MESSAGES
+  UI_MESSAGES,
+  MOCK_MARKUP_DEFAULTS
 } from '@/constants'
 
 /**
@@ -20,6 +21,23 @@ export function useMarkupOperations() {
 
   // Store
   const clipperStore = useClipperStore()
+
+  // Computed properties
+  const isMockMarkup = computed(() => {
+    // Mock markup is identified by having exactly one clip that starts at 0
+    // and the markup data having the generic platform structure
+    if (parsedClips.value.length !== 1) return false
+
+    const clip = parsedClips.value[0]
+    const markupData = parsedMarkupData.value
+
+    return (
+      clip.start === 0 &&
+      clip.number === 1 &&
+      markupData?.platform === MOCK_MARKUP_DEFAULTS.PLATFORM &&
+      markupData?.videoID === MOCK_MARKUP_DEFAULTS.VIDEO_ID
+    )
+  })
 
   /**
    * Parse a JSON markup file and extract clips
@@ -81,8 +99,43 @@ export function useMarkupOperations() {
   }
 
   /**
-   * Update color grading for a specific clip
+   * Apply color grading filter to all clips
    */
+  function applyColorGradingToAllClips(filter: string): boolean {
+    if (isMockMarkup.value) {
+      ElMessage.warning('Cannot apply to all clips in mock markup')
+      return false
+    }
+
+    let appliedCount = 0
+
+    parsedClips.value.forEach(clip => {
+      clip.overrides = {
+        ...clip.overrides,
+        colorGrading: filter || undefined
+      }
+
+      // Also update the markup data structure
+      if (parsedMarkupData.value?.markerPairs && Array.isArray(parsedMarkupData.value.markerPairs)) {
+        const markerPair = parsedMarkupData.value.markerPairs.find((mp: Record<string, unknown>) => mp.number === clip.number)
+        if (markerPair) {
+          markerPair.overrides = {
+            ...markerPair.overrides,
+            colorGrading: filter || undefined
+          }
+          appliedCount++
+        }
+      }
+    })
+
+    if (appliedCount > 0) {
+      ElMessage.success(`Color grading applied to ${appliedCount} clips`)
+      return true
+    } else {
+      ElMessage.error('Failed to apply color grading to all clips')
+      return false
+    }
+  }
   function updateClipColorGrading(clipNumber: number, filter: string): boolean {
     // Find the clip and update its color grading
     const clip = parsedClips.value.find(c => c.number === clipNumber)
@@ -104,10 +157,10 @@ export function useMarkupOperations() {
         }
       }
 
-      ElMessage.success(filter ? UI_MESSAGES.COLOR_GRADING_APPLIED : UI_MESSAGES.COLOR_GRADING_REMOVED)
+      // Don't show success messages for individual clip updates to avoid spam
       return true
     } else {
-      ElMessage.error(UI_MESSAGES.CLIP_NOT_FOUND)
+      console.error('Clip not found for color grading update:', clipNumber)
       return false
     }
   }
@@ -184,11 +237,15 @@ export function useMarkupOperations() {
     selectedClips,
     parsedMarkupData: readonly(parsedMarkupData),
 
+    // Computed
+    isMockMarkup,
+
     // Methods
     parseMarkupFile,
     loadFullMarkupData,
     setMarkupData,
     updateClipColorGrading,
+    applyColorGradingToAllClips,
     getActiveClip,
     isMarkupFile,
     resetMarkupState,

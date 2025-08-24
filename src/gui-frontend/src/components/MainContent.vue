@@ -19,7 +19,10 @@
         :video-duration="videoDuration"
         :video-info="videoInfo"
         :is-processing="isProcessing"
+        :is-mock-markup="props.isMockMarkup"
+        :get-clip-color-grading="getClipColorGrading"
         @color-grading-changed="handleColorGradingChanged"
+        @copy-to-all-clips="handleCopyToAllClips"
       />
     </div>
 
@@ -47,16 +50,21 @@ interface Props {
   videoDuration?: number | null
   videoInfo?: VideoInfo | null
   isProcessing?: boolean
+  isMockMarkup?: boolean
+  getClipColorGrading?: (clipNumber: number) => string | undefined
 }
 
 interface Emits {
   (e: 'color-grading-changed', clipNumber: number, filter: string): void
+  (e: 'copy-to-all-clips', filter: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
   videoDuration: null,
   videoInfo: null,
-  isProcessing: false
+  isProcessing: false,
+  isMockMarkup: false,
+  getClipColorGrading: undefined
 })
 
 const emit = defineEmits<Emits>()
@@ -72,7 +80,9 @@ const selectedClip = computed(() => {
     targetIndex = props.selectedClips[0]
   }
 
-  return props.parsedClips[targetIndex] || null
+  const clip = props.parsedClips[targetIndex] || null
+
+  return clip
 })
 
 // Methods
@@ -82,6 +92,10 @@ function getFileName(path: string): string {
 
 function handleColorGradingChanged(clipNumber: number, filter: string) {
   emit('color-grading-changed', clipNumber, filter)
+}
+
+function handleCopyToAllClips(filter: string) {
+  emit('copy-to-all-clips', filter)
 }
 </script>
 
