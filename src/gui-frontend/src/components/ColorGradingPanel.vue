@@ -337,20 +337,44 @@ const effectiveTimestampRange = computed(() => {
 const generatedFilter = computed(() => {
   const filters = []
 
-  // Build eq filter for brightness, contrast, saturation, gamma
+  // Build hue filter for saturation, brightness, and hue adjustments
+  // This is preferred for Topaz AI custom FFmpeg builds that don't include eq filter
+  const hueParams = []
+
+  // Convert brightness from [-1, 1] range to hue filter's [-10, 10] range
+  if (brightness.value !== 0) {
+    // Scale the brightness value: UI range [-1,1] maps to hue filter range [-10,10]
+    const hueBrightness = brightness.value * 10
+    hueParams.push(`b=${hueBrightness}`)
+  }
+
+  // Convert saturation from [0, 3] UI range to hue filter's saturation parameter
+  if (saturation.value !== 1) {
+    // The hue filter's 's' parameter defaults to 1 (normal saturation)
+    // We map our UI range [0,3] to roughly match eq filter behavior
+    // UI: 0 (no sat) -> hue: 0, UI: 1 (normal) -> hue: 1, UI: 3 (max) -> hue: 3
+    const hueSaturation = saturation.value
+    hueParams.push(`s=${hueSaturation.toFixed(2)}`)
+  }
+
+  // Add hue adjustment if needed
+  if (hue.value !== 0) {
+    hueParams.push(`h=${hue.value}`)
+  }
+
+  if (hueParams.length > 0) {
+    filters.push(`hue=${hueParams.join(':')}`)
+  }
+
+  // Build eq filter for contrast and gamma (fallback for filters not supported by hue)
+  // Note: Topaz AI builds may not have eq filter, so contrast/gamma may not work
+  // TODO: Consider using colorcontrast filter for contrast if available
   const eqParams = []
-  if (brightness.value !== 0) eqParams.push(`brightness=${brightness.value}`)
   if (contrast.value !== 1) eqParams.push(`contrast=${contrast.value}`)
-  if (saturation.value !== 1) eqParams.push(`saturation=${saturation.value}`)
   if (gamma.value !== 1) eqParams.push(`gamma=${gamma.value}`)
 
   if (eqParams.length > 0) {
     filters.push(`eq=${eqParams.join(':')}`)
-  }
-
-  // Add hue filter if needed
-  if (hue.value !== 0) {
-    filters.push(`hue=h=${hue.value}`)
   }
 
   return filters.join(',')
@@ -623,7 +647,27 @@ const parseFilterToControls = (filterString: string) => {
   for (const filter of filters) {
     const trimmed = filter.trim()
 
-    if (trimmed.startsWith('eq=')) {
+    if (trimmed.startsWith('hue=')) {
+      const params = trimmed.substring(4).split(':')
+      for (const param of params) {
+        const [key, value] = param.split('=')
+        const numValue = parseFloat(value)
+
+        switch (key) {
+          case 'b': // brightness in hue filter range [-10, 10]
+            // Convert back to UI range [-1, 1]
+            brightness.value = numValue / 10
+            break
+          case 's': // saturation - direct mapping from hue filter to UI
+            // We use direct mapping: hue filter value = UI value
+            saturation.value = numValue
+            break
+          case 'h': // hue angle in degrees
+            hue.value = numValue
+            break
+        }
+      }
+    } else if (trimmed.startsWith('eq=')) {
       const params = trimmed.substring(3).split(':')
       for (const param of params) {
         const [key, value] = param.split('=')
@@ -644,8 +688,6 @@ const parseFilterToControls = (filterString: string) => {
             break
         }
       }
-    } else if (trimmed.startsWith('hue=h=')) {
-      hue.value = parseInt(trimmed.substring(6))
     }
   }
 }

@@ -65,7 +65,7 @@ def _validate_color_grading_filter(filter_string: str) -> bool:
     allowed_filters = [
         'hue', 'eq', 'colorbalance', 'curves', 'colorchannelmixer',
         'vibrance', 'lutyuv', 'lutrgb', 'colorspace', 'colormatrix',
-        'geq', 'selectivecolor', 'tonemap'
+        'geq', 'selectivecolor', 'tonemap', 'colorcontrast'
     ]
 
     # Basic validation - check if the filter starts with one of the allowed filters
