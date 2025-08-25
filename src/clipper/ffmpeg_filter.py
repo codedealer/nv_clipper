@@ -68,13 +68,53 @@ def _validate_color_grading_filter(filter_string: str) -> bool:
         'geq', 'selectivecolor', 'tonemap', 'colorcontrast'
     ]
 
-    # Basic validation - check if the filter starts with one of the allowed filters
-    filter_name = filter_string.split('=')[0].strip()
-    if filter_name not in allowed_filters:
+    # Validate each comma-separated filter in a chain.
+    # Split on commas only when not inside quotes or parentheses.
+    def _split_top_level(s: str) -> List[str]:
+        parts: List[str] = []
+        buf: List[str] = []
+        in_single = False
+        in_double = False
+        paren = 0
+        for ch in s:
+            if ch == "'" and not in_double:
+                in_single = not in_single
+                buf.append(ch)
+                continue
+            if ch == '"' and not in_single:
+                in_double = not in_double
+                buf.append(ch)
+                continue
+            if not in_single and not in_double:
+                if ch == '(':
+                    paren += 1
+                elif ch == ')' and paren > 0:
+                    paren -= 1
+                if ch == ',' and paren == 0:
+                    part = ''.join(buf).strip()
+                    if part:
+                        parts.append(part)
+                    buf = []
+                    continue
+            buf.append(ch)
+        tail = ''.join(buf).strip()
+        if tail:
+            parts.append(tail)
+        return parts
+
+    parts = _split_top_level(filter_string)
+    if not parts:
         return False
 
-    # Additional safety checks
-    dangerous_chars = [';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>']
+    for part in parts:
+        # Ensure the segment has a name and optional args (name[=args])
+        name = part.split('=', 1)[0].strip()
+        if name not in allowed_filters:
+            return False
+
+    # Additional safety checks (disallow shell metacharacters that could escape context)
+    # Parentheses are allowed to support ffmpeg expressions; quotes are allowed as literals.
+    dangerous_chars = [';', '&', '|', '`', '$', '{', '}', '<', '>']
     if any(char in filter_string for char in dangerous_chars):
         return False
 
