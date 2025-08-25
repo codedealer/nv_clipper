@@ -98,8 +98,8 @@
               <div class="control-label">Brightness</div>
               <el-slider
                 v-model="brightness"
-                :min="-1"
-                :max="1"
+                :min="-0.5"
+                :max="0.5"
                 :step="0.01"
                 @change="updateColorGrading"
                 show-input
@@ -366,15 +366,19 @@ const generatedFilter = computed(() => {
     filters.push(`hue=${hueParams.join(':')}`)
   }
 
-  // Build eq filter for contrast and gamma (fallback for filters not supported by hue)
-  // Note: Topaz AI builds may not have eq filter, so contrast/gamma may not work
-  // TODO: Consider using colorcontrast filter for contrast if available
-  const eqParams = []
-  if (contrast.value !== 1) eqParams.push(`contrast=${contrast.value}`)
-  if (gamma.value !== 1) eqParams.push(`gamma=${gamma.value}`)
+  // Gamma via lutyuv
+  if (gamma.value !== 1) {
+    // Use inverse so UI gamma > 1 brightens, < 1 darkens
+    const uiG = Math.max(0.1, Math.min(10, Number(gamma.value.toFixed(3))))
+    const g = Number((1 / uiG).toFixed(6))
+    filters.push(`lutyuv=y=gammaval(${g})`)
+  }
 
-  if (eqParams.length > 0) {
-    filters.push(`eq=${eqParams.join(':')}`)
+  // Contrast via lutyuv on luma around mid-gray (bit-depth agnostic)
+  if (contrast.value !== 1) {
+    const c = Number(contrast.value.toFixed(3))
+    const expr = `y='min(max((val-(maxval+minval)/2)*${c}+(maxval+minval)/2,minval),maxval)'`
+    filters.push(`lutyuv=${expr}`)
   }
 
   return filters.join(',')
@@ -667,6 +671,32 @@ const parseFilterToControls = (filterString: string) => {
             break
         }
       }
+    } else if (trimmed.startsWith('lutyuv=')) {
+      // Handle gamma: lutyuv=y=gammaval(x)
+      const afterEq = trimmed.substring('lutyuv='.length)
+      // Normalize quotes
+      const s = afterEq.replace(/^"|^'|"$|'$/g, '')
+      // y=gammaval(x) form
+      const gammaMatch = s.match(/y\s*=\s*gammaval\(([^)]+)\)/)
+      if (gammaMatch) {
+        const g = parseFloat(gammaMatch[1])
+        if (!Number.isNaN(g) && g > 0) gamma.value = 1 / g
+        continue
+      }
+      // Contrast around mid using min/max clamp
+      const contrastMinMax = s.match(/y\s*=\s*'?min\(max\(\(val-\(maxval\+minval\)\/2\)\*([0-9.]+)\+\(maxval\+minval\)\/2\s*,\s*minval\)\s*,\s*maxval\)('?)/)
+      if (contrastMinMax) {
+        const c = parseFloat(contrastMinMax[1])
+        if (!Number.isNaN(c)) contrast.value = c
+        continue
+      }
+      // Back-compat: older clip() form
+  const contrastClip = s.match(/y\s*=\s*'?clip\(\(val-\(maxval\+minval\)\/2\)\*([0-9.]+)\+\(maxval\+minval\)\/2\)'?/)
+      if (contrastClip) {
+        const c = parseFloat(contrastClip[1])
+        if (!Number.isNaN(c)) contrast.value = c
+        continue
+      }
     } else if (trimmed.startsWith('eq=')) {
       const params = trimmed.substring(3).split(':')
       for (const param of params) {
@@ -684,7 +714,8 @@ const parseFilterToControls = (filterString: string) => {
             saturation.value = numValue
             break
           case 'gamma':
-            gamma.value = numValue
+            // Use inverse to keep UI orientation consistent with lutyuv
+            gamma.value = numValue > 0 ? 1 / numValue : numValue
             break
         }
       }
