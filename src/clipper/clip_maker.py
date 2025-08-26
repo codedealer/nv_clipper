@@ -508,11 +508,17 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             + f'({mps["targetSize"]} MB / ~{round(mp["outputDuration"],3)} s).',
         )
 
-    decoder_args = getDecoderArgs(mps)
+    is_hw_decode, decoder_codec = isHWDecodeSupported(mps)
+    mps["is_hw_decode"] = is_hw_decode
+    mps["decoder_codec"] = decoder_codec
+    # unless we are piping frames for RIFE in mjpeg, we always use h264_nvenc
+    mps["is_hw_encode"] = not is_rife_used
+    # avoid chroma subsampling with nvenc
+    pix_fmt = "yuv444p" if mps["is_hw_encode"] else mps["pix_fmt"]
+
     if is_rife_used:
-        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps, decoder_args)
-        pix_fmt = "yuv420p" # mjpeg encode is done on CPU so we don't have to use 4:4:4 for filters
-    else:
+        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)
+    elif mps["is_hw_encode"]:
         ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
             audio_filter,
             cbr,
@@ -523,9 +529,12 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             qmax,
             qmin,
         )
-        pix_fmt = "yuv444p"
-
-    is_cuvid = decoder_args != ""
+    else:
+        logger.error(
+            "Unsupported configuration. Hardware accelerated encoding is not supported for this input/settings.",
+        )
+        mp["returncode"] = 1
+        return {**(settings["markerPairs"][markerPairIndex]), **mp}
 
     if not mps["preview"]:
         video_filter += f'trim=0:{mp["duration"]}'
@@ -759,9 +768,9 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
         vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
             vidstabtransformFilter,
-            pix_fmt if not is_rife_used else "yuv444p",  # mjpeg requires 4:4:4
-            not is_cuvid,
-            is_rife_used,
+            pix_fmt,
+            not mps["is_hw_decode"],
+            not mps["is_hw_encode"],
         )
 
         if len(video_filter) > MAX_VFILTER_SIZE:
@@ -816,9 +825,9 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
 
         video_filter = wrapVideoFilterForHardwareAcceleration(
             video_filter,
-            pix_fmt if not is_rife_used else "yuv444p",  # mjpeg requires 4:4:4
-            not is_cuvid,
-            is_rife_used,
+            pix_fmt,
+            not mps["is_hw_decode"],
+            not mps["is_hw_encode"],
         )
 
         if len(video_filter) > MAX_VFILTER_SIZE:
@@ -912,21 +921,25 @@ def getFfmpegCommandWithoutVideoFilter(
     )
 
 
-def getDecoderArgs(
+def isHWDecodeSupported(
     mps: DictStrAny,
-) -> str:
+) -> Tuple[bool, str]:
     codec = None
     is_rife_used = mps["minterpMode"].lower() != "none" and mps["minterpProvider"].lower() == "rife"
     # if RIFE is used, we do not use cuvid decoder as it is too imprecise with timestamps
     if is_rife_used:
-        return ""
+        return (False, "")
+    # if it's any other pix format than 4:2:0 there is no hardware accel for it
+    if mps.get("pix_fmt", "").lower() not in ["yuv420p", "yuv420p10le"]:
+        return (False, "")
     if mps.get("codec_name"):
         if mps["codec_name"].lower() == "vp9":
             codec = "vp9_cuvid"
         elif mps["codec_name"].lower() == "h264":
             codec = "h264_cuvid"
-    decoder_args = f"-hwaccel cuvid -hwaccel_output_format cuda -c:v {codec}" if codec else ""
-    return decoder_args
+        elif mps["codec_name"].lower() == "hevc":
+            codec = "hevc_cuvid"
+    return (bool(codec), codec if codec else "")
 
 def getFfmpegCommandVidstab(
     cp: ClipperPaths,
@@ -956,9 +969,9 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     inputs: str,
     mp: DictStrAny,
     mps: DictStrAny,
-    decoder_args: str = "",
 ) -> str:
     color_space = mps.get("color_space")
+    decoder_args = f"-hwaccel cuvid -hwaccel_output_format cuda -c:v {mps['decoder_codec']}" if mps["is_hw_decode"] else ""
     return " ".join(
         (
             cp.ffmpegPath,
