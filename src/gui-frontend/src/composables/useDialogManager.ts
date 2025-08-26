@@ -2,10 +2,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useSettingsStore } from '@/stores/settings'
 import type { CachedVideo } from '@/types/cache'
-import {
-  UI_MESSAGES,
-  ELEMENT_CONFIGS
-} from '@/constants'
+import { UI_MESSAGES } from '@/constants'
 
 /**
  * Composable for managing dialog states and their related operations
@@ -42,11 +39,6 @@ export function useDialogManager() {
       onVideoSelect(video)
     }
     closeVideoCache()
-
-    ElMessage.success({
-      message: UI_MESSAGES.VIDEO_SELECTED(video.title),
-      duration: ELEMENT_CONFIGS.MESSAGE_DURATION
-    })
   }
 
   /**
