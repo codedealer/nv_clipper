@@ -641,12 +641,48 @@ const pasteFilter = async (filterText?: string) => {
   }
 }
 
+// Split a filter chain on commas only at top-level (outside quotes/parentheses)
+function splitTopLevelFilters(s: string): string[] {
+  const parts: string[] = []
+  let buf = ''
+  let inSingle = false
+  let inDouble = false
+  let paren = 0
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle
+      buf += ch
+      continue
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble
+      buf += ch
+      continue
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === '(') paren++
+      else if (ch === ')' && paren > 0) paren--
+      if (ch === ',' && paren === 0) {
+        const part = buf.trim()
+        if (part) parts.push(part)
+        buf = ''
+        continue
+      }
+    }
+    buf += ch
+  }
+  const tail = buf.trim()
+  if (tail) parts.push(tail)
+  return parts
+}
+
 const parseFilterToControls = (filterString: string) => {
   // Reset values first
   resetToDefaults()
 
   // Simple parser for common filter formats
-  const filters = filterString.split(',')
+  const filters = splitTopLevelFilters(filterString)
 
   for (const filter of filters) {
     const trimmed = filter.trim()
