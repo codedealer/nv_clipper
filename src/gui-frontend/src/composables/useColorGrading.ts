@@ -36,6 +36,10 @@ export function useColorGrading(
       return
     }
 
+    if (clipIndex === activeColorGradingClip.value) {
+      return
+    }
+
     activeColorGradingClip.value = clipIndex
 
     if (clipIndex !== null) {

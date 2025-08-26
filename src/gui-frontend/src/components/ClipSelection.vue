@@ -17,28 +17,19 @@
         Select All
       </el-checkbox>
 
-      <el-scrollbar max-height="300px">
-        <el-checkbox-group v-model="selectedClips" size="small">
-          <div
-            v-for="(clip, index) in clips"
-            :key="index"
-            class="clip-item"
-            :class="{ 'active-color-grading': activeColorGradingClip === index }"
-          >
-            <el-checkbox
-              :value="index"
-              @click.stop
-              @change="(checked: boolean) => handleCheckboxChange(index, checked)"
-            />
-            <div class="clip-info" @click="handleClipClick(index)">
-              <div class="clip-title">
-                {{ clip.title || `Clip ${clip.number || index + 1}` }}
-              </div>
-              <div class="clip-duration">{{ formatDuration(clip) }}</div>
-            </div>
+      <el-checkbox-group v-model="selectedClips" size="small">
+        <div
+          v-for="(clip, index) in clips"
+          :key="index"
+          class="clip-item"
+          :class="{ 'active-color-grading': activeColorGradingClip === index }"
+        >
+          <el-checkbox :value="index" />
+          <div class="clip-info" @click="handleClipClick(index)">
+            <div class="clip-duration">{{ `${clip.number || index + 1} - ${formatDuration(clip)}` }}</div>
           </div>
-        </el-checkbox-group>
-      </el-scrollbar>
+        </div>
+      </el-checkbox-group>
     </div>
   </el-card>
 </template>
@@ -112,22 +103,6 @@ function handleSelectAllClips(value: boolean) {
   }
 }
 
-function handleCheckboxChange(index: number, checked: boolean) {
-  // Handle individual checkbox selection for processing
-  const currentSelection = [...selectedClips.value]
-  if (checked) {
-    if (!currentSelection.includes(index)) {
-      currentSelection.push(index)
-    }
-  } else {
-    const indexPos = currentSelection.indexOf(index)
-    if (indexPos !== -1) {
-      currentSelection.splice(indexPos, 1)
-    }
-  }
-  selectedClips.value = currentSelection
-}
-
 function formatDuration(clip: Clip): string {
   if (typeof clip.start === 'number' && typeof clip.end === 'number') {
     const duration = clip.end - clip.start
@@ -164,10 +139,6 @@ function handleClipClick(index: number) {
   align-items: center;
   gap: 8px;
   font-weight: 600;
-}
-
-.clip-selection {
-  max-height: 250px;
 }
 
 .clip-item {
@@ -213,6 +184,7 @@ function handleClipClick(index: number) {
 
 .clip-duration {
   font-size: 12px;
+  line-height: normal;
   color: var(--el-text-color-secondary);
 }
 </style>
