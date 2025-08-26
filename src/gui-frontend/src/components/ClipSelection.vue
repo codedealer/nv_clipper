@@ -1,22 +1,21 @@
 <template>
   <el-card v-if="clips.length > 0" class="section-card">
-    <template #header>
-      <div class="card-header">
-        <el-icon><VideoPlay /></el-icon>
+    <div class="clips-toolbar">
+      <div class="clips-title">
+        <el-icon class="clips-icon"><VideoPlay /></el-icon>
         <span>Clips ({{ selectedClips.length }}/{{ clips.length }})</span>
       </div>
-    </template>
-
-    <div class="clip-selection">
       <el-checkbox
         v-model="selectAllClips"
         @change="handleSelectAllClips"
         :indeterminate="isIndeterminate"
-        style="margin-bottom: 8px;"
+        class="select-all"
       >
         Select All
       </el-checkbox>
+    </div>
 
+    <div class="clip-selection">
       <el-checkbox-group v-model="selectedClips" size="small">
         <div
           v-for="(clip, index) in clips"
@@ -134,11 +133,26 @@ function handleClipClick(index: number) {
   box-shadow: none;
 }
 
-.card-header {
+.clips-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.clips-title {
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 600;
+}
+
+.clips-icon {
+  display: inline-flex;
+}
+
+.select-all :deep(.el-checkbox__label) {
+  font-weight: 500;
 }
 
 .clip-item {
