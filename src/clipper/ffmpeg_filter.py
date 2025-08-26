@@ -701,7 +701,7 @@ def wrapVideoFilterForHardwareAcceleration(video_filter: str, pix_fmt: str = "yu
     """
     Wraps a given FFmpeg video filter string with hardware acceleration steps for CUDA.
     """
-    download = f"scale_cuda=format={pix_fmt},hwdownload,format={pix_fmt}," if not do_not_download else ""
+    download = f"scale_cuda=format={pix_fmt},hwdownload,format={pix_fmt}," if not do_not_download else f"format={pix_fmt},"
     upload = ",hwupload_cuda" if not do_not_upload else ""
     return f"{download}{video_filter}{upload}"
 

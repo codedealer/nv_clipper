@@ -88,6 +88,6 @@ def getFfmpegVideoCodecH264Nvenc(
         ),
     )
 
-    video_codec_input_args = "-hwaccel cuda -hwaccel_output_format cuda"
+    video_codec_input_args = "-hwaccel cuda -hwaccel_output_format cuda" if mps["is_hw_decode"] else ""
     video_codec_output_args = " ".join(("-f mp4", fps_arg))
     return video_codec_args, video_codec_input_args, video_codec_output_args
