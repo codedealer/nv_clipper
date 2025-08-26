@@ -38,6 +38,52 @@ class ClipperGUI:
         # Drag and drop state
         self.current_files = []        # Store current dropped files for processing
 
+        # Preview frame cache (single-entry MRU)
+        # Stores last extracted JPEG frame to avoid repeat video decode for filter tweaks
+        # Keys: video_path (str), timestamp (rounded float), scale (float)
+        # Data: bytes (JPEG), mime (str)
+        self._preview_frame_cache = {
+            'video_path': None,
+            'timestamp': None,
+            'scale': None,
+            'image_bytes': None,
+            'mime': 'image/jpeg',
+        }
+
+    # ---------------------
+    # Preview cache helpers
+    # ---------------------
+    @staticmethod
+    def _norm_ts(ts: float) -> float:
+        """Normalize timestamp key to milliseconds precision to avoid float noise."""
+        return round(ts, 3)
+
+    def _cache_matches(self, video_path: str, timestamp: float, scale: float) -> bool:
+        c = self._preview_frame_cache
+        return (
+            c.get('image_bytes') is not None
+            and c.get('video_path') == video_path
+            and c.get('timestamp') == self._norm_ts(timestamp)
+            and c.get('scale') == scale
+        )
+
+    def _store_cached_frame(self, video_path: str, timestamp: float, scale: float, image_bytes: bytes) -> None:
+        self._preview_frame_cache.update({
+            'video_path': video_path,
+            'timestamp': self._norm_ts(timestamp),
+            'scale': scale,
+            'image_bytes': image_bytes,
+            'mime': 'image/jpeg',
+        })
+
+    def _clear_cached_frame(self) -> None:
+        self._preview_frame_cache.update({
+            'video_path': None,
+            'timestamp': None,
+            'scale': None,
+            'image_bytes': None,
+        })
+
     def _update_cache_manager_settings(self) -> None:
         """Update cache manager with current settings."""
         try:
@@ -868,102 +914,107 @@ class ClipperGUI:
                     'message': 'Resolution scale must be 0.1, 0.25, 0.5, or 1.0'
                 }
 
-            # Build FFmpeg command to output JPEG to stdout
-            ffmpeg_cmd = [
-                'ffmpeg',
-                '-ss', str(timestamp),  # Seek to timestamp
-                '-i', str(video_file),  # Input video
-                '-vframes', '1',        # Extract one frame
-                '-f', 'image2pipe',     # Output as image pipe
-                '-vcodec', 'mjpeg',     # JPEG codec
-                '-pix_fmt', 'yuvj420p', # Compatible pixel format for JPEG
-                '-q:v', '2'             # High quality JPEG
-            ]
+            normalized_ts = self._norm_ts(timestamp)
 
-            # Build video filter chain
-            filters = []
-
-            # Add scaling if needed (ensure even dimensions)
-            if resolution_scale != 1.0:
-                # Use scale filter with force_original_aspect_ratio and pad to ensure even dimensions
-                filters.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}:force_original_aspect_ratio=decrease')
-                filters.append('pad=ceil(iw/2)*2:ceil(ih/2)*2:(ow-iw)/2:(oh-ih)/2:color=black')
-
-            # Add color grading if provided
+            # Validate color grading string early (if provided)
             if color_grading:
                 from clipper.ffmpeg_filter import _validate_color_grading_filter
-                if _validate_color_grading_filter(color_grading):
-                    filters.append(color_grading)
-                else:
+                if not _validate_color_grading_filter(color_grading):
                     return {
                         'status': 'error',
                         'message': 'Invalid color grading filter string'
                     }
 
-            # Apply filters if any
-            if filters:
-                ffmpeg_cmd.extend(['-vf', ','.join(filters)])
+            # Helper: ensure cached naked frame (scaled/padded, no color filters)
+            def ensure_cached_frame() -> Optional[bytes]:
+                if self._cache_matches(str(video_file), normalized_ts, resolution_scale):
+                    self.logger.debug("Using cached base frame for preview")
+                    return self._preview_frame_cache.get('image_bytes')
 
-            # Output to stdout (pipe)
-            ffmpeg_cmd.append('pipe:1')
-
-            # Execute FFmpeg command and capture stdout
-            self.logger.debug(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
-            result = subprocess.run(
-                ffmpeg_cmd,
-                stdout=PIPE,
-                stderr=PIPE,
-                timeout=30  # 30 second timeout
-            )
-
-            if result.returncode != 0:
-                self.logger.error(f"FFmpeg command failed with return code {result.returncode}")
-                self.logger.error(f"FFmpeg stderr: {result.stderr.decode()}")
-
-                # Try fallback approach with different settings
-                self.logger.info("Attempting fallback with different MJPEG settings")
-
-                fallback_cmd = [
+                # Build command to extract a single JPEG frame with scale/pad only
+                base_cmd = [
                     'ffmpeg',
-                    '-ss', str(timestamp),
+                    '-ss', str(normalized_ts),
                     '-i', str(video_file),
                     '-vframes', '1',
                     '-f', 'image2pipe',
                     '-vcodec', 'mjpeg',
-                    '-pix_fmt', 'yuv420p',  # More compatible format
-                    '-q:v', '5',            # Lower quality but more compatible
+                    '-pix_fmt', 'yuvj420p',
+                    '-q:v', '2',
                 ]
+                vf_parts = []
+                if resolution_scale != 1.0:
+                    vf_parts.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}:force_original_aspect_ratio=decrease')
+                    vf_parts.append('pad=ceil(iw/2)*2:ceil(ih/2)*2:(ow-iw)/2:(oh-ih)/2:color=black')
+                if vf_parts:
+                    base_cmd.extend(['-vf', ','.join(vf_parts)])
+                base_cmd.append('pipe:1')
 
-                # Add same filters if they exist
-                if filters:
-                    fallback_cmd.extend(['-vf', ','.join(filters)])
+                self.logger.debug(f"FFmpeg (cache base) command: {' '.join(base_cmd)}")
+                result = subprocess.run(base_cmd, stdout=PIPE, stderr=PIPE, timeout=30)
+                if result.returncode != 0 or not result.stdout:
+                    self.logger.error("Failed to generate base frame for cache")
+                    if result.stderr:
+                        self.logger.error(result.stderr.decode(errors='ignore'))
+                    return None
 
-                fallback_cmd.append('pipe:1')
+                self._store_cached_frame(str(video_file), normalized_ts, resolution_scale, result.stdout)
+                return result.stdout
 
-                self.logger.debug(f"Fallback FFmpeg command: {' '.join(fallback_cmd)}")
-                result = subprocess.run(
-                    fallback_cmd,
-                    stdout=PIPE,
-                    stderr=PIPE,
-                    timeout=30
-                )
-
-                if result.returncode != 0:
-                    self.logger.error(f"Fallback FFmpeg command also failed: {result.stderr.decode()}")
+            # If no color grading (or preview disabled on frontend), just return cached naked frame
+            if not color_grading:
+                image_bytes = ensure_cached_frame()
+                if not image_bytes:
                     return {
                         'status': 'error',
-                        'message': f'FFmpeg failed: {result.stderr.decode()}'
+                        'message': 'Failed to generate base frame for preview'
                     }
-            # Check if we got image data
-            if not result.stdout:
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                self.logger.info(f"Frame preview generated from cache (base64, {len(image_base64)} chars)")
                 return {
-                    'status': 'error',
-                    'message': 'Frame extraction failed - no output generated'
+                    'status': 'success',
+                    'message': 'Frame preview generated',
+                    'base64_image': image_base64,
+                    'mime_type': 'image/jpeg',
+                    'timestamp': timestamp,
+                    'resolution_scale': resolution_scale
                 }
 
-            # Encode the image data as base64
-            image_base64 = base64.b64encode(result.stdout).decode('utf-8')
+            # With color grading: reuse cached base frame and apply filters only
+            base_frame = ensure_cached_frame()
+            if not base_frame:
+                return {
+                    'status': 'error',
+                    'message': 'Failed to generate base frame for preview with filters'
+                }
 
+            # Build ffmpeg to read JPEG from stdin, apply color filters, and output JPEG
+            filter_cmd = [
+                'ffmpeg',
+                '-f', 'image2pipe',
+                '-vcodec', 'mjpeg',
+                '-i', 'pipe:0',
+                '-vframes', '1',
+                '-f', 'image2pipe',
+                '-vcodec', 'mjpeg',
+                '-pix_fmt', 'yuvj420p',
+                '-q:v', '2',
+                '-vf', color_grading,
+                'pipe:1'
+            ]
+
+            self.logger.debug(f"FFmpeg (apply filters) command: {' '.join(filter_cmd)}")
+            result = subprocess.run(filter_cmd, input=base_frame, stdout=PIPE, stderr=PIPE, timeout=30)
+            if result.returncode != 0 or not result.stdout:
+                self.logger.error("FFmpeg filter application failed")
+                if result.stderr:
+                    self.logger.error(result.stderr.decode(errors='ignore'))
+                return {
+                    'status': 'error',
+                    'message': 'Failed to apply color grading to cached frame'
+                }
+
+            image_base64 = base64.b64encode(result.stdout).decode('utf-8')
             self.logger.info(f"Frame preview generated successfully (base64, {len(image_base64)} chars)")
             return {
                 'status': 'success',
