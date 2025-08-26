@@ -770,26 +770,7 @@ const formatTime = (seconds: number): string => {
   return `${minutes}:${secs.toFixed(1).padStart(4, '0')}`
 }
 
-// Watch for clip changes
-watch(() => props.selectedClip, (newClip, oldClip) => {
-  if (newClip && newClip !== oldClip) {
-    // Load the color grading settings for this clip
-
-    // Use nextTick to ensure the reactive updates have settled
-    nextTick(() => {
-      loadClipColorGrading()
-      initializeTimestamp()
-      updatePreview()
-    })
-  }
-})
-
-// Watch for video path changes
-watch(() => props.videoPath, () => {
-  if (hasVideoAndClip.value) {
-    updatePreview()
-  }
-})
+// (Removed separate watchers for selectedClip and videoPath; using consolidated watcher below)
 
 // Watch for video info changes
 watch(() => props.videoInfo, () => {
@@ -801,13 +782,26 @@ watch(() => previewResolution.value, () => {
   // Video info display will automatically update via computed property
 })
 
-onMounted(() => {
-  if (hasVideoAndClip.value) {
+// Consolidated watcher to avoid duplicate preview generation when clip/video changes
+watch(
+  () => ({
+    clipNumber: props.selectedClip?.number ?? null,
+    videoPath: props.videoPath ?? null,
+    duration: props.videoDuration ?? null
+  }),
+  async (curr, prev) => {
+    if (!hasVideoAndClip.value) return
+
+    // When either clip selection or video path changes, refresh once
+    await nextTick()
     loadClipColorGrading()
     initializeTimestamp()
     updatePreview()
-  }
-})
+  },
+  { immediate: true, deep: false }
+)
+
+// Remove separate watchers and rely on the consolidated watcher above
 </script>
 
 <style scoped>

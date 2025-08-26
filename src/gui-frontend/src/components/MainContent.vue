@@ -71,18 +71,23 @@ const emit = defineEmits<Emits>()
 
 // Computed properties
 const selectedClip = computed(() => {
-  if (!props.parsedClips.length) return null
+  const clips = props.parsedClips
+  if (!clips.length) return null
 
-  // Use the active color grading clip if set, otherwise use the first selected clip
-  let targetIndex = props.activeColorGradingClip
-  if (targetIndex === null || targetIndex === undefined) {
-    if (!props.selectedClips.length) return null
-    targetIndex = props.selectedClips[0]
+  // Prefer active color grading clip if valid
+  const active = props.activeColorGradingClip
+  if (typeof active === 'number' && active >= 0 && active < clips.length) {
+    return clips[active]
   }
 
-  const clip = props.parsedClips[targetIndex] || null
+  // Fallback to first selected clip if available
+  if (props.selectedClips.length > 0) {
+    const idx = props.selectedClips[0]
+    if (idx >= 0 && idx < clips.length) return clips[idx]
+  }
 
-  return clip
+  // Final fallback to first clip
+  return clips[0]
 })
 
 // Methods
