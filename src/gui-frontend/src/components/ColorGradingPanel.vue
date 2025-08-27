@@ -292,6 +292,8 @@ const isGeneratingPreview = ref(false)
 const previewImageUrl = ref('')
 const previewError = ref('')
 const previewEnabled = ref(true)
+// Guard to suppress preview during re-init on video change
+const isInitializing = ref(false)
 
 // Color parameters
 const brightness = ref(0)
@@ -545,6 +547,7 @@ updateColorGrading.debounceTimer = null as number | null
 
 const updatePreview = async () => {
   if (!hasVideoAndClip.value || !window.pywebview?.api) return
+  if (isInitializing.value) return
 
   isGeneratingPreview.value = true
   previewError.value = ''
@@ -783,6 +786,7 @@ watch(() => previewResolution.value, () => {
 })
 
 // Consolidated watcher to avoid duplicate preview generation when clip/video changes
+let initTimer: number | null = null
 watch(
   () => ({
     clipNumber: props.selectedClip?.number ?? null,
@@ -790,13 +794,43 @@ watch(
     duration: props.videoDuration ?? null
   }),
   async (curr, prev) => {
+    // If video path changed, reset UI state and wait for clip/duration to settle
+    if (prev && curr.videoPath !== prev.videoPath) {
+      isInitializing.value = true
+      // Clear controls to defaults; avoid emitting changes
+      resetToDefaults()
+      // Cancel any pending color-grading preview debounce
+      if (updateColorGrading.debounceTimer) {
+        clearTimeout(updateColorGrading.debounceTimer)
+        updateColorGrading.debounceTimer = null
+      }
+      // Cancel pending init timer
+      if (initTimer) {
+        clearTimeout(initTimer)
+        initTimer = null
+      }
+      previewImageUrl.value = ''
+      previewError.value = ''
+      previewTimestamp.value = 0
+      // Don't generate preview here; wait for next clip/duration update
+      return
+    }
+
+    // Only proceed when both video and clip exist
     if (!hasVideoAndClip.value) return
 
-    // When either clip selection or video path changes, refresh once
-    await nextTick()
-    loadClipColorGrading()
-    initializeTimestamp()
-    updatePreview()
+    // Debounce to coalesce rapid duration/clip changes (e.g., mock markup init)
+    if (initTimer) {
+      clearTimeout(initTimer)
+    }
+    initTimer = window.setTimeout(async () => {
+      await nextTick()
+      loadClipColorGrading()
+      initializeTimestamp()
+      // End init and render once with settled state
+      isInitializing.value = false
+      updatePreview()
+    }, 100)
   },
   { immediate: true, deep: false }
 )
