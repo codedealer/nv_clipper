@@ -1,11 +1,7 @@
 <template>
   <div class="color-grading-panel">
     <div class="panel-content">
-      <div v-if="!hasVideoAndClip" class="no-content">
-        <el-empty description="Select a video file and clip to enable color grading" />
-      </div>
-
-      <div v-else class="color-grading-content">
+  <div class="color-grading-content">
           <!-- Left Column: Preview + Timeline -->
           <div class="preview-timeline-column">
             <!-- Preview Controls -->
@@ -35,12 +31,29 @@
                   >
                     Refresh
                   </el-button>
+                  <el-button
+                    v-if="!props.videoPath && canGenerateFromUrl"
+                    size="small"
+                    type="primary"
+                    :loading="isGeneratingPreview"
+                    @click="generatePreviewFromUrl"
+                  >
+                    Generate from VideoUrl
+                  </el-button>
                 </div>
               </div>
             </div>
 
             <div class="preview-container">
-              <div v-if="isGeneratingPreview" class="preview-loading">
+              <div v-if="!props.videoPath && canGenerateFromUrl && !previewImageUrl && !isGeneratingPreview" class="preview-hint">
+                <el-alert
+                  type="info"
+                  title="No local video selected. You can generate a preview using the VideoUrl from the markup."
+                  :closable="false"
+                  show-icon
+                />
+              </div>
+              <div v-else-if="isGeneratingPreview" class="preview-loading">
                 <el-icon class="is-loading" :size="24">
                   <Loading />
                 </el-icon>
@@ -68,7 +81,7 @@
           </div>
 
           <!-- Timeline Scrubber -->
-          <div class="timeline-section">
+          <div class="timeline-section" v-if="hasSomeTimeline">
             <div class="timeline-controls">
               <span class="time-display">{{ formatTime(previewTimestamp) }}</span>
               <el-slider
@@ -265,6 +278,7 @@ interface Props {
   videoInfo?: VideoInfo | null
   isProcessing?: boolean
   isMockMarkup?: boolean
+  markupVideoUrl?: string | null
   getClipColorGrading?: (clipNumber: number) => string | undefined
 }
 
@@ -280,6 +294,7 @@ const props = withDefaults(defineProps<Props>(), {
   videoInfo: null,
   isProcessing: false,
   isMockMarkup: false,
+  markupVideoUrl: null,
   getClipColorGrading: undefined
 })
 
@@ -303,9 +318,9 @@ const hue = ref(0)
 const gamma = ref(1)
 
 // Computed properties
-const hasVideoAndClip = computed(() =>
-  !!(props.videoPath && props.selectedClip)
-)
+const hasVideo = computed(() => !!props.videoPath)
+const hasSomeTimeline = computed(() => !!props.selectedClip)
+const canGenerateFromUrl = computed(() => !!props.markupVideoUrl && !!props.selectedClip)
 
 // Get the effective timestamp range considering video duration limits
 const effectiveTimestampRange = computed(() => {
@@ -546,7 +561,7 @@ const updateColorGrading = () => {
 updateColorGrading.debounceTimer = null as number | null
 
 const updatePreview = async () => {
-  if (!hasVideoAndClip.value || !window.pywebview?.api) return
+  if (!hasSomeTimeline.value || !window.pywebview?.api) return
   if (isInitializing.value) return
 
   isGeneratingPreview.value = true
@@ -556,8 +571,15 @@ const updatePreview = async () => {
     // Use filter only if preview is enabled
     const filterToApply = previewEnabled.value ? generatedFilter.value || undefined : undefined
 
+    const videoSource = props.videoPath || tempVideoUrlRef.value
+    if (!videoSource) {
+      // No source to preview
+      isGeneratingPreview.value = false
+      return
+    }
+
     const result = await window.pywebview.api.generate_frame_preview(
-      props.videoPath!,
+      videoSource,
       previewTimestamp.value,
       filterToApply,
       previewResolution.value
@@ -641,6 +663,27 @@ const pasteFilter = async (filterText?: string) => {
     updatePreview()
   } catch (error) {
     ElMessage.error(`Failed to apply filter: ${error}`)
+  }
+}
+
+// Support: preview via VideoUrl when no local video
+const tempVideoUrlRef = ref<string | null>(null)
+const generatePreviewFromUrl = async () => {
+  if (!props.markupVideoUrl || !window.pywebview?.api) return
+  try {
+    isGeneratingPreview.value = true
+    previewError.value = ''
+    const res = await window.pywebview.api.get_direct_video_url(props.markupVideoUrl)
+    if (res.status === 'success' && res.url) {
+      tempVideoUrlRef.value = res.url as string
+      await updatePreview()
+    } else {
+      previewError.value = res.message || 'Failed to resolve VideoUrl via yt-dlp'
+    }
+  } catch (e) {
+    previewError.value = `Failed to fetch direct video URL: ${e}`
+  } finally {
+    isGeneratingPreview.value = false
   }
 }
 
@@ -817,7 +860,7 @@ watch(
     }
 
     // Only proceed when both video and clip exist
-    if (!hasVideoAndClip.value) return
+  if (!hasSomeTimeline.value) return
 
     // Debounce to coalesce rapid duration/clip changes (e.g., mock markup init)
     if (initTimer) {

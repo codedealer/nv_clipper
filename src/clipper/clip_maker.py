@@ -514,7 +514,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     # unless we are piping frames for RIFE in mjpeg, we always use h264_nvenc
     mps["is_hw_encode"] = not is_rife_used
     # avoid chroma subsampling with nvenc
-    pix_fmt = "yuv444p" if mps["is_hw_encode"] else mps["pix_fmt"]
+    pix_fmt = "yuv444p" if mps["is_hw_encode"] else mps.get("pix_fmt", "yuv444p")
 
     if is_rife_used:
         ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)

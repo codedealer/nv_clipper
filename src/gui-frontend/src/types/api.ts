@@ -165,6 +165,7 @@ declare global {
 
         // Frame preview
         generate_frame_preview: (videoPath: string, timestamp: number, colorGrading?: string, resolutionScale?: number) => Promise<FramePreviewResult>
+  get_direct_video_url: (pageUrl: string) => Promise<{ status: 'success' | 'error'; url?: string; message?: string }>
 
         // Video info
         get_video_info: (videoPath: string) => Promise<VideoInfoResult>

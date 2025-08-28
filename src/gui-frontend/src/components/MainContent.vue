@@ -11,8 +11,8 @@
       </el-empty>
     </div>
 
-    <!-- Color Grading Panel (Full Area) -->
-    <div v-else-if="hasVideoFile && clipCount > 0" class="color-grading-area">
+  <!-- Color Grading Panel (Full Area) -->
+  <div v-else-if="clipCount > 0" class="color-grading-area">
       <ColorGradingPanel
         :selected-clip="selectedClip"
         :video-path="videoFile"
@@ -20,6 +20,7 @@
         :video-info="videoInfo"
         :is-processing="isProcessing"
         :is-mock-markup="props.isMockMarkup"
+    :markup-video-url="markupVideoUrl"
         :get-clip-color-grading="getClipColorGrading"
         @color-grading-changed="handleColorGradingChanged"
         @copy-to-all-clips="handleCopyToAllClips"
@@ -51,6 +52,7 @@ interface Props {
   videoInfo?: VideoInfo | null
   isProcessing?: boolean
   isMockMarkup?: boolean
+  markupVideoUrl?: string | null
   getClipColorGrading?: (clipNumber: number) => string | undefined
 }
 
@@ -64,6 +66,7 @@ const props = withDefaults(defineProps<Props>(), {
   videoInfo: null,
   isProcessing: false,
   isMockMarkup: false,
+  markupVideoUrl: null,
   getClipColorGrading: undefined
 })
 
