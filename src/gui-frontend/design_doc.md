@@ -37,6 +37,8 @@ When the JSON file is dropped, we should have an option to select only some of t
 
 When the video source is available (was dropped along side JSON or was selected from the cache manually) have an option to select a clip from the parsed JSON file and apply ffmpeg filters to it.
 
+If the source is not available, have an option to generate the preview for color grading from the VideoUrl link set in the markup JSON.
+
 **Edge case.** If no json markup file was passed along with the video file, assume the whole file needs to be processed. When processing the video we will create a stub markup for the video file - a single clip that spans the duration of the video file, no crop.
 
 GUI should have an interface similar to a video player with filter options (hue/lightness/saturation/contrast for starters). When a user adjusts the filter controls, the preview renders out the resulting clip with the corresponding ffmpeg filters applied.
@@ -49,3 +51,4 @@ During the render, we pass the resulting filter string to the clipper core (the 
 ## Testing and building
 
 The target platform is Windows. The package manager for frontend is pnpm, for backend we use uv. The terminal is Powershell, so use Powershell syntax
+Assume Vite is always running in dev mode with hot reloading, the Python debugger is restarted manually as needed. No need to do anything more with it.

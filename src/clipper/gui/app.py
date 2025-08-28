@@ -880,7 +880,7 @@ class ClipperGUI:
         """Generate a frame preview with optional color grading filters.
 
         Args:
-            video_path: Path to the video file
+            video_path: Path to the video file or a direct HTTP(S) URL
             timestamp: Time in seconds to extract frame from
             color_grading: Optional FFmpeg color grading filter string
             resolution_scale: Scale factor for output resolution (0.1, 0.25, 0.5, 1.0)
@@ -894,13 +894,15 @@ class ClipperGUI:
 
             self.logger.info(f"Generating frame preview for {video_path} at {timestamp}s")
 
-            # Validate inputs
-            video_file = Path(video_path)
-            if not video_file.exists():
-                return {
-                    'status': 'error',
-                    'message': f'Video file not found: {video_path}'
-                }
+            # Validate inputs: support local files and direct HTTP(S) URLs
+            is_http = str(video_path).startswith(('http://', 'https://'))
+            video_file = Path(video_path) if not is_http else None
+            if not is_http:
+                if not video_file or not video_file.exists():
+                    return {
+                        'status': 'error',
+                        'message': f'Video file not found: {video_path}'
+                    }
 
             if timestamp < 0:
                 return {
@@ -927,7 +929,8 @@ class ClipperGUI:
 
             # Helper: ensure cached naked frame (scaled/padded, no color filters)
             def ensure_cached_frame() -> Optional[bytes]:
-                if self._cache_matches(str(video_file), normalized_ts, resolution_scale):
+                cache_key_path = str(video_path)
+                if self._cache_matches(cache_key_path, normalized_ts, resolution_scale):
                     self.logger.debug("Using cached base frame for preview")
                     return self._preview_frame_cache.get('image_bytes')
 
@@ -935,7 +938,7 @@ class ClipperGUI:
                 base_cmd = [
                     'ffmpeg',
                     '-ss', str(normalized_ts),
-                    '-i', str(video_file),
+                    '-i', str(video_path),
                     '-vframes', '1',
                     '-f', 'image2pipe',
                     '-vcodec', 'mjpeg',
@@ -958,7 +961,7 @@ class ClipperGUI:
                         self.logger.error(result.stderr.decode(errors='ignore'))
                     return None
 
-                self._store_cached_frame(str(video_file), normalized_ts, resolution_scale, result.stdout)
+                self._store_cached_frame(cache_key_path, normalized_ts, resolution_scale, result.stdout)
                 return result.stdout
 
             # If no color grading (or preview disabled on frontend), just return cached naked frame
@@ -1035,6 +1038,78 @@ class ClipperGUI:
             return {
                 'status': 'error',
                 'message': f'Failed to generate frame preview: {e!s}'
+            }
+
+    def get_direct_video_url(self, page_url: str) -> Dict[str, Any]:
+        """Resolve a direct media URL using yt-dlp based on GUI settings.
+
+        This mirrors the technique used in core processing when inputVideo is not present.
+        Returns a URL string that can be passed directly to ffmpeg as input.
+        """
+        try:
+            from clipper.clipper_types import ClipperState, ClipperPaths
+            from clipper.ytdl import ytdl_bin_get_video_info
+
+            # Load GUI settings to configure yt-dlp path/format options
+            settings_overrides = self.settings_manager.get_combined_settings()
+
+            cs = ClipperState()
+            # Map required settings keys expected by ytdl helpers
+            # Provide only minimal keys used by ytdl_bin_get_args_base
+            cs.settings.update({
+                'platform': 'ytc_gui',
+                'videoPageURL': page_url,
+                'downloadVideoPath': str(Path(tempfile.gettempdir()) / 'nvclipper_temp'),
+                'format': settings_overrides.get('format'),
+                'formatSort': settings_overrides.get('format_sort'),
+                'cookiefile': settings_overrides.get('cookiefile', ''),
+                'username': settings_overrides.get('ytdl_username', ''),
+                'password': settings_overrides.get('ytdl_password', ''),
+                'downloadVideo': False,
+                'ytdlLocation': settings_overrides.get('ytdl_location', ''),
+                'ytdlAutoUpdate': settings_overrides.get('ytdl_auto_update', True),
+            })
+
+            # Ensure internal paths are set correctly (use default ClipperPaths)
+            # If user provided a custom yt-dlp location, update paths accordingly
+            if settings_overrides.get('ytdl_location'):
+                try:
+                    cs.clipper_paths.ytdlPath = str(settings_overrides['ytdl_location'])
+                except Exception:
+                    pass
+
+            # Query yt-dlp for info (without formats table for speed)
+            info, _ = ytdl_bin_get_video_info(cs, no_list_formats=True, no_get_info=False)
+
+            # Find the best video-only or combined format URL
+            url = None
+            if isinstance(info, dict):
+                # Prefer url field directly if present
+                url = info.get('url')
+                if not url:
+                    # Fallback: pick best format entry
+                    fmts = info.get('formats') or []
+                    # Choose the last (often best) http(s) format with video
+                    for f in reversed(fmts):
+                        if f.get('url') and (f.get('vcodec') != 'none'):
+                            url = f['url']
+                            break
+
+            if not url:
+                return {
+                    'status': 'error',
+                    'message': 'Failed to obtain direct video URL from yt-dlp metadata'
+                }
+
+            return {
+                'status': 'success',
+                'url': url
+            }
+        except Exception as e:
+            self.logger.error(f"Error resolving direct video URL: {e}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': f'Failed to resolve direct video URL: {e!s}'
             }
 
     # Window State Management API

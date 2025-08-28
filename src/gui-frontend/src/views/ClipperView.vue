@@ -39,7 +39,7 @@
 
       <!-- Main Content Area -->
       <MainContent
-        :has-markup-file="fileHandler.hasMarkupFile.value"
+  :has-markup-file="fileHandler.hasMarkupFile.value"
         :has-video-file="fileHandler.hasVideoFile.value"
         :video-file="fileHandler.selectedFiles.value.video"
         :clip-count="markupOps.parsedClips.value.length"
@@ -50,6 +50,7 @@
         :video-info="videoOps.videoInfo.value"
         :is-processing="fileHandler.isProcessing.value"
         :is-mock-markup="colorGrading.isMockMarkup.value"
+  :markup-video-url="markupOps.parsedMarkupData.value?.videoUrl || null"
         :get-clip-color-grading="colorGrading.getClipColorGrading"
         @color-grading-changed="colorGrading.handleColorGradingChanged"
         @copy-to-all-clips="colorGrading.handleCopyToAllClips"
