@@ -3,11 +3,7 @@ import { ElMessage } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
 import type { ClipInfo } from '@/types/api'
 import type { MarkupData } from '@/utils/markup'
-import {
-  SUPPORTED_MARKUP_EXTENSIONS,
-  UI_MESSAGES,
-  MOCK_MARKUP_DEFAULTS
-} from '@/constants'
+import { SUPPORTED_MARKUP_EXTENSIONS, MOCK_MARKUP_DEFAULTS } from '@/constants'
 
 /**
  * Composable for markup-related operations including parsing, clip management,
@@ -58,7 +54,7 @@ export function useMarkupOperations() {
       } else {
         throw new Error(result.message || 'Failed to parse markup file')
       }
-    } catch (error) {
+  } catch (error) {
       console.error('Failed to parse markup file:', error)
       ElMessage.error(`Failed to parse markup file: ${error}`)
 
@@ -83,7 +79,7 @@ export function useMarkupOperations() {
           ElMessage.warning(`Color grading may not work: ${fullMarkupData.message}`)
         }
       }
-    } catch (error) {
+  } catch {
       parsedMarkupData.value = null
       ElMessage.warning('Color grading changes may not persist due to file loading error')
     }
@@ -117,7 +113,7 @@ export function useMarkupOperations() {
 
       // Also update the markup data structure
       if (parsedMarkupData.value?.markerPairs && Array.isArray(parsedMarkupData.value.markerPairs)) {
-        const markerPair = parsedMarkupData.value.markerPairs.find((mp: Record<string, unknown>) => mp.number === clip.number)
+  const markerPair = parsedMarkupData.value.markerPairs.find((mp: { number?: unknown }) => mp.number === clip.number)
         if (markerPair) {
           markerPair.overrides = {
             ...markerPair.overrides,
@@ -148,7 +144,7 @@ export function useMarkupOperations() {
 
       // Also update the markup data structure to ensure backend receives changes
       if (parsedMarkupData.value?.markerPairs && Array.isArray(parsedMarkupData.value.markerPairs)) {
-        const markerPair = parsedMarkupData.value.markerPairs.find((mp: Record<string, unknown>) => mp.number === clipNumber)
+  const markerPair = parsedMarkupData.value.markerPairs.find((mp: { number?: unknown }) => mp.number === clipNumber)
         if (markerPair) {
           markerPair.overrides = {
             ...markerPair.overrides,
@@ -186,7 +182,8 @@ export function useMarkupOperations() {
    */
   function isMarkupFile(filename: string): boolean {
     const extension = filename.split('.').pop()?.toLowerCase()
-    return SUPPORTED_MARKUP_EXTENSIONS.includes(extension as any)
+    if (!extension) return false
+    return (SUPPORTED_MARKUP_EXTENSIONS as readonly string[]).includes(extension)
   }
 
   /**

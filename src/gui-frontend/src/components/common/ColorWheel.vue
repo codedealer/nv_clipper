@@ -151,20 +151,26 @@ function setFromPoint(px: number, py: number) {
 
 function onPointerDown(e: PointerEvent) {
   dragging.value = true
-  const el = e.currentTarget as HTMLElement
-  try { el.setPointerCapture?.(e.pointerId) } catch {}
-  const rect = (canvasRef.value ?? el).getBoundingClientRect()
+  const el = e.currentTarget as HTMLElement | null
+  if (el && 'setPointerCapture' in el) {
+    try { (el as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+  }
+  const targetEl: Element | null = canvasRef.value ?? el
+  const rect = targetEl ? targetEl.getBoundingClientRect() : new DOMRect(0,0,0,0)
   setFromPoint(e.clientX - rect.left, e.clientY - rect.top)
 }
 function onPointerMove(e: PointerEvent) {
   if (!dragging.value) return
-  const rect = (canvasRef.value ?? (e.currentTarget as HTMLElement)).getBoundingClientRect()
+  const el = (canvasRef.value ?? (e.currentTarget as HTMLElement | null))
+  const rect = el ? el.getBoundingClientRect() : new DOMRect(0,0,0,0)
   setFromPoint(e.clientX - rect.left, e.clientY - rect.top)
 }
 function onPointerUp(e?: PointerEvent) {
   dragging.value = false
-  const el = (e?.currentTarget as HTMLElement) || canvasRef.value?.parentElement
-  try { el && (el as any).releasePointerCapture?.(e?.pointerId!) } catch {}
+  const el: HTMLElement | null = (e?.currentTarget as HTMLElement) || canvasRef.value?.parentElement || null
+  if (el && 'releasePointerCapture' in el && e && typeof e.pointerId === 'number') {
+    try { (el as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
+  }
 }
 
 function updateThumbFromColor() {

@@ -98,7 +98,6 @@ import { useColorGrading } from '@/composables/useColorGrading'
 
 // Types
 import type { CachedVideo } from '@/types/cache'
-import { ENGINE_STATUS } from '@/constants'
 
 // Stores
 const clipperStore = useClipperStore()

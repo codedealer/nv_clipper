@@ -31,7 +31,7 @@ import { Coin, Setting } from '@element-plus/icons-vue'
 import QuickDownload from './QuickDownload.vue'
 import type { EngineStatus } from '@/types/api'
 import type { CachedVideo } from '@/types/cache'
-import { ENGINE_STATUS, ELEMENT_CONFIGS } from '@/constants'
+import { ENGINE_STATUS } from '@/constants'
 
 interface Props {
   engineStatus: EngineStatus | null

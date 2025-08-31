@@ -2,11 +2,7 @@ import { ref, computed, readonly } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { VideoInfo, ClipInfo } from '@/types/api'
 import type { MarkupData } from '@/utils/markup'
-import {
-  SUPPORTED_VIDEO_EXTENSIONS,
-  MOCK_MARKUP_DEFAULTS,
-  UI_MESSAGES
-} from '@/constants'
+import { SUPPORTED_VIDEO_EXTENSIONS, MOCK_MARKUP_DEFAULTS, UI_MESSAGES } from '@/constants'
 
 /**
  * Composable for video-related operations including video info fetching,
@@ -180,7 +176,8 @@ export function useVideoOperations() {
    */
   function isVideoFile(filename: string): boolean {
     const extension = filename.split('.').pop()?.toLowerCase()
-    return SUPPORTED_VIDEO_EXTENSIONS.includes(extension as any)
+    if (!extension) return false
+    return (SUPPORTED_VIDEO_EXTENSIONS as readonly string[]).includes(extension)
   }
 
   return {

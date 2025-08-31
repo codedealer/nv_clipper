@@ -263,7 +263,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, DocumentCopy, Document, CopyDocument, RefreshLeft } from '@element-plus/icons-vue'
 import type { ClipInfo, VideoInfo } from '@/types/api'
@@ -272,9 +272,9 @@ import { buildBasicFilter } from '@/utils/colorBasics'
 import { parseFilterString, joinFilters } from '@/utils/filterString'
 
 // Simple debounce function
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
+function debounce<T extends (...args: unknown[]) => unknown>(func: T, wait: number): T {
   let timeout: ReturnType<typeof setTimeout>
-  return ((...args: any[]) => {
+  return ((...args: Parameters<T>) => {
     clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
   }) as T
@@ -335,7 +335,7 @@ const handleAdvancedFilterChanged = (filter: string) => {
 }
 
 // Computed properties
-const hasVideo = computed(() => !!props.videoPath)
+// const hasVideo = computed(() => !!props.videoPath)
 const hasSomeTimeline = computed(() => !!props.selectedClip)
 const canGenerateFromUrl = computed(() => !!props.markupVideoUrl && !!props.selectedClip)
 
@@ -577,9 +577,9 @@ const updatePreview = async () => {
     } else {
       previewError.value = result.message || 'Failed to generate preview'
     }
-  } catch (error) {
-    previewError.value = `Preview generation error: ${error}`
-    console.error('Preview generation failed:', error)
+  } catch (err) {
+    previewError.value = `Preview generation error: ${String(err)}`
+    console.error('Preview generation failed:', err)
   } finally {
     isGeneratingPreview.value = false
   }
@@ -593,8 +593,8 @@ const copyFilter = async () => {
   try {
     await navigator.clipboard.writeText(generatedFilter.value)
     ElMessage.success('Filter copied to clipboard')
-  } catch (error) {
-    console.error('Failed to copy filter:', error)
+  } catch (e) {
+    console.error('Failed to copy filter:', e)
     ElMessage.error('Failed to copy filter to clipboard')
   }
 }
@@ -607,9 +607,9 @@ const showPasteDialog = async () => {
     } else {
       ElMessage.warning('Clipboard is empty')
     }
-  } catch (error) {
+  } catch (e) {
     ElMessage.error('Failed to access clipboard. Please check permissions.')
-    console.error('Clipboard access failed:', error)
+    console.error('Clipboard access failed:', e)
   }
 }
 
@@ -627,7 +627,7 @@ const pasteFilter = async (filterText?: string) => {
   if (!textToPaste) {
     try {
       textToPaste = await navigator.clipboard.readText()
-    } catch (error) {
+    } catch {
       ElMessage.error('Failed to access clipboard. Please check permissions.')
       return
     }
@@ -643,8 +643,8 @@ const pasteFilter = async (filterText?: string) => {
   try {
     parseAndApplyFilter(trimmedText)
     updatePreview()
-  } catch (error) {
-    ElMessage.error(`Failed to apply filter: ${error}`)
+  } catch (e) {
+    ElMessage.error(`Failed to apply filter: ${String(e)}`)
   }
 }
 
