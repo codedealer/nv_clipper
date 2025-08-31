@@ -91,6 +91,15 @@
           <span v-if="download.speed" class="download-speed">{{ download.speed }}</span>
           <span v-if="download.eta" class="download-eta">ETA: {{ download.eta }}</span>
           <el-button
+            v-if="['starting','initializing','downloading','processing','finalizing'].includes(download.status)"
+            @click="onCancel(download.video_id)"
+            size="small"
+            type="warning"
+            :icon="Close"
+          >
+            Cancel
+          </el-button>
+          <el-button
             v-if="download.status === 'error'"
             @click="clearErrorDownload(download.video_id)"
             size="small"
@@ -325,6 +334,15 @@ function clearErrorDownload(videoId: string) {
   // Remove from the download progress tracking
   cacheStore.downloadProgress.delete(videoId)
   ElMessage.info('Error dismissed')
+}
+
+async function onCancel(videoId: string) {
+  const res = await cacheStore.cancelDownload(videoId)
+  if (res.status === 'success') {
+    ElMessage.info('Cancellation requested')
+  } else {
+    ElMessage.error(res.message || 'Failed to cancel download')
+  }
 }
 
 function formatDate(dateString: string): string {

@@ -119,6 +119,11 @@ export const useCacheStore = defineStore('cache', () => {
             } else if (progress.status === 'completed') {
               // Download completed successfully, refresh cache info
               await loadCacheInfo()
+              // Remove tracking entry after completion is handled by backend shortly
+              downloadProgress.value.delete(videoId)
+            } else if (progress.status === 'canceled') {
+              // Remove canceled download from tracking shortly after
+              setTimeout(() => downloadProgress.value.delete(videoId), 1500)
             }
           } else if (result.status === 'error') {
             // API error - set error message and remove from tracking
@@ -137,6 +142,23 @@ export const useCacheStore = defineStore('cache', () => {
       poll()
     } catch (error) {
       console.error('Failed to start progress polling:', error)
+    }
+  }
+
+  async function cancelDownload(videoId: string): Promise<CacheOperationResult> {
+    try {
+      const api = await waitForPywebview()
+      const result = await api.cancel_download(videoId)
+      if (result.status === 'success') {
+        // Optimistically mark as canceled in UI
+        const p = downloadProgress.value.get(videoId)
+        if (p) downloadProgress.value.set(videoId, { ...p, status: 'canceled', message: 'Cancellation requested' })
+      }
+      return result as CacheOperationResult
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      lastError.value = errorMsg
+      return { status: 'error', message: errorMsg }
     }
   }
 
@@ -266,6 +288,7 @@ export const useCacheStore = defineStore('cache', () => {
     formatFileSize,
     formatDuration,
     clearError,
-    clearErrorDownloads
+  clearErrorDownloads,
+  cancelDownload
   }
 })
