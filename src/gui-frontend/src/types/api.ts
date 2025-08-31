@@ -85,7 +85,7 @@ export interface ParseMarkupResult {
 export interface LoadMarkupDataResult {
   status: 'success' | 'error'
   message?: string
-  data?: Record<string, any>
+  data?: Record<string, unknown>
 }
 
 // Settings API response types
@@ -155,7 +155,7 @@ declare global {
     pywebview: {
       api: {
         // File processing
-        process_files: (markupPath?: string, videoPath?: string, selectedClips?: number[], markupData?: Record<string, any>) => Promise<ProcessingResult>
+  process_files: (markupPath?: string, videoPath?: string, selectedClips?: number[], markupData?: Record<string, unknown>) => Promise<ProcessingResult>
         get_job_status: (jobId: string) => Promise<JobStatus>
         get_status: () => Promise<EngineStatus>
         select_files: () => Promise<string[]>
@@ -171,7 +171,7 @@ declare global {
         get_video_info: (videoPath: string) => Promise<VideoInfoResult>
 
         // Temp markup file creation
-        create_temp_markup_file: (markupData: Record<string, any>) => Promise<TempMarkupFileResult>
+  create_temp_markup_file: (markupData: Record<string, unknown>) => Promise<TempMarkupFileResult>
 
         // Settings management
         get_general_settings: () => Promise<SettingsApiResponse>

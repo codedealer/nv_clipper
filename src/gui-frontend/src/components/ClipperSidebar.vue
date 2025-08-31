@@ -62,7 +62,6 @@ import ClipSelection from './ClipSelection.vue'
 import ProcessingPanel from './ProcessingPanel.vue'
 import VideoUrlExtractor from './VideoUrlExtractor.vue'
 import type { SelectedFiles, ClipInfo, ProcessingResult } from '@/types/api'
-import { SIDEBAR_WIDTH } from '@/constants'
 
 interface Props {
   selectedFiles: SelectedFiles

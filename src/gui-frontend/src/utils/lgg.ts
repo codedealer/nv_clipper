@@ -42,16 +42,6 @@ export interface LGGFromWheelsInput {
   gain: LGGWheelInput
 }
 
-// Convert hex -> RGB components in [0,1]
-function hexToRgb01(hex: string): { r: number; g: number; b: number } {
-  const s = hex.replace('#', '')
-  const n = s.length === 3 ? s.split('').map((c) => c + c).join('') : s
-  const int = parseInt(n, 16)
-  const r = ((int >> 16) & 255) / 255
-  const g = ((int >> 8) & 255) / 255
-  const b = (int & 255) / 255
-  return { r, g, b }
-}
 
 // Extract hue angle in degrees [0,360)
 function hexToHueDeg(hex: string): number {
@@ -79,20 +69,7 @@ function hexToHueDeg(hex: string): number {
 // compute per-channel wheel value w in [0,1] with pivot at 0.5.
 // w_c = 0.5 + a * 1.5 * (rgb_c - avg_rgb)
 // Clamp to [0,1]. This yields w≈0.5 at center; near pure red: {1,0,0} -> {1,0,0} after clamp.
-function wheelRgbToW(
-  rgb: { r: number; g: number; b: number },
-  colorAmount: number,
-  neutral: number
-): { wr: number; wg: number; wb: number } {
-  // Fallback RGB-based variant (unused by default)
-  const amt = clamp(colorAmount, 0, 1)
-  const base = clamp(neutral, 0, 1)
-  const avg = (rgb.r + rgb.g + rgb.b) / 3
-  const wr = clamp(base + amt * 1.5 * (rgb.r - avg), 0, 1)
-  const wg = clamp(base + amt * 1.5 * (rgb.g - avg), 0, 1)
-  const wb = clamp(base + amt * 1.5 * (rgb.b - avg), 0, 1)
-  return { wr, wg, wb }
-}
+// (RGB-based mapping variant intentionally removed; using angle-based projection)
 
 // Angle-based mapping: aligned axis remains neutral (base), complementary axes reduce.
 // w_c = clamp(base - GAIN * amount * ((1 - cos(delta))/2), 0, 1)

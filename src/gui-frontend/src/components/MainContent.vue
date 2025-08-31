@@ -93,11 +93,6 @@ const selectedClip = computed(() => {
   return clips[0]
 })
 
-// Methods
-function getFileName(path: string): string {
-  return path.split(/[\\/]/).pop() || path
-}
-
 function handleColorGradingChanged(clipNumber: number, filter: string) {
   emit('color-grading-changed', clipNumber, filter)
 }
