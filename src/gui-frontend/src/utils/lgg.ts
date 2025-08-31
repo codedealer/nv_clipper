@@ -176,8 +176,16 @@ export function buildLutrgbFromParams(p: LGGParams): string {
 
 export function buildLggFilterFromWheels(input: LGGFromWheelsInput, globalGamma?: number): string {
   const params = lggParamsFromWheels(input)
-  const parts = [buildLutrgbFromParams(params)]
-  if (globalGamma && Math.abs(globalGamma - 1) > 1e-6) {
+  const isLiftNeutral = Math.abs(params.rlift) < 1e-6 && Math.abs(params.glift) < 1e-6 && Math.abs(params.blift) < 1e-6
+  const isGammaNeutral = Math.abs(params.rgamma - 1) < 1e-6 && Math.abs(params.ggamma - 1) < 1e-6 && Math.abs(params.bgamma - 1) < 1e-6
+  const isGainNeutral = Math.abs(params.rgain - 1) < 1e-6 && Math.abs(params.ggain - 1) < 1e-6 && Math.abs(params.bgain - 1) < 1e-6
+  const parts: string[] = []
+  // Only include lutrgb if any LGG band deviates from neutral
+  if (!(isLiftNeutral && isGammaNeutral && isGainNeutral)) {
+    parts.push(buildLutrgbFromParams(params))
+  }
+  // Global gamma is part of the advanced panel; include only if not neutral
+  if (globalGamma !== undefined && Math.abs(globalGamma - 1) > 1e-6) {
     const g = +(1 / clamp(globalGamma, 0.1, 10)).toFixed(6)
     parts.push(`lutyuv=y=gammaval(${g})`)
   }
