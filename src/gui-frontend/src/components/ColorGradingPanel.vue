@@ -268,6 +268,8 @@ import { ElMessage } from 'element-plus'
 import { Loading, DocumentCopy, Document, CopyDocument, RefreshLeft } from '@element-plus/icons-vue'
 import type { ClipInfo, VideoInfo } from '@/types/api'
 import LiftGammaGainWheels from './LiftGammaGainWheels.vue'
+import { buildBasicFilter } from '@/utils/colorBasics'
+import { parseFilterString, joinFilters } from '@/utils/filterString'
 
 // Simple debounce function
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
@@ -366,76 +368,19 @@ const effectiveTimestampRange = computed(() => {
   }
 })
 
-// Helpers
-function hexToRgbNorm(hex: string): { r: number; g: number; b: number } {
-  const s = hex.replace('#', '')
-  const n = s.length === 3
-    ? s.split('').map((c) => c + c).join('')
-    : s
-  const int = parseInt(n, 16)
-  const r = (int >> 16) & 255
-  const g = (int >> 8) & 255
-  const b = int & 255
-  const denom = r + g + b || 1
-  return { r: r / denom, g: g / denom, b: b / denom }
-}
-
-const basicFilter = computed(() => {
-  const filters: string[] = []
-
-  // Build hue filter for saturation, brightness, and hue adjustments
-  // This is preferred for Topaz AI custom FFmpeg builds that don't include eq filter
-  const hueParams = []
-
-  // Convert brightness from [-1, 1] range to hue filter's [-10, 10] range
-  if (brightness.value !== 0) {
-    // Scale the brightness value: UI range [-1,1] maps to hue filter range [-10,10]
-    const hueBrightness = brightness.value * 10
-    hueParams.push(`b=${hueBrightness}`)
-  }
-
-  // Convert saturation from [0, 3] UI range to hue filter's saturation parameter
-  if (saturation.value !== 1) {
-    // The hue filter's 's' parameter defaults to 1 (normal saturation)
-    // We map our UI range [0,3] to roughly match eq filter behavior
-    // UI: 0 (no sat) -> hue: 0, UI: 1 (normal) -> hue: 1, UI: 3 (max) -> hue: 3
-    const hueSaturation = saturation.value
-    hueParams.push(`s=${hueSaturation.toFixed(2)}`)
-  }
-
-  // Add hue adjustment if needed
-  if (hue.value !== 0) {
-    hueParams.push(`h=${hue.value}`)
-  }
-
-  if (hueParams.length > 0) {
-    filters.push(`hue=${hueParams.join(':')}`)
-  }
-
-  // Gamma via lutyuv
-  if (gamma.value !== 1) {
-    // Use inverse so UI gamma > 1 brightens, < 1 darkens
-    const uiG = Math.max(0.1, Math.min(10, Number(gamma.value.toFixed(3))))
-    const g = Number((1 / uiG).toFixed(6))
-    filters.push(`lutyuv=y=gammaval(${g})`)
-  }
-
-  // Contrast via lutyuv on luma around mid-gray (bit-depth agnostic)
-  if (contrast.value !== 1) {
-    const c = Number(contrast.value.toFixed(3))
-    const expr = `y='min(max((val-(maxval+minval)/2)*${c}+(maxval+minval)/2,minval),maxval)'`
-    filters.push(`lutyuv=${expr}`)
-  }
-
-  return filters.join(',')
-})
+const basicFilter = computed(() =>
+  buildBasicFilter({
+    brightness: brightness.value,
+    contrast: contrast.value,
+    saturation: saturation.value,
+    hue: hue.value,
+    gamma: gamma.value,
+  })
+)
 
 const advancedFilter = computed(() => advancedFilterState.value)
 
-const generatedFilter = computed(() => {
-  // Stack as "Color Adjustments -> Advanced"
-  return [basicFilter.value, advancedFilter.value].filter(Boolean).join(',')
-})
+const generatedFilter = computed(() => joinFilters(basicFilter.value, advancedFilter.value))
 
 // Video information display
 const videoInfoDisplay = computed(() => {
@@ -724,127 +669,16 @@ const generatePreviewFromUrl = async () => {
   }
 }
 
-// Split a filter chain on commas only at top-level (outside quotes/parentheses)
-function splitTopLevelFilters(s: string): string[] {
-  const parts: string[] = []
-  let buf = ''
-  let inSingle = false
-  let inDouble = false
-  let paren = 0
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i]
-    if (ch === "'" && !inDouble) {
-      inSingle = !inSingle
-      buf += ch
-      continue
-    }
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble
-      buf += ch
-      continue
-    }
-    if (!inSingle && !inDouble) {
-      if (ch === '(') paren++
-      else if (ch === ')' && paren > 0) paren--
-      if (ch === ',' && paren === 0) {
-        const part = buf.trim()
-        if (part) parts.push(part)
-        buf = ''
-        continue
-      }
-    }
-    buf += ch
-  }
-  const tail = buf.trim()
-  if (tail) parts.push(tail)
-  return parts
-}
 
 const parseFilterToControls = (filterString: string) => {
-  // Reset values first
   resetToDefaults()
-
-  // Simple parser for common filter formats
-  const filters = splitTopLevelFilters(filterString)
-
-  for (const filter of filters) {
-    const trimmed = filter.trim()
-
-    if (trimmed.startsWith('hue=')) {
-      const params = trimmed.substring(4).split(':')
-      for (const param of params) {
-        const [key, value] = param.split('=')
-        const numValue = parseFloat(value)
-
-        switch (key) {
-          case 'b': // brightness in hue filter range [-10, 10]
-            // Convert back to UI range [-1, 1]
-            brightness.value = numValue / 10
-            break
-          case 's': // saturation - direct mapping from hue filter to UI
-            // We use direct mapping: hue filter value = UI value
-            saturation.value = numValue
-            break
-          case 'h': // hue angle in degrees
-            hue.value = numValue
-            break
-        }
-      }
-    } else if (trimmed.startsWith('lutyuv=')) {
-      // Handle gamma: lutyuv=y=gammaval(x)
-      const afterEq = trimmed.substring('lutyuv='.length)
-      // Normalize quotes
-      const s = afterEq.replace(/^"|^'|"$|'$/g, '')
-      // y=gammaval(x) form
-      const gammaMatch = s.match(/y\s*=\s*gammaval\(([^)]+)\)/)
-      if (gammaMatch) {
-        const g = parseFloat(gammaMatch[1])
-        if (!Number.isNaN(g) && g > 0) {
-          // Map to basic gamma slider (UI uses inverse)
-          gamma.value = 1 / g
-        }
-        continue
-      }
-      // Contrast around mid using min/max clamp
-      const contrastMinMax = s.match(/y\s*=\s*'?min\(max\(\(val-\(maxval\+minval\)\/2\)\*([0-9.]+)\+\(maxval\+minval\)\/2\s*,\s*minval\)\s*,\s*maxval\)('?)/)
-      if (contrastMinMax) {
-        const c = parseFloat(contrastMinMax[1])
-        if (!Number.isNaN(c)) contrast.value = c
-        continue
-      }
-      // Back-compat: older clip() form
-  const contrastClip = s.match(/y\s*=\s*'?clip\(\(val-\(maxval\+minval\)\/2\)\*([0-9.]+)\+\(maxval\+minval\)\/2\)'?/)
-      if (contrastClip) {
-        const c = parseFloat(contrastClip[1])
-        if (!Number.isNaN(c)) contrast.value = c
-        continue
-      }
-    } else if (trimmed.startsWith('colorbalance=') || trimmed.startsWith('lutrgb=')) {
-      advancedFilterState.value = trimmed
-    } else if (trimmed.startsWith('eq=')) {
-      const params = trimmed.substring(3).split(':')
-      for (const param of params) {
-        const [key, value] = param.split('=')
-        const numValue = parseFloat(value)
-
-        switch (key) {
-          case 'brightness':
-            brightness.value = numValue
-            break
-          case 'contrast':
-            contrast.value = numValue
-            break
-          case 'saturation':
-            saturation.value = numValue
-            break
-          case 'gamma':
-            // Use inverse to keep UI orientation consistent with lutyuv
-            gamma.value = numValue > 0 ? 1 / numValue : numValue
-            break
-        }
-      }
-    }
-  }
+  const parsed = parseFilterString(filterString)
+  brightness.value = parsed.brightness
+  contrast.value = parsed.contrast
+  saturation.value = parsed.saturation
+  hue.value = parsed.hue
+  gamma.value = parsed.gamma
+  if (parsed.advanced) advancedFilterState.value = parsed.advanced
 }
 
 const parseAndApplyFilter = (filterString: string) => {
