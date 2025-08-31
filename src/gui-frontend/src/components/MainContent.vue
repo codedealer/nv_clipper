@@ -12,7 +12,7 @@
     </div>
 
   <!-- Color Grading Panel (Full Area) -->
-  <div v-else-if="clipCount > 0" class="color-grading-area">
+  <div v-else-if="canShowPanel" class="color-grading-area">
       <ColorGradingPanel
         :selected-clip="selectedClip"
         :video-path="videoFile"
@@ -73,6 +73,8 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 // Computed properties
+const canShowPanel = computed(() => props.clipCount > 0 && (props.hasVideoFile || !!props.markupVideoUrl))
+
 const selectedClip = computed(() => {
   const clips = props.parsedClips
   if (!clips.length) return null

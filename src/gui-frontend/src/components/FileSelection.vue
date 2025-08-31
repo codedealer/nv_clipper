@@ -50,7 +50,7 @@
           closable
           @close="clearMarkupFile"
         >
-          {{ getFileName(selectedFiles.markup) }}
+          <span class="file-name" :title="selectedFiles.markup">{{ getFileName(selectedFiles.markup) }}</span>
         </el-tag>
         <el-tag
           v-if="selectedFiles.video"
@@ -60,7 +60,7 @@
           closable
           @close="clearVideoFile"
         >
-          {{ getFileName(selectedFiles.video) }}
+          <span class="file-name" :title="selectedFiles.video">{{ getFileName(selectedFiles.video) }}</span>
         </el-tag>
       </div>
     </div>
@@ -373,9 +373,32 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-width: 100%;
 }
 
 .file-item {
   margin-bottom: 8px;
+}
+
+/* Ensure long file names don't push the close button out of view */
+:deep(.el-tag) {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+}
+
+:deep(.el-tag__content) {
+  min-width: 0; /* allow flex shrink */
+  max-width: 100%;
+  overflow: hidden;
+  flex: 1 1 auto;
+}
+
+.file-name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

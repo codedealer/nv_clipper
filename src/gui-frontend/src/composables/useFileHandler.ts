@@ -30,6 +30,9 @@ export function useFileHandler(
   const hasMarkupFile = computed(() => clipperStore.hasMarkupFile)
   const hasVideoFile = computed(() => clipperStore.hasVideoFile)
 
+  // Guard against races when files are changed while async work is in-flight
+  let selectionOpId = 0
+
   /**
    * Process can start if we have markup or clips and selected clips, and not already processing
    */
@@ -41,6 +44,8 @@ export function useFileHandler(
    * Handle multiple selected files from dialog or drag/drop
    */
   async function handleSelectedFiles(filePaths: string[]): Promise<void> {
+    // Start a new selection operation; invalidates in-flight work
+    const opId = ++selectionOpId
     const newFiles = { markup: null as string | null, video: null as string | null }
 
     // Categorize files
@@ -78,8 +83,10 @@ export function useFileHandler(
         await parseMarkupFile(markupPath)
       }
     } else if (newFiles.video && !hasMarkupFile.value) {
-      // Create mock markup for video-only scenario
-      await handleMockMarkupCreation(newFiles.video)
+      // Create mock markup for video-only scenario; apply only if this op is still current
+      if (opId === selectionOpId) {
+        await handleMockMarkupCreation(newFiles.video)
+      }
     }
   }  /**
    * Handle file selection via file dialog
@@ -119,6 +126,8 @@ export function useFileHandler(
    * Clear markup file and create mock markup if video exists
    */
   async function clearMarkupFile(): Promise<void> {
+    // Invalidate any in-flight operations tied to previous selection
+    selectionOpId++
     clipperStore.setMarkupFile(null)
     resetMarkupState()
 
@@ -133,6 +142,8 @@ export function useFileHandler(
    * Clear video file and related state
    */
   function clearVideoFile(): void {
+    // Invalidate any in-flight operations tied to previous selection
+    selectionOpId++
     clipperStore.setVideoFile(null)
     clearVideoState()
     resetMarkupState()
@@ -142,6 +153,7 @@ export function useFileHandler(
    * Handle video selection from cache or external source
    */
   async function selectVideoAndUpdateUI(video: CachedVideo): Promise<void> {
+    const opId = ++selectionOpId
     clipperStore.setVideoFile(video.file_path)
 
     // Get video info for the selected video
@@ -152,7 +164,7 @@ export function useFileHandler(
     }
 
     // Create mock markup if no markup file exists
-    if (!hasMarkupFile.value) {
+    if (!hasMarkupFile.value && opId === selectionOpId) {
       await handleMockMarkupCreation(video.file_path)
     }
 
@@ -164,10 +176,11 @@ export function useFileHandler(
    * Handle mock markup creation for video-only scenarios
    */
   async function handleMockMarkupCreation(videoPath: string): Promise<void> {
+    const opId = selectionOpId
     try {
       const mockResult = await createMockMarkupForVideo(videoPath, hasValidVideoInfo ? undefined : null)
 
-      if (mockResult) {
+      if (mockResult && opId === selectionOpId) {
         setMarkupData(mockResult.markupData, mockResult.clips)
       }
     } catch (error) {
