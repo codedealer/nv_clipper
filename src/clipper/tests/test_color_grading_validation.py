@@ -4,7 +4,7 @@ from clipper.ffmpeg_filter import _validate_color_grading_filter
 
 
 @pytest.mark.parametrize(
-    "filter_str, expected",
+    ("filter_str", "expected"),
     [
         ("hue=s=1.20:b=1:h=15", True),
         ("lutyuv=y=gammaval(0.769231)", True),

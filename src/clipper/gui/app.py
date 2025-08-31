@@ -1,5 +1,6 @@
 """Main GUI application using pywebview."""
 
+import contextlib
 import json
 import logging
 import subprocess
@@ -143,7 +144,7 @@ class ClipperGUI:
                     markup_path=markup_path,
                     video_path=video_path,
                     settings_overrides=settings_overrides,
-                    markup_data=markup_data
+                    markup_data=markup_data,
                 )
 
                 # Update with final result
@@ -270,15 +271,15 @@ class ClipperGUI:
 
             # If there's a selected video file, always probe it for actual video properties
             # This ensures the GUI displays current, accurate video information
-            from clipper.clipper_types import ClipperState, ClipperPaths
+            from clipper.clipper_types import ClipperPaths, ClipperState
             from clipper.ffprobe import ffprobeVideoProperties
 
             # Check if we have a current video file from the GUI state
             # We need to check the current_files list which stores dropped files
             video_file_path = None
-            for file_path in self.current_files:
-                if any(Path(file_path).suffix.lower().endswith(ext) for ext in ['.mp4', '.webm', '.avi', '.mkv', '.mov']):
-                    video_file_path = file_path
+            for p in self.current_files:
+                if any(Path(p).suffix.lower().endswith(ext) for ext in ['.mp4', '.webm', '.avi', '.mkv', '.mov']):
+                    video_file_path = p
                     break
 
             if video_file_path and Path(video_file_path).exists():
@@ -286,7 +287,7 @@ class ClipperGUI:
                     # Create minimal clipper state for ffprobe
                     cs = ClipperState(
                         settings={'platform': 'ytc_generic'},
-                        clipper_paths=ClipperPaths()
+                        clipper_paths=ClipperPaths(),
                     )
 
                     # Probe the actual video file
@@ -304,7 +305,7 @@ class ClipperGUI:
                             'codec_name': video_properties.get('codec_name'),
                             'bit_rate': video_properties.get('bit_rate'),
                             'frame_rate': video_properties.get('r_frame_rate'),
-                            'path': str(video_file_path)
+                            'path': str(video_file_path),
                         }
                         self.logger.info(f"Successfully probed video file: {video_file_path}")
                     else:
@@ -782,7 +783,7 @@ class ClipperGUI:
             Dict with status, message, and video info for success
         """
         try:
-            from clipper.clipper_types import ClipperState, ClipperPaths
+            from clipper.clipper_types import ClipperPaths, ClipperState
             from clipper.ffprobe import ffprobeVideoProperties
 
             self.logger.info(f"Getting video info for {video_path}")
@@ -792,15 +793,15 @@ class ClipperGUI:
             if not video_file.exists():
                 return {
                     'status': 'error',
-                    'message': f'Video file not found: {video_path}'
+                    'message': f'Video file not found: {video_path}',
                 }
 
             # Create a clipper state with default paths and required settings for ffprobe
             cs = ClipperState(
                 settings={
-                    'platform': 'ytc_generic'  # Required for ffprobe
+                    'platform': 'ytc_generic',  # Required for ffprobe
                 },
-                clipper_paths=ClipperPaths()
+                clipper_paths=ClipperPaths(),
             )
 
             # Use ffprobe to get video properties
@@ -809,7 +810,7 @@ class ClipperGUI:
             if not video_properties:
                 return {
                     'status': 'error',
-                    'message': 'Failed to get video properties with ffprobe'
+                    'message': 'Failed to get video properties with ffprobe',
                 }
 
             # Extract duration from format info if available
@@ -828,15 +829,15 @@ class ClipperGUI:
                     'codec_name': video_properties.get('codec_name'),
                     'bit_rate': video_properties.get('bit_rate'),
                     'frame_rate': video_properties.get('r_frame_rate'),
-                    'path': str(video_file)
-                }
+                    'path': str(video_file),
+                },
             }
 
         except Exception as e:
             self.logger.error(f"Error getting video info: {e}", exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Failed to get video info: {e!s}'
+                'message': f'Failed to get video info: {e!s}',
             }
 
     def create_temp_markup_file(self, markup_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -864,14 +865,14 @@ class ClipperGUI:
             return {
                 'status': 'success',
                 'message': 'Temporary markup file created',
-                'temp_file_path': temp_file_path
+                'temp_file_path': temp_file_path,
             }
 
         except Exception as e:
             self.logger.error(f"Error creating temporary markup file: {e}", exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Failed to create temporary markup file: {e!s}'
+                'message': f'Failed to create temporary markup file: {e!s}',
             }
 
     def generate_frame_preview(self, video_path: str, timestamp: float,
@@ -890,30 +891,28 @@ class ClipperGUI:
         """
         try:
             import base64
-            from subprocess import PIPE
 
             self.logger.info(f"Generating frame preview for {video_path} at {timestamp}s")
 
             # Validate inputs: support local files and direct HTTP(S) URLs
             is_http = str(video_path).startswith(('http://', 'https://'))
             video_file = Path(video_path) if not is_http else None
-            if not is_http:
-                if not video_file or not video_file.exists():
-                    return {
-                        'status': 'error',
-                        'message': f'Video file not found: {video_path}'
-                    }
+            if not is_http and (not video_file or not video_file.exists()):
+                return {
+                    'status': 'error',
+                    'message': f'Video file not found: {video_path}',
+                }
 
             if timestamp < 0:
                 return {
                     'status': 'error',
-                    'message': 'Timestamp must be non-negative'
+                    'message': 'Timestamp must be non-negative',
                 }
 
             if resolution_scale not in [0.1, 0.25, 0.5, 1.0]:
                 return {
                     'status': 'error',
-                    'message': 'Resolution scale must be 0.1, 0.25, 0.5, or 1.0'
+                    'message': 'Resolution scale must be 0.1, 0.25, 0.5, or 1.0',
                 }
 
             normalized_ts = self._norm_ts(timestamp)
@@ -924,7 +923,7 @@ class ClipperGUI:
                 if not _validate_color_grading_filter(color_grading):
                     return {
                         'status': 'error',
-                        'message': 'Invalid color grading filter string'
+                        'message': 'Invalid color grading filter string',
                     }
 
             # Helper: ensure cached naked frame (scaled/padded, no color filters)
@@ -954,7 +953,7 @@ class ClipperGUI:
                 base_cmd.append('pipe:1')
 
                 self.logger.debug(f"FFmpeg (cache base) command: {' '.join(base_cmd)}")
-                result = subprocess.run(base_cmd, stdout=PIPE, stderr=PIPE, timeout=30)
+                result = subprocess.run(base_cmd, capture_output=True, timeout=30, check=False)
                 if result.returncode != 0 or not result.stdout:
                     self.logger.error("Failed to generate base frame for cache")
                     if result.stderr:
@@ -970,7 +969,7 @@ class ClipperGUI:
                 if not image_bytes:
                     return {
                         'status': 'error',
-                        'message': 'Failed to generate base frame for preview'
+                        'message': 'Failed to generate base frame for preview',
                     }
                 image_base64 = base64.b64encode(image_bytes).decode('utf-8')
                 self.logger.info(f"Frame preview generated from cache (base64, {len(image_base64)} chars)")
@@ -980,7 +979,7 @@ class ClipperGUI:
                     'base64_image': image_base64,
                     'mime_type': 'image/jpeg',
                     'timestamp': timestamp,
-                    'resolution_scale': resolution_scale
+                    'resolution_scale': resolution_scale,
                 }
 
             # With color grading: reuse cached base frame and apply filters only
@@ -988,7 +987,7 @@ class ClipperGUI:
             if not base_frame:
                 return {
                     'status': 'error',
-                    'message': 'Failed to generate base frame for preview with filters'
+                    'message': 'Failed to generate base frame for preview with filters',
                 }
 
             # Build ffmpeg to read JPEG from stdin, apply color filters, and output JPEG
@@ -1003,18 +1002,18 @@ class ClipperGUI:
                 '-pix_fmt', 'yuvj420p',
                 '-q:v', '2',
                 '-vf', color_grading,
-                'pipe:1'
+                'pipe:1',
             ]
 
             self.logger.debug(f"FFmpeg (apply filters) command: {' '.join(filter_cmd)}")
-            result = subprocess.run(filter_cmd, input=base_frame, stdout=PIPE, stderr=PIPE, timeout=30)
+            result = subprocess.run(filter_cmd, input=base_frame, capture_output=True, timeout=30, check=False)
             if result.returncode != 0 or not result.stdout:
                 self.logger.error("FFmpeg filter application failed")
                 if result.stderr:
                     self.logger.error(result.stderr.decode(errors='ignore'))
                 return {
                     'status': 'error',
-                    'message': 'Failed to apply color grading to cached frame'
+                    'message': 'Failed to apply color grading to cached frame',
                 }
 
             image_base64 = base64.b64encode(result.stdout).decode('utf-8')
@@ -1025,19 +1024,19 @@ class ClipperGUI:
                 'base64_image': image_base64,
                 'mime_type': 'image/jpeg',
                 'timestamp': timestamp,
-                'resolution_scale': resolution_scale
+                'resolution_scale': resolution_scale,
             }
 
         except subprocess.TimeoutExpired:
             return {
                 'status': 'error',
-                'message': 'Frame extraction timed out'
+                'message': 'Frame extraction timed out',
             }
         except Exception as e:
             self.logger.error(f"Error generating frame preview: {e}", exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Failed to generate frame preview: {e!s}'
+                'message': f'Failed to generate frame preview: {e!s}',
             }
 
     def get_direct_video_url(self, page_url: str) -> Dict[str, Any]:
@@ -1047,7 +1046,7 @@ class ClipperGUI:
         Returns a URL string that can be passed directly to ffmpeg as input.
         """
         try:
-            from clipper.clipper_types import ClipperState, ClipperPaths
+            from clipper.clipper_types import ClipperState
             from clipper.ytdl import ytdl_bin_get_video_info
 
             # Load GUI settings to configure yt-dlp path/format options
@@ -1073,10 +1072,8 @@ class ClipperGUI:
             # Ensure internal paths are set correctly (use default ClipperPaths)
             # If user provided a custom yt-dlp location, update paths accordingly
             if settings_overrides.get('ytdl_location'):
-                try:
+                with contextlib.suppress(Exception):
                     cs.clipper_paths.ytdlPath = str(settings_overrides['ytdl_location'])
-                except Exception:
-                    pass
 
             # Query yt-dlp for info (without formats table for speed)
             info, _ = ytdl_bin_get_video_info(cs, no_list_formats=True, no_get_info=False)
@@ -1098,18 +1095,18 @@ class ClipperGUI:
             if not url:
                 return {
                     'status': 'error',
-                    'message': 'Failed to obtain direct video URL from yt-dlp metadata'
+                    'message': 'Failed to obtain direct video URL from yt-dlp metadata',
                 }
 
             return {
                 'status': 'success',
-                'url': url
+                'url': url,
             }
         except Exception as e:
             self.logger.error(f"Error resolving direct video URL: {e}", exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Failed to resolve direct video URL: {e!s}'
+                'message': f'Failed to resolve direct video URL: {e!s}',
             }
 
     # Window State Management API
@@ -1120,24 +1117,23 @@ class ClipperGUI:
             success = self.settings_manager.update_general_settings({
                 'window_width': width,
                 'window_height': height,
-                'window_maximized': maximized
+                'window_maximized': maximized,
             })
 
             if success:
                 return {
                     'status': 'success',
-                    'message': 'Window state saved successfully'
+                    'message': 'Window state saved successfully',
                 }
-            else:
-                return {
-                    'status': 'error',
-                    'message': 'Failed to save window state'
-                }
+            return {
+                'status': 'error',
+                'message': 'Failed to save window state',
+            }
         except Exception as e:
             self.logger.error(f"Error saving window state: {e}", exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Failed to save window state: {e!s}'
+                'message': f'Failed to save window state: {e!s}',
             }
 
     def get_window_state(self) -> Dict[str, Any]:
@@ -1148,7 +1144,7 @@ class ClipperGUI:
                 'status': 'success',
                 'width': settings.get('window_width', 1000),
                 'height': settings.get('window_height', 800),
-                'maximized': settings.get('window_maximized', False)
+                'maximized': settings.get('window_maximized', False),
             }
         except Exception as e:
             self.logger.error(f"Error getting window state: {e}", exc_info=True)
@@ -1157,7 +1153,7 @@ class ClipperGUI:
                 'message': f'Failed to get window state: {e!s}',
                 'width': 1000,  # fallback defaults
                 'height': 800,
-                'maximized': False
+                'maximized': False,
             }
 
 
@@ -1215,12 +1211,14 @@ def create_app(dev_mode: bool = False, dev_url: str = "http://localhost:5173") -
         if current_state == last_saved_state:
             return
 
-        def save_state():
+        def save_state() -> None:
             try:
                 result = api.save_window_state(new_width, new_height, new_maximized)
                 if result['status'] == 'success':
                     last_saved_state.update(current_state)
-                    api.logger.debug(f"Window state saved: {new_width}x{new_height}, maximized: {new_maximized}")
+                    api.logger.debug(
+                        f"Window state saved: {new_width}x{new_height}, maximized: {new_maximized}",
+                    )
                 else:
                     api.logger.warning(f"Failed to save window state: {result.get('message')}")
             except Exception as e:
