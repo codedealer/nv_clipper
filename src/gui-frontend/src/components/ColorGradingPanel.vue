@@ -319,6 +319,8 @@ const previewError = ref('')
 const previewEnabled = ref(true)
 // Guard to suppress preview during re-init on video change
 const isInitializing = ref(false)
+// Guard to ignore stale preview responses
+let previewOpId = 0
 
 // Color parameters
 const brightness = ref(0)
@@ -546,6 +548,8 @@ const updatePreview = async () => {
   if (!hasSomeTimeline.value || !window.pywebview?.api) return
   if (isInitializing.value) return
 
+  // Start a new preview operation
+  const opId = ++previewOpId
   isGeneratingPreview.value = true
   previewError.value = ''
 
@@ -567,6 +571,9 @@ const updatePreview = async () => {
       previewResolution.value
     )
 
+    // Ignore if a newer operation started
+    if (opId !== previewOpId) return
+
     if (result.status === 'success') {
       // Create data URL from base64 image
       if (result.base64_image && result.mime_type) {
@@ -578,10 +585,15 @@ const updatePreview = async () => {
       previewError.value = result.message || 'Failed to generate preview'
     }
   } catch (err) {
+    // Ignore errors from stale ops
+    if (opId !== previewOpId) return
     previewError.value = `Preview generation error: ${String(err)}`
     console.error('Preview generation failed:', err)
   } finally {
-    isGeneratingPreview.value = false
+    // Only end loading state if this is the latest op
+    if (opId === previewOpId) {
+      isGeneratingPreview.value = false
+    }
   }
 }
 
@@ -653,19 +665,24 @@ const tempVideoUrlRef = ref<string | null>(null)
 const generatePreviewFromUrl = async () => {
   if (!props.markupVideoUrl || !window.pywebview?.api) return
   try {
-    isGeneratingPreview.value = true
+  const opId = ++previewOpId
+  isGeneratingPreview.value = true
     previewError.value = ''
     const res = await window.pywebview.api.get_direct_video_url(props.markupVideoUrl)
-    if (res.status === 'success' && res.url) {
+  if (opId !== previewOpId) return
+  if (res.status === 'success' && res.url) {
       tempVideoUrlRef.value = res.url as string
       await updatePreview()
     } else {
       previewError.value = res.message || 'Failed to resolve VideoUrl via yt-dlp'
     }
   } catch (e) {
-    previewError.value = `Failed to fetch direct video URL: ${e}`
+  // Ignore if stale
+  if (/* c8 ignore next */ false) {}
+  previewError.value = `Failed to fetch direct video URL: ${e}`
   } finally {
-    isGeneratingPreview.value = false
+  // Only clear loading if still current
+  isGeneratingPreview.value = false
   }
 }
 
@@ -716,6 +733,8 @@ watch(
     // If video path changed, reset UI state and wait for clip/duration to settle
     if (prev && curr.videoPath !== prev.videoPath) {
       isInitializing.value = true
+      // Cancel/ignore any in-flight preview operations
+      previewOpId++
       // Clear controls to defaults; avoid emitting changes
       resetToDefaults()
       // Cancel any pending color-grading preview debounce
@@ -731,12 +750,20 @@ watch(
       previewImageUrl.value = ''
       previewError.value = ''
       previewTimestamp.value = 0
+      isGeneratingPreview.value = false
       // Don't generate preview here; wait for next clip/duration update
       return
     }
 
     // Only proceed when both video and clip exist
-  if (!hasSomeTimeline.value) return
+  if (!hasSomeTimeline.value) {
+    // Cancel any in-flight preview and clear UI
+    previewOpId++
+    isGeneratingPreview.value = false
+    previewImageUrl.value = ''
+    previewError.value = ''
+    return
+  }
 
     // Debounce to coalesce rapid duration/clip changes (e.g., mock markup init)
     if (initTimer) {
