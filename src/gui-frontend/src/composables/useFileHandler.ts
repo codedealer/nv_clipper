@@ -199,7 +199,7 @@ export function useFileHandler(
     }
 
     try {
-      if (markupData) {
+  if (markupData) {
         // Use provided markup data (modified or mock)
         await clipperStore.startProcessing(selectedClips, markupData)
       } else if (clipperStore.selectedFiles.markup) {
@@ -208,8 +208,7 @@ export function useFileHandler(
       } else {
         throw new Error('No markup file or data available for processing')
       }
-
-      ElMessage.success(UI_MESSAGES.PROCESSING_STARTED)
+  // Rely on push events for completion toasts
     } catch (error) {
       console.error('Processing failed:', error)
       ElMessage.error(UI_MESSAGES.PROCESSING_FAILED)

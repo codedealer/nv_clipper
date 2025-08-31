@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus } from '@/types/api'
 import { waitForPywebview } from '@/utils/api'
 import { useSettingsStore } from './settings'
+import { ElMessage } from 'element-plus'
 
 export const useClipperStore = defineStore('clipper', () => {
   // State
@@ -120,6 +121,8 @@ export const useClipperStore = defineStore('clipper', () => {
       isProcessing.value = false
       isCanceling.value = false
       currentJobId.value = null
+      // Show completion toast
+      ElMessage.success(processingStatus.value)
       return
     }
 
@@ -132,6 +135,8 @@ export const useClipperStore = defineStore('clipper', () => {
       isProcessing.value = false
       isCanceling.value = false
       currentJobId.value = null
+      // Show error toast
+      ElMessage.error(processingStatus.value)
       return
     }
 
@@ -144,6 +149,8 @@ export const useClipperStore = defineStore('clipper', () => {
       isProcessing.value = false
       isCanceling.value = false
       currentJobId.value = null
+      // Show cancel info toast
+      ElMessage.info(processingStatus.value)
       return
     }
   }
