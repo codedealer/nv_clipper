@@ -33,10 +33,14 @@ class VideoCacheManager:
             self.max_size = max_size_mb * 1024 * 1024  # Convert to bytes
 
         # Download progress tracking
-        self._download_progress: Dict[str, Dict[str, Any]] = {}
+        self._download_progress = {}
         self._download_lock = threading.Lock()
+        # Optional: map of active worker threads (for observability)
+        self._download_threads = {}
 
         self._init_database()
+
+
 
     def _init_database(self) -> None:
         """Initialize the cache database."""
@@ -124,18 +128,27 @@ class VideoCacheManager:
             # Check if download is already in progress
             with self._download_lock:
                 if video_id in self._download_progress:
-                    # Check if it's actually stuck (more than 30 minutes old)
                     progress_info = self._download_progress[video_id]
+                    status = progress_info.get('status')
                     start_time = progress_info.get('start_time', time.time())
-                    if time.time() - start_time > 1800:  # 30 minutes
-                        # Clean up stuck download
+
+                    # Allow restart if previous attempt failed or was canceled or completed
+                    if status in {'error', 'canceled', 'completed'}:
                         del self._download_progress[video_id]
-                        logger.warning(f"Cleaned up stuck download for {url}")
+                        logger.info(f"Restarting previous download state ({status}) for {url}")
                     else:
-                        return {
-                            'status': 'error',
-                            'message': 'Download already in progress',
-                        }
+                        # Check if it's actually stuck (more than 30 minutes old)
+                        if time.time() - start_time > 1800:  # 30 minutes
+                            # Clean up stuck download
+                            del self._download_progress[video_id]
+                            logger.warning(f"Cleaned up stuck download for {url}")
+                        else:
+                            return {
+                                'status': 'error',
+                                'code': 'ERR_IN_PROGRESS',
+                                'message': 'Download already in progress',
+                                'video_id': video_id,
+                            }
 
                 # Initialize progress tracking
                 self._download_progress[video_id] = {
@@ -145,6 +158,7 @@ class VideoCacheManager:
                     'status': 'starting',
                     'progress': 0,
                     'start_time': time.time(),
+                    'cancel_requested': False,
                 }
 
             # Start download in background thread
@@ -154,6 +168,8 @@ class VideoCacheManager:
             )
             thread.daemon = True
             thread.start()
+            with self._download_lock:
+                self._download_threads[video_id] = thread
 
             return {
                 'status': 'success',
@@ -165,6 +181,7 @@ class VideoCacheManager:
             logger.error(f"Failed to start download: {e}")
             return {
                 'status': 'error',
+                'code': 'ERR_START_FAILED',
                 'message': str(e),
             }
 
@@ -177,6 +194,11 @@ class VideoCacheManager:
 
             # Update progress
             self._update_progress(video_id, 'initializing', 0, 'Initializing download...')
+
+            # Early cancel check
+            if self._is_cancel_requested(video_id):
+                self._finalize_canceled(video_id, url)
+                return
 
             cache_filename = f"{video_id}"  # Let yt-dlp determine extension
             cache_path_template = self.cache_dir / cache_filename
@@ -213,6 +235,7 @@ class VideoCacheManager:
             self._update_progress(video_id, 'downloading', 10, 'Getting video information...')
 
             try:
+                # Retrieve video info (blocking); cancel will take effect afterward
                 video_info, _ = ytdl_bin_get_video_info(cs, True)
             except subprocess.CalledProcessError as e:
                 error_msg = f"yt-dlp failed: {e!s}"
@@ -222,6 +245,11 @@ class VideoCacheManager:
                 error_msg = f"Failed to download video: {e!s}"
                 logger.error(error_msg)
                 raise Exception(error_msg) from e
+
+            # Cancel after info fetch
+            if self._is_cancel_requested(video_id):
+                self._finalize_canceled(video_id, url)
+                return
 
             self._update_progress(video_id, 'downloading', 50, 'Downloading video file...')
 
@@ -241,6 +269,17 @@ class VideoCacheManager:
             # Use the largest file if multiple files found
             cache_path = max(downloaded_files, key=lambda f: f.stat().st_size)
             logger.info(f"Found downloaded file: {cache_path.name} ({cache_path.stat().st_size} bytes)")
+
+            # Cancel before processing/DB writes
+            if self._is_cancel_requested(video_id):
+                # Try to remove the partially downloaded file
+                try:
+                    if cache_path.exists():
+                        cache_path.unlink(missing_ok=True)  # type: ignore[arg-type]
+                except Exception:
+                    pass
+                self._finalize_canceled(video_id, url)
+                return
 
             self._update_progress(video_id, 'processing', 80, 'Processing downloaded file...')
 
@@ -276,7 +315,9 @@ class VideoCacheManager:
                 with self._download_lock:
                     if video_id in self._download_progress:
                         del self._download_progress[video_id]
-                        logger.debug(f"Cleaned up completed download tracking for {video_id}")
+                    # Remove thread ref
+                    self._download_threads.pop(video_id, None)
+                    logger.debug(f"Cleaned up completed download tracking for {video_id}")
 
             cleanup_thread = threading.Thread(target=cleanup_completed_download)
             cleanup_thread.daemon = True
@@ -300,11 +341,16 @@ class VideoCacheManager:
                 user_error_msg = f"Failed to download '{video_identifier}': {error_msg}"
 
             # Keep error status in progress tracking for longer so UI can show it
+            # Mark error and keep for UI visibility
             self._update_progress(video_id, 'error', 0, user_error_msg)
 
             # Don't automatically clean up failed downloads - let the user see the error
             # They can manually clear it or it will be cleaned up on app restart
             logger.info(f"Download failed for {video_id}, keeping error status for user visibility")
+        finally:
+            # Ensure thread map cleanup if not already removed
+            with self._download_lock:
+                self._download_threads.pop(video_id, None)
 
     def _update_progress(self, video_id: str, status: str, progress: float, message: str = "") -> None:
         """Update download progress."""
@@ -317,6 +363,24 @@ class VideoCacheManager:
                     'progress': progress,
                     'message': message,
                 })
+
+    def _is_cancel_requested(self, video_id: str) -> bool:
+        with self._download_lock:
+            info = self._download_progress.get(video_id)
+            return bool(info and info.get('cancel_requested'))
+
+    def _finalize_canceled(self, video_id: str, url: str) -> None:
+        # Mark canceled and keep entry briefly for UI to fetch status
+        self._update_progress(video_id, 'canceled', 0, 'Download canceled')
+        logger.info(f"Canceled download for {url}")
+        # Cleanup the progress entry soon after so new attempts can proceed
+        def cleanup() -> None:
+            time.sleep(2)
+            with self._download_lock:
+                self._download_progress.pop(video_id, None)
+                self._download_threads.pop(video_id, None)
+        t = threading.Thread(target=cleanup, daemon=True)
+        t.start()
 
     def get_download_progress(self, video_id: str) -> Dict[str, Any]:
         """Get download progress for a specific video."""
@@ -350,12 +414,24 @@ class VideoCacheManager:
                     else:
                         result['message'] = f'Status: {status}'
 
+                code_map = {
+                    'initializing': 'IN_PROGRESS',
+                    'downloading': 'IN_PROGRESS',
+                    'processing': 'IN_PROGRESS',
+                    'finalizing': 'IN_PROGRESS',
+                    'completed': 'COMPLETED',
+                    'error': 'ERROR',
+                    'canceled': 'CANCELED',
+                }
+
                 return {
                     'status': 'success',
+                    'code': code_map.get(result.get('status', 'unknown'), 'UNKNOWN'),
                     'progress': result,
                 }
             return {
                 'status': 'error',
+                'code': 'ERR_NOT_FOUND',
                 'message': 'Progress not found',
             }
 
@@ -406,6 +482,34 @@ class VideoCacheManager:
             'status': 'success',
             'message': f'Cleared {cleared_count} stuck downloads',
         }
+
+    def cancel_download(self, video_id: str) -> Dict[str, Any]:
+        """Request cancellation of an active download.
+
+        Note: Current implementation signals cancellation and cleans state; it may not stop
+        a currently executing yt-dlp subprocess immediately (best-effort).
+        """
+        with self._download_lock:
+            info = self._download_progress.get(video_id)
+            if not info:
+                return {
+                    'status': 'error',
+                    'code': 'ERR_NOT_FOUND',
+                    'message': 'Download not found',
+                }
+            if info.get('status') in {'completed', 'error', 'canceled'}:
+                # Nothing to cancel; allow frontend to clear and retry
+                return {
+                    'status': 'success',
+                    'code': 'NOOP',
+                    'message': f"Nothing to cancel (status={info.get('status')})",
+                }
+            info['cancel_requested'] = True
+            return {
+                'status': 'success',
+                'code': 'CANCEL_REQUESTED',
+                'message': 'Cancellation requested',
+            }
 
     def clear_error_downloads(self) -> Dict[str, Any]:
         """Clear all downloads with error status."""

@@ -26,7 +26,7 @@ export interface CacheInfo {
 export interface CacheDownloadProgress {
   video_id: string
   url: string
-  status: 'starting' | 'initializing' | 'downloading' | 'processing' | 'finalizing' | 'completed' | 'error'
+  status: 'starting' | 'initializing' | 'downloading' | 'processing' | 'finalizing' | 'completed' | 'error' | 'canceled'
   progress: number
   speed?: string
   eta?: string
