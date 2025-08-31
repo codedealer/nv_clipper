@@ -191,6 +191,17 @@ class ClipperEngine:
             # Get the report
             report = self.cs.reportStream.getvalue()
 
+            # Optionally send a native notification on completion (GUI setting)
+            try:
+                if self.cs and self.cs.settings.get("notifyOnCompletion"):
+                    # Import locally to avoid hard dependency if not used
+                    from clipper import util as _util  # type: ignore
+                    title_suffix = self.cs.settings.get("titleSuffix", "clips")
+                    _util.notifyOnComplete(title_suffix)
+            except Exception:
+                # Best-effort notification; ignore failures
+                pass
+
             return {
                 "status": "success",
                 "message": message,
@@ -204,6 +215,14 @@ class ClipperEngine:
             import traceback
             traceback.print_exc()
             self.logger.error(error_msg)
+            # Optionally send a native notification on completion even on failure
+            try:
+                if self.cs and self.cs.settings.get("notifyOnCompletion"):
+                    from clipper import util as _util  # type: ignore
+                    title_suffix = self.cs.settings.get("titleSuffix", "clips")
+                    _util.notifyOnComplete(title_suffix)
+            except Exception:
+                pass
             return {"status": "error", "message": str(e)}
 
     def get_status(self) -> Dict[str, Any]:

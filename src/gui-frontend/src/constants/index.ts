@@ -38,6 +38,7 @@ export const MOCK_MARKUP_DEFAULTS = {
 // UI Messages
 export const UI_MESSAGES = {
   FILE_SELECTION_FAILED: 'File selection failed',
+  // Start toasts are suppressed; terminal events (success/error/canceled) show toasts via push events
   PROCESSING_STARTED: 'Processing started successfully',
   PROCESSING_FAILED: 'Processing failed to start',
   MOCK_MARKUP_CREATING: 'Creating mock markup for video file...',
