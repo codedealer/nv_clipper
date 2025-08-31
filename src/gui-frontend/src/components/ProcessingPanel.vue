@@ -8,13 +8,25 @@
       <el-button
         @click="$emit('start-processing')"
         :loading="isProcessing"
-        :disabled="!canProcess"
+        :disabled="!canProcess || isProcessing || isCanceling"
         type="success"
         :icon="VideoPlay"
         size="large"
         style="width: 100%;"
       >
         {{ isProcessing ? 'Processing...' : 'Start Processing' }}
+      </el-button>
+
+      <el-button
+        v-if="isProcessing"
+        @click="$emit('cancel-processing')"
+        type="warning"
+        size="default"
+        :loading="isCanceling"
+        :disabled="isCanceling"
+        style="width: 100%;"
+      >
+        Cancel
       </el-button>
 
       <!-- Processing Progress -->
@@ -31,7 +43,7 @@
       <el-alert
         v-if="processingResult && processingResult.status !== 'accepted'"
         :title="processingResult.message"
-        :type="processingResult.status === 'success' ? 'success' : 'error'"
+        :type="processingResult.status === 'success' ? 'success' : (processingResult.status === 'canceled' ? 'warning' : 'error')"
         :icon="processingResult.status === 'success' ? SuccessFilled : CircleCloseFilled"
         show-icon
         :closable="false"
@@ -45,7 +57,7 @@ import { computed } from 'vue'
 import { VideoPlay, SuccessFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 
 interface ProcessingResult {
-  status: 'success' | 'error' | 'accepted'
+  status: 'success' | 'error' | 'accepted' | 'canceled'
   message: string
   job_id?: string
   report?: string
@@ -55,6 +67,7 @@ interface ProcessingResult {
 interface Props {
   canProcess: boolean
   isProcessing: boolean
+  isCanceling: boolean
   processingStatus: string
   processingResult: ProcessingResult | null
   overwriteEnabled: boolean
@@ -64,6 +77,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'start-processing': []
+  'cancel-processing': []
   'update-overwrite': [value: boolean]
 }>()
 

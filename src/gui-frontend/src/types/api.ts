@@ -1,7 +1,7 @@
 // Types for the Python API interface through pywebview
 
 export interface ProcessingResult {
-  status: 'success' | 'error' | 'accepted'
+  status: 'success' | 'error' | 'accepted' | 'canceled'
   message: string
   job_id?: string
   report?: string
@@ -9,7 +9,7 @@ export interface ProcessingResult {
 }
 
 export interface JobStatus {
-  status: 'processing' | 'success' | 'error' | 'starting'
+  status: 'processing' | 'success' | 'error' | 'starting' | 'canceled'
   message: string
   job_id?: string
   report?: string
@@ -155,8 +155,9 @@ declare global {
     pywebview: {
       api: {
         // File processing
-  process_files: (markupPath?: string, videoPath?: string, selectedClips?: number[], markupData?: Record<string, unknown>) => Promise<ProcessingResult>
+        process_files: (markupPath?: string, videoPath?: string, selectedClips?: number[], markupData?: Record<string, unknown>) => Promise<ProcessingResult>
         get_job_status: (jobId: string) => Promise<JobStatus>
+        cancel_processing: (jobId: string) => Promise<{ status: 'success' | 'error'; message?: string }>
         get_status: () => Promise<EngineStatus>
         select_files: () => Promise<string[]>
         parse_markup_file: (filePath: string) => Promise<ParseMarkupResult>
@@ -165,13 +166,13 @@ declare global {
 
         // Frame preview
         generate_frame_preview: (videoPath: string, timestamp: number, colorGrading?: string, resolutionScale?: number) => Promise<FramePreviewResult>
-  get_direct_video_url: (pageUrl: string) => Promise<{ status: 'success' | 'error'; url?: string; message?: string }>
+        get_direct_video_url: (pageUrl: string) => Promise<{ status: 'success' | 'error'; url?: string; message?: string }>
 
         // Video info
         get_video_info: (videoPath: string) => Promise<VideoInfoResult>
 
         // Temp markup file creation
-  create_temp_markup_file: (markupData: Record<string, unknown>) => Promise<TempMarkupFileResult>
+        create_temp_markup_file: (markupData: Record<string, unknown>) => Promise<TempMarkupFileResult>
 
         // Settings management
         get_general_settings: () => Promise<SettingsApiResponse>

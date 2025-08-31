@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult } from '@/types/api'
+import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus } from '@/types/api'
 import { waitForPywebview } from '@/utils/api'
 import { useSettingsStore } from './settings'
 
@@ -12,6 +12,7 @@ export const useClipperStore = defineStore('clipper', () => {
   })
 
   const isProcessing = ref(false)
+  const isCanceling = ref(false)
   const currentJobId = ref<string | null>(null)
   const processingStatus = ref<string>('')
   const processingResult = ref<ProcessingResult | null>(null)
@@ -20,7 +21,7 @@ export const useClipperStore = defineStore('clipper', () => {
   // Getters
   const hasMarkupFile = computed(() => !!selectedFiles.value.markup)
   const hasVideoFile = computed(() => !!selectedFiles.value.video)
-  const canProcess = computed(() => hasMarkupFile.value && !isProcessing.value)
+  const canProcess = computed(() => hasMarkupFile.value && !isProcessing.value && !isCanceling.value)
 
   // Actions
   function setSelectedFiles(files: SelectedFiles) {
@@ -48,6 +49,7 @@ export const useClipperStore = defineStore('clipper', () => {
     }
 
     isProcessing.value = true
+    isCanceling.value = false
     processingStatus.value = 'Starting processing...'
     currentJobId.value = null
     processingResult.value = null
@@ -64,23 +66,24 @@ export const useClipperStore = defineStore('clipper', () => {
       }
 
       const result = await api.process_files(
-        selectedFiles.value.markup || undefined,  // Optional now
+        selectedFiles.value.markup || undefined,
         selectedFiles.value.video || undefined,
         selectedClips || undefined,
-        markupData || undefined  // Pass markup data directly
+        markupData || undefined
       )
 
       if (result.status === 'accepted' && result.job_id) {
         currentJobId.value = result.job_id
         processingStatus.value = 'Processing files...'
-
-        // Start polling for status
-        await pollJobStatus(result.job_id)
-      } else {
-        processingResult.value = result
-        processingStatus.value = result.message
+        // From here we rely entirely on push events
+        return result
       }
 
+      // Immediate completion (success/error)
+      processingResult.value = result
+      processingStatus.value = result.message
+      isProcessing.value = false
+      currentJobId.value = null
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -89,66 +92,78 @@ export const useClipperStore = defineStore('clipper', () => {
         message: errorMessage
       }
       processingStatus.value = `Processing failed: ${errorMessage}`
-      throw error
-    } finally {
       isProcessing.value = false
       currentJobId.value = null
+      throw error
     }
   }
 
-  async function pollJobStatus(jobId: string): Promise<void> {
-    const pollInterval = 1000 // 1 second
-    const maxAttempts = 300 // 5 minutes max
+  // Handle backend push events
+  function onProcessingEvent(payload: JobStatus & { job_id: string }): void {
+    if (!payload || !payload.job_id) return
+    if (payload.job_id !== currentJobId.value) return
 
-    for (let attempts = 0; attempts < maxAttempts; attempts++) {
-      try {
-        const api = await waitForPywebview()
-        const status = await api.get_job_status(jobId)
+    if (payload.status === 'starting' || payload.status === 'processing') {
+      processingStatus.value = payload.message || 'Processing...'
+      isProcessing.value = true
+      return
+    }
 
-        if (status.status === 'processing') {
-          processingStatus.value = status.message || 'Processing...'
-        } else if (status.status === 'success') {
-          processingResult.value = {
-            status: 'success',
-            message: status.message || 'Processing completed',
-            report: status.report,
-            output_path: status.output_path
-          }
-          processingStatus.value = status.message || 'Processing completed successfully'
-          return // Job completed successfully
-        } else if (status.status === 'error') {
-          processingResult.value = {
-            status: 'error',
-            message: status.message || 'Processing failed'
-          }
-          processingStatus.value = status.message || 'Processing failed'
-          return // Job completed with error
-        }
-
-        // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, pollInterval))
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        processingResult.value = {
-          status: 'error',
-          message: `Failed to get job status: ${errorMessage}`
-        }
-        processingStatus.value = `Status polling failed: ${errorMessage}`
-        return
+    if (payload.status === 'success') {
+      processingResult.value = {
+        status: 'success',
+        message: payload.message || 'Processing completed',
+        report: payload.report,
+        output_path: payload.output_path
       }
+      processingStatus.value = payload.message || 'Processing completed successfully'
+      isProcessing.value = false
+      isCanceling.value = false
+      currentJobId.value = null
+      return
     }
 
-    // Timeout reached
-    processingResult.value = {
-      status: 'error',
-      message: 'Processing timeout - job may still be running'
+    if (payload.status === 'error') {
+      processingResult.value = {
+        status: 'error',
+        message: payload.message || 'Processing failed'
+      }
+      processingStatus.value = payload.message || 'Processing failed'
+      isProcessing.value = false
+      isCanceling.value = false
+      currentJobId.value = null
+      return
     }
-    processingStatus.value = 'Processing timeout'
+
+    if (payload.status === 'canceled') {
+      processingResult.value = {
+        status: 'canceled',
+        message: payload.message || 'Processing canceled'
+      }
+      processingStatus.value = payload.message || 'Processing canceled'
+      isProcessing.value = false
+      isCanceling.value = false
+      currentJobId.value = null
+      return
+    }
+  }
+
+  async function cancelCurrentJob(): Promise<void> {
+    if (!currentJobId.value) return
+    try {
+      const api = await waitForPywebview()
+      isCanceling.value = true
+      processingStatus.value = 'Canceling...'
+      await api.cancel_processing(currentJobId.value)
+      // We expect a push event to arrive
+    } catch (e) {
+      console.error('Cancel failed', e)
+      isCanceling.value = false
+    }
   }
 
   async function getEngineStatus(): Promise<EngineStatus> {
     try {
-      // Wait for pywebview to be ready first
       const api = await waitForPywebview()
       const status = await api.get_status()
       engineStatus.value = status
@@ -180,6 +195,7 @@ export const useClipperStore = defineStore('clipper', () => {
     // State
     selectedFiles,
     isProcessing,
+    isCanceling,
     currentJobId,
     processingStatus,
     processingResult,
@@ -198,6 +214,8 @@ export const useClipperStore = defineStore('clipper', () => {
     startProcessing,
     getEngineStatus,
     selectFiles,
-    parseMarkupFile
+    parseMarkupFile,
+    onProcessingEvent,
+    cancelCurrentJob
   }
 })
