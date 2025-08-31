@@ -104,150 +104,156 @@
           <div class="color-controls">
             <el-scrollbar height="100%">
               <div class="color-controls-content">
-                <h4>Color Adjustments</h4>
+                <el-tabs v-model="activeTab" type="border-card">
+                  <el-tab-pane label="Color Adjustments" name="basic">
+                    <!-- Brightness -->
+                    <div class="control-group">
+                      <div class="control-label">Brightness</div>
+                      <el-slider
+                        v-model="brightness"
+                        :min="-0.5"
+                        :max="0.5"
+                        :step="0.01"
+                        @change="updateColorGrading"
+                        show-input
+                        input-size="small"
+                      />
+                    </div>
 
-            <!-- Brightness -->
-            <div class="control-group">
-              <div class="control-label">Brightness</div>
-              <el-slider
-                v-model="brightness"
-                :min="-0.5"
-                :max="0.5"
-                :step="0.01"
-                @change="updateColorGrading"
-                show-input
-                input-size="small"
-              />
-            </div>
+                    <!-- Contrast -->
+                    <div class="control-group">
+                      <div class="control-label">Contrast</div>
+                      <el-slider
+                        v-model="contrast"
+                        :min="0"
+                        :max="3"
+                        :step="0.01"
+                        @change="updateColorGrading"
+                        show-input
+                        input-size="small"
+                      />
+                    </div>
 
-            <!-- Contrast -->
-            <div class="control-group">
-              <div class="control-label">Contrast</div>
-              <el-slider
-                v-model="contrast"
-                :min="0"
-                :max="3"
-                :step="0.01"
-                @change="updateColorGrading"
-                show-input
-                input-size="small"
-              />
-            </div>
+                    <!-- Saturation -->
+                    <div class="control-group">
+                      <div class="control-label">Saturation</div>
+                      <el-slider
+                        v-model="saturation"
+                        :min="0"
+                        :max="3"
+                        :step="0.01"
+                        @change="updateColorGrading"
+                        show-input
+                        input-size="small"
+                      />
+                    </div>
 
-            <!-- Saturation -->
-            <div class="control-group">
-              <div class="control-label">Saturation</div>
-              <el-slider
-                v-model="saturation"
-                :min="0"
-                :max="3"
-                :step="0.01"
-                @change="updateColorGrading"
-                show-input
-                input-size="small"
-              />
-            </div>
+                    <!-- Hue -->
+                    <div class="control-group">
+                      <div class="control-label">Hue</div>
+                      <el-slider
+                        v-model="hue"
+                        :min="-180"
+                        :max="180"
+                        :step="1"
+                        @change="updateColorGrading"
+                        show-input
+                        input-size="small"
+                      />
+                    </div>
 
-            <!-- Hue -->
-            <div class="control-group">
-              <div class="control-label">Hue</div>
-              <el-slider
-                v-model="hue"
-                :min="-180"
-                :max="180"
-                :step="1"
-                @change="updateColorGrading"
-                show-input
-                input-size="small"
-              />
-            </div>
+                    <!-- Gamma -->
+                    <div class="control-group">
+                      <div class="control-label">Gamma</div>
+                      <el-slider
+                        v-model="gamma"
+                        :min="0.1"
+                        :max="3"
+                        :step="0.01"
+                        @change="updateColorGrading"
+                        show-input
+                        input-size="small"
+                      />
+                    </div>
+                  </el-tab-pane>
 
-            <!-- Gamma -->
-            <div class="control-group">
-              <div class="control-label">Gamma</div>
-              <el-slider
-                v-model="gamma"
-                :min="0.1"
-                :max="3"
-                :step="0.01"
-                @change="updateColorGrading"
-                show-input
-                input-size="small"
-              />
-            </div>
+                  <el-tab-pane label="Advanced (Lift/Gamma/Gain)" name="advanced">
+                    <LiftGammaGainWheels @advanced-filter-changed="handleAdvancedFilterChanged" />
+                  </el-tab-pane>
+                </el-tabs>
 
-            <!-- Filter Output & Controls Card -->
-            <div class="filter-output-card">
-              <div class="filter-card-header">
-                <h5>Generated Filter</h5>
-                <div class="filter-header-controls">
-                  <el-checkbox
-                    v-model="previewEnabled"
-                    @change="updatePreview"
-                    size="small"
-                  >
-                    Preview
-                  </el-checkbox>
+                <!-- Filter Output & Controls Card (always visible) -->
+                <div class="filter-output-card">
+                  <div class="filter-card-header">
+                    <h5>Generated Filter</h5>
+                    <div class="filter-header-controls">
+                      <el-checkbox
+                        v-model="previewEnabled"
+                        @change="updatePreview"
+                        size="small"
+                      >
+                        Preview
+                      </el-checkbox>
+                    </div>
+                  </div>
+
+                  <div class="filter-display">
+                    <el-input
+                      v-model="generatedFilter"
+                      type="textarea"
+                      :rows="2"
+                      readonly
+                      placeholder="Color grading filter will appear here"
+                      class="filter-textarea"
+                    />
+                  </div>
+
+                  <div class="filter-actions">
+                    <div class="action-group primary-actions">
+                      <el-button
+                        size="small"
+                        type="primary"
+                        @click="copyFilter"
+                        :disabled="!generatedFilter"
+                        plain
+                      >
+                        <el-icon><DocumentCopy /></el-icon>
+                        Copy Filter
+                      </el-button>
+                      <el-button
+                        size="small"
+                        @click="showPasteDialog"
+                        plain
+                      >
+                        <el-icon><Document /></el-icon>
+                        Paste Filter
+                      </el-button>
+                    </div>
+
+                    <div class="action-group secondary-actions">
+                      <el-button
+                        size="small"
+                        type="success"
+                        @click="copyToAllClips"
+                        :disabled="!generatedFilter || isMockMarkup"
+                        plain
+                        v-if="!isMockMarkup"
+                      >
+                        <el-icon><CopyDocument /></el-icon>
+                        Copy to All Clips
+                      </el-button>
+                      <el-button
+                        size="small"
+                        type="warning"
+                        @click="handleReset"
+                        plain
+                      >
+                        <el-icon><RefreshLeft /></el-icon>
+                        Reset
+                      </el-button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              <div class="filter-display">
-                <el-input
-                  v-model="generatedFilter"
-                  type="textarea"
-                  :rows="2"
-                  readonly
-                  placeholder="Color grading filter will appear here"
-                  class="filter-textarea"
-                />
-              </div>
-
-              <div class="filter-actions">
-                <div class="action-group primary-actions">
-                  <el-button
-                    size="small"
-                    type="primary"
-                    @click="copyFilter"
-                    :disabled="!generatedFilter"
-                    plain
-                  >
-                    <el-icon><DocumentCopy /></el-icon>
-                    Copy Filter
-                  </el-button>
-                  <el-button
-                    size="small"
-                    @click="showPasteDialog"
-                    plain
-                  >
-                    <el-icon><Document /></el-icon>
-                    Paste Filter
-                  </el-button>
-                </div>
-
-                <div class="action-group secondary-actions">
-                  <el-button
-                    size="small"
-                    type="success"
-                    @click="copyToAllClips"
-                    :disabled="!generatedFilter || isMockMarkup"
-                    plain
-                    v-if="!isMockMarkup"
-                  >
-                    <el-icon><CopyDocument /></el-icon>
-                    Copy to All Clips
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="warning"
-                    @click="handleReset"
-                    plain
-                  >
-                    <el-icon><RefreshLeft /></el-icon>
-                    Reset
-                  </el-button>
-                </div>
-              </div>
-            </div>
               </div>
             </el-scrollbar>
           </div>
@@ -261,6 +267,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, DocumentCopy, Document, CopyDocument, RefreshLeft } from '@element-plus/icons-vue'
 import type { ClipInfo, VideoInfo } from '@/types/api'
+import LiftGammaGainWheels from './LiftGammaGainWheels.vue'
 
 // Simple debounce function
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
@@ -301,6 +308,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 // State
+const activeTab = ref<'basic' | 'advanced'>('basic')
 const previewResolution = ref(0.5)
 const previewTimestamp = ref(0)
 const isGeneratingPreview = ref(false)
@@ -316,6 +324,13 @@ const contrast = ref(1)
 const saturation = ref(1)
 const hue = ref(0)
 const gamma = ref(1)
+
+// Advanced filter state provided by wheels component
+const advancedFilterState = ref('')
+const handleAdvancedFilterChanged = (filter: string) => {
+  advancedFilterState.value = filter
+  updateColorGrading()
+}
 
 // Computed properties
 const hasVideo = computed(() => !!props.videoPath)
@@ -351,8 +366,22 @@ const effectiveTimestampRange = computed(() => {
   }
 })
 
-const generatedFilter = computed(() => {
-  const filters = []
+// Helpers
+function hexToRgbNorm(hex: string): { r: number; g: number; b: number } {
+  const s = hex.replace('#', '')
+  const n = s.length === 3
+    ? s.split('').map((c) => c + c).join('')
+    : s
+  const int = parseInt(n, 16)
+  const r = (int >> 16) & 255
+  const g = (int >> 8) & 255
+  const b = int & 255
+  const denom = r + g + b || 1
+  return { r: r / denom, g: g / denom, b: b / denom }
+}
+
+const basicFilter = computed(() => {
+  const filters: string[] = []
 
   // Build hue filter for saturation, brightness, and hue adjustments
   // This is preferred for Topaz AI custom FFmpeg builds that don't include eq filter
@@ -399,6 +428,13 @@ const generatedFilter = computed(() => {
   }
 
   return filters.join(',')
+})
+
+const advancedFilter = computed(() => advancedFilterState.value)
+
+const generatedFilter = computed(() => {
+  // Stack as "Color Adjustments -> Advanced"
+  return [basicFilter.value, advancedFilter.value].filter(Boolean).join(',')
 })
 
 // Video information display
@@ -501,6 +537,7 @@ const resetToDefaults = () => {
   saturation.value = 1
   hue.value = 0
   gamma.value = 1
+  advancedFilterState.value = ''
   // Don't call updateColorGrading() here to avoid unnecessary updates
 }
 
@@ -762,7 +799,10 @@ const parseFilterToControls = (filterString: string) => {
       const gammaMatch = s.match(/y\s*=\s*gammaval\(([^)]+)\)/)
       if (gammaMatch) {
         const g = parseFloat(gammaMatch[1])
-        if (!Number.isNaN(g) && g > 0) gamma.value = 1 / g
+        if (!Number.isNaN(g) && g > 0) {
+          // Map to basic gamma slider (UI uses inverse)
+          gamma.value = 1 / g
+        }
         continue
       }
       // Contrast around mid using min/max clamp
@@ -779,6 +819,8 @@ const parseFilterToControls = (filterString: string) => {
         if (!Number.isNaN(c)) contrast.value = c
         continue
       }
+    } else if (trimmed.startsWith('colorbalance=') || trimmed.startsWith('lutrgb=')) {
+      advancedFilterState.value = trimmed
     } else if (trimmed.startsWith('eq=')) {
       const params = trimmed.substring(3).split(':')
       for (const param of params) {
