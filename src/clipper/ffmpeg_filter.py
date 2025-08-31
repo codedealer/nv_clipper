@@ -31,9 +31,9 @@ def getColorGradingFilter(mp: DictStrAny, mps: DictStrAny) -> str:
     """
     # Check for color grading in overrides first, then in the marker pair itself
     color_grading = None
-    if "colorGrading" in mps and mps["colorGrading"]:
+    if mps.get("colorGrading"):
         color_grading = mps["colorGrading"]
-    elif "colorGrading" in mp and mp["colorGrading"]:
+    elif mp.get("colorGrading"):
         color_grading = mp["colorGrading"]
 
     if not color_grading:
@@ -65,7 +65,7 @@ def _validate_color_grading_filter(filter_string: str) -> bool:
     allowed_filters = [
         'hue', 'eq', 'colorbalance', 'curves', 'colorchannelmixer',
         'vibrance', 'lutyuv', 'lutrgb', 'colorspace', 'colormatrix',
-        'geq', 'selectivecolor', 'tonemap', 'colorcontrast'
+        'geq', 'selectivecolor', 'tonemap', 'colorcontrast',
     ]
 
     # Validate each comma-separated filter in a chain.
@@ -115,10 +115,7 @@ def _validate_color_grading_filter(filter_string: str) -> bool:
     # Additional safety checks (disallow shell metacharacters that could escape context)
     # Parentheses are allowed to support ffmpeg expressions; quotes are allowed as literals.
     dangerous_chars = [';', '&', '|', '`', '$', '{', '}', '<', '>']
-    if any(char in filter_string for char in dangerous_chars):
-        return False
-
-    return True
+    return not any(char in filter_string for char in dangerous_chars)
 
 
 def autoScaleCropMap(cropMap: List[Dict[str, Any]], settings: Settings) -> None:

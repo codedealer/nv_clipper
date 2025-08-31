@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Optional
@@ -153,7 +152,7 @@ class ClipperEngine:
                 setupDepPaths(self.cs)
 
                 # Handle custom output directory from mock markup before setting up paths
-                if 'outputDirectory' in self.cs.settings and self.cs.settings['outputDirectory']:
+                if self.cs.settings.get('outputDirectory'):
                     # Use the custom output directory instead of default webms
                     self.cs.clipper_paths.clipsPath = self.cs.settings['outputDirectory']
                     self.cs.settings["titleSuffix"] = self.cs.settings.get("videoTitle", "standalone-video")
