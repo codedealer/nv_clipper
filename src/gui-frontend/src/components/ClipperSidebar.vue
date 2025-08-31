@@ -43,10 +43,12 @@
         <ProcessingPanel
           :can-process="canProcess"
           :is-processing="isProcessing"
+          :is-canceling="isCanceling"
           :processing-status="processingStatus"
           :processing-result="processingResult"
           :overwrite-enabled="overwriteEnabled"
           @start-processing="$emit('start-processing')"
+          @cancel-processing="$emit('cancel-processing')"
           @update-overwrite="$emit('update-overwrite', $event)"
         />
       </el-footer>
@@ -69,6 +71,7 @@ interface Props {
   selectedClips: number[]
   activeColorGradingClip: number | null
   isProcessing: boolean
+  isCanceling: boolean
   canProcess: boolean
   processingStatus: string
   processingResult: ProcessingResult | null
@@ -85,6 +88,7 @@ interface Emits {
   (e: 'clear-video'): void
   (e: 'clip-selected-for-color-grading', clipIndex: number): void
   (e: 'start-processing'): void
+  (e: 'cancel-processing'): void
   (e: 'update-overwrite', value: boolean): void
   (e: 'video-download-requested'): void
   (e: 'update:selected-clips', clips: number[]): void

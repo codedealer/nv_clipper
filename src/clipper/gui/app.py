@@ -1,6 +1,7 @@
 """Main GUI application using pywebview."""
 
 import contextlib
+import multiprocessing
 import json
 import logging
 import subprocess
@@ -20,8 +21,38 @@ from clipper.gui.engine import ClipperEngine
 from clipper.gui.settings_manager import SettingsManager
 
 
+# Top-level worker for multiprocessing (must be picklable on Windows)
+def _processing_worker(job_id_local: str,
+                       markup_path_local: Optional[str],
+                       video_path_local: Optional[str],
+                       settings_local: Dict[str, Any],
+                       markup_data_local: Optional[Dict[str, Any]],
+                       out_path: str) -> None:
+    try:
+        from clipper.gui.engine import ClipperEngine
+        engine = ClipperEngine()
+        result = engine.process_files(
+            markup_path=markup_path_local,
+            video_path=video_path_local,
+            settings_overrides=settings_local,
+            markup_data=markup_data_local,
+        )
+    except Exception as e:  # noqa: BLE001
+        result = {"status": "error", "message": str(e)}
+    # Write result to temp file
+    try:
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f)
+    except Exception:
+        pass
+
+
 class ClipperGUI:
     """GUI API class for pywebview."""
+
+    # Type hints for instance dictionaries
+    _job_processes: Dict[str, multiprocessing.Process]
+    _job_result_files: Dict[str, str]
 
     def __init__(self) -> None:
         self.engine = ClipperEngine()  # Initialize immediately
@@ -35,6 +66,10 @@ class ClipperGUI:
         self.logger = logging.getLogger(__name__)
         self.processing_jobs = {}      # Track processing jobs by ID
         self.job_lock = threading.Lock()
+        # Processing job process management
+        self._proc_lock = threading.Lock()
+        self._job_processes = {}
+        self._job_result_files = {}
 
         # Drag and drop state
         self.current_files = []        # Store current dropped files for processing
@@ -104,7 +139,7 @@ class ClipperGUI:
     def process_files(self, markup_path: Optional[str] = None, video_path: Optional[str] = None,
                      selected_clips: Optional[List[int]] = None,
                      markup_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Process files using the engine in a separate thread"""
+        """Process files using the engine in a separate process (supports cancel)."""
         if markup_path is None and markup_data is None:
             return {"status": "error", "message": "Either markup_path or markup_data must be provided"}
 
@@ -120,34 +155,61 @@ class ClipperGUI:
                 "started_at": time.time(),
             }
 
-        # Start processing in a separate thread
-        def process_worker() -> None:
+        # Prepare settings for worker process
+        settings_overrides = self.settings_manager.get_combined_settings()
+        if selected_clips is not None:
+            settings_overrides['only'] = selected_clips
+
+        # Create a temp result file for IPC
+        result_tmp = tempfile.NamedTemporaryFile(prefix=f"ytc_job_{job_id}_", suffix=".json", delete=False)
+        result_path = result_tmp.name
+        result_tmp.close()
+
+        # Save result file path for later cleanup
+        with self._proc_lock:
+            self._job_result_files[job_id] = result_path
+
+        # Notify frontend that processing is starting
+        self._notify_processing_update({
+            'job_id': job_id,
+            'status': 'starting',
+            'message': 'Starting processing...'
+        })
+
+        # Spawn the worker process
+        proc = multiprocessing.Process(
+            target=_processing_worker,
+            args=(job_id, markup_path, video_path, settings_overrides, markup_data, result_path),
+            daemon=True,
+        )
+        proc.start()
+        with self._proc_lock:
+            self._job_processes[job_id] = proc
+
+        # Update status to processing and notify
+        with self.job_lock:
+            self.processing_jobs[job_id].update({
+                "status": "processing",
+                "message": "Processing files...",
+            })
+        self._notify_processing_update({
+            'job_id': job_id,
+            'status': 'processing',
+            'message': 'Processing files...'
+        })
+
+        # Watcher thread to collect result when process exits
+        def _watch_and_finalize() -> None:
             try:
-                self.logger.info(f"Starting processing job {job_id}")
+                proc.join()
+                # Read result
+                result: Dict[str, Any]
+                try:
+                    with open(result_path, 'r', encoding='utf-8') as f:
+                        result = json.load(f)
+                except Exception as e:  # noqa: BLE001
+                    result = {"status": "error", "message": f"Failed to read job result: {e}"}
 
-                # Update status to processing
-                with self.job_lock:
-                    self.processing_jobs[job_id].update({
-                        "status": "processing",
-                        "message": "Processing files...",
-                    })
-
-                # Get current settings and convert to CLI format
-                settings_overrides = self.settings_manager.get_combined_settings()
-
-                # Add selected clips if provided
-                if selected_clips is not None:
-                    settings_overrides['only'] = selected_clips
-
-                # Call the engine processing with settings
-                result = self.engine.process_files(
-                    markup_path=markup_path,
-                    video_path=video_path,
-                    settings_overrides=settings_overrides,
-                    markup_data=markup_data,
-                )
-
-                # Update with final result
                 with self.job_lock:
                     self.processing_jobs[job_id].update({
                         "status": "completed",
@@ -155,24 +217,23 @@ class ClipperGUI:
                         "completed_at": time.time(),
                     })
 
-                self.logger.info(f"Completed processing job {job_id}: {result['status']}")
+                # Notify frontend of completion
+                payload = {"job_id": job_id, **result}
+                self._notify_processing_update(payload)
 
-            except Exception as e:
-                self.logger.error(f"Processing job {job_id} failed: {e}")
+            finally:
+                # Cleanup
+                with self._proc_lock:
+                    self._job_processes.pop(job_id, None)
+                    self._job_result_files.pop(job_id, None)
+                with contextlib.suppress(Exception):
+                    Path(result_path).unlink(missing_ok=True)  # type: ignore[arg-type]
 
-                # Update with error result
-                with self.job_lock:
-                    self.processing_jobs[job_id].update({
-                        "status": "completed",
-                        "result": {"status": "error", "message": str(e)},
-                        "completed_at": time.time(),
-                    })
+            self.logger.info(f"Completed processing job {job_id}")
 
-        # Start the worker thread
-        thread = threading.Thread(target=process_worker, daemon=True)
-        thread.start()
+        threading.Thread(target=_watch_and_finalize, daemon=True).start()
 
-        # Return job ID for status tracking
+        # Return job ID for status tracking (frontend can switch to event-driven updates)
         return {"status": "accepted", "job_id": job_id, "message": "Processing started"}
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
@@ -200,6 +261,80 @@ class ClipperGUI:
                 "message": job["message"],
                 "job_id": job_id,
             }
+
+    def cancel_processing(self, job_id: str) -> Dict[str, Any]:
+        """Cancel an ongoing processing job by terminating its worker process."""
+        with self._proc_lock:
+            proc = self._job_processes.get(job_id)
+        if proc is None:
+            # Maybe already finished
+            with self.job_lock:
+                job = self.processing_jobs.get(job_id)
+            if not job:
+                return {"status": "error", "message": "Job not found"}
+            if job.get("status") == "completed":
+                return {"status": "success", "message": "Job already completed"}
+            # No process handle but not completed => treat as not cancelable
+            return {"status": "error", "message": "Job not cancelable"}
+
+        # Terminate the process
+        try:
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(timeout=2.0)
+        except Exception as e:  # noqa: BLE001
+            self.logger.error(f"Failed to terminate job {job_id}: {e}")
+            return {"status": "error", "message": f"Failed to terminate job: {e!s}"}
+
+        # Mark as canceled
+        with self.job_lock:
+            self.processing_jobs[job_id].update({
+                "status": "completed",
+                "result": {"status": "canceled", "message": "Processing canceled by user"},
+                "completed_at": time.time(),
+            })
+
+        # Notify frontend
+        self._notify_processing_update({
+            'job_id': job_id,
+            'status': 'canceled',
+            'message': 'Processing canceled by user',
+        })
+
+        # Cleanup handles
+        with self._proc_lock:
+            self._job_processes.pop(job_id, None)
+            result_path = self._job_result_files.pop(job_id, None)
+        if result_path:
+            with contextlib.suppress(Exception):
+                Path(result_path).unlink(missing_ok=True)  # type: ignore[arg-type]
+
+        return {"status": "success", "message": "Cancel requested"}
+
+    # ---------------------------
+    # Push notifications to front
+    # ---------------------------
+    def _notify_processing_update(self, payload: Dict[str, Any]) -> None:
+        """Notify frontend of processing status changes via JS callback."""
+        try:
+            if not webview.windows:
+                return
+            window = webview.windows[0]
+            js = f"""
+            try {{
+                if (typeof window.__ytc_onProcessingEvent === 'function') {{
+                    window.__ytc_onProcessingEvent({json.dumps(payload)});
+                }} else {{
+                    console.warn('Processing event handler not registered');
+                }}
+            }} catch (e) {{
+                console.error('Error delivering processing event', e);
+            }}
+            """
+            window.evaluate_js(js)
+        except Exception:
+            # Best-effort; ignore errors
+            pass
 
     def cleanup_old_jobs(self) -> Dict[str, int]:
         """Clean up old completed jobs to prevent memory leaks"""

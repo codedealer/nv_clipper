@@ -19,6 +19,7 @@
         :selected-clips="markupOps.selectedClips.value"
         :active-color-grading-clip="colorGrading.activeColorGradingClip.value"
         :is-processing="fileHandler.isProcessing.value"
+        :is-canceling="clipperIsCanceling"
         :can-process="fileHandler.canProcess.value"
         :processing-status="processingStatus"
         :processing-result="processingResult"
@@ -32,6 +33,7 @@
         @clear-video="fileHandler.clearVideoFile"
         @clip-selected-for-color-grading="colorGrading.handleClipSelectedForColorGrading"
         @start-processing="handleProcessFiles"
+        @cancel-processing="handleCancelProcessing"
         @update-overwrite="dialogManager.updateOverwriteSetting"
         @video-download-requested="handleVideoDownloadRequest"
         @update:selected-clips="(clips: number[]) => (markupOps.selectedClips.value = clips)"
@@ -39,7 +41,7 @@
 
       <!-- Main Content Area -->
       <MainContent
-  :has-markup-file="fileHandler.hasMarkupFile.value"
+        :has-markup-file="fileHandler.hasMarkupFile.value"
         :has-video-file="fileHandler.hasVideoFile.value"
         :video-file="fileHandler.selectedFiles.value.video"
         :clip-count="markupOps.parsedClips.value.length"
@@ -50,7 +52,7 @@
         :video-info="videoOps.videoInfo.value"
         :is-processing="fileHandler.isProcessing.value"
         :is-mock-markup="colorGrading.isMockMarkup.value"
-  :markup-video-url="markupOps.parsedMarkupData.value?.videoUrl || null"
+        :markup-video-url="markupOps.parsedMarkupData.value?.videoUrl || null"
         :get-clip-color-grading="colorGrading.getClipColorGrading"
         @color-grading-changed="colorGrading.handleColorGradingChanged"
         @copy-to-all-clips="colorGrading.handleCopyToAllClips"
@@ -115,6 +117,7 @@ const colorGrading = useColorGrading(videoOps, markupOps) // Pass shared instanc
 const engineStatus = computed(() => clipperStore.engineStatus)
 const processingStatus = computed(() => clipperStore.processingStatus)
 const processingResult = computed(() => clipperStore.processingResult)
+const clipperIsCanceling = computed(() => clipperStore.isCanceling)
 
 // Initialize application
 onMounted(async () => {
@@ -166,6 +169,11 @@ async function handleProcessFiles() {
     // Use normal processing path
     await fileHandler.handleProcessFiles(markupOps.selectedClips.value)
   }
+}
+
+async function handleCancelProcessing() {
+  await clipperStore.cancelCurrentJob()
+  ElMessage.info('Cancel requested')
 }
 
 function handleVideoDownloadRequest() {
