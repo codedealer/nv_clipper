@@ -2,6 +2,7 @@
 Video cache management API for the GUI frontend.
 """
 
+import contextlib
 import hashlib
 import sqlite3
 import subprocess
@@ -136,19 +137,17 @@ class VideoCacheManager:
                     if status in {'error', 'canceled', 'completed'}:
                         del self._download_progress[video_id]
                         logger.info(f"Restarting previous download state ({status}) for {url}")
+                    elif time.time() - start_time > 1800:  # 30 minutes
+                        # Clean up stuck download
+                        del self._download_progress[video_id]
+                        logger.warning(f"Cleaned up stuck download for {url}")
                     else:
-                        # Check if it's actually stuck (more than 30 minutes old)
-                        if time.time() - start_time > 1800:  # 30 minutes
-                            # Clean up stuck download
-                            del self._download_progress[video_id]
-                            logger.warning(f"Cleaned up stuck download for {url}")
-                        else:
-                            return {
-                                'status': 'error',
-                                'code': 'ERR_IN_PROGRESS',
-                                'message': 'Download already in progress',
-                                'video_id': video_id,
-                            }
+                        return {
+                            'status': 'error',
+                            'code': 'ERR_IN_PROGRESS',
+                            'message': 'Download already in progress',
+                            'video_id': video_id,
+                        }
 
                 # Initialize progress tracking
                 self._download_progress[video_id] = {
@@ -192,165 +191,165 @@ class VideoCacheManager:
         try:
             logger.info(f"Starting download for {url} with video_id {video_id}")
 
-            # Update progress
+            # Step 1: initializing + early cancel check
             self._update_progress(video_id, 'initializing', 0, 'Initializing download...')
-
-            # Early cancel check
             if self._is_cancel_requested(video_id):
                 self._finalize_canceled(video_id, url)
                 return
 
-            cache_filename = f"{video_id}"  # Let yt-dlp determine extension
-            cache_path_template = self.cache_dir / cache_filename
+            # Step 2: build ClipperState and settings
+            cs = self._build_clipper_state(video_id, url, ytdl_location, format_spec, format_sort, auto_update)
 
-            # Create mock clipper state
-            clipper_paths = ClipperPaths()
-            if ytdl_location:
-                clipper_paths.ytdlPath = ytdl_location
-                logger.info(f"Using custom yt-dlp location: {ytdl_location}")
-            else:
-                logger.info(f"No custom yt-dlp location provided, using default: {clipper_paths.ytdlPath}")
-
-            settings = {
-                'videoPageURL': url,
-                'downloadVideoPath': str(cache_path_template).replace('\\', '/'),
-                'format': format_spec or None,
-                'formatSort': format_sort or None,
-                'cookiefile': '',
-                'username': '',
-                'password': '',
-                'downloadVideo': True,
-                'ytdlLocation': ytdl_location or '',
-                'ytdlAutoUpdate': auto_update,
-            }
-
-            logger.debug(f"Download settings for {video_id}: {settings}")
-
-            cs = ClipperState(
-                settings=settings,
-                clipper_paths=clipper_paths,
-            )
-
-            # Get video info and download
+            # Step 3: get info (and trigger download)
             self._update_progress(video_id, 'downloading', 10, 'Getting video information...')
+            video_info = self._retrieve_video_info(cs)
 
-            try:
-                # Retrieve video info (blocking); cancel will take effect afterward
-                video_info, _ = ytdl_bin_get_video_info(cs, True)
-            except subprocess.CalledProcessError as e:
-                error_msg = f"yt-dlp failed: {e!s}"
-                logger.error(error_msg)
-                raise Exception(error_msg) from e
-            except Exception as e:
-                error_msg = f"Failed to download video: {e!s}"
-                logger.error(error_msg)
-                raise Exception(error_msg) from e
-
-            # Cancel after info fetch
+            # Step 4: cancel check after info
             if self._is_cancel_requested(video_id):
                 self._finalize_canceled(video_id, url)
                 return
 
+            # Step 5: file selection
             self._update_progress(video_id, 'downloading', 50, 'Downloading video file...')
+            cache_path = self._select_downloaded_file(video_id)
 
-            # Find the downloaded file in cache directory
-            downloaded_files = list(self.cache_dir.glob(f"{video_id}.*"))
-
-            # Filter out temporary files
-            downloaded_files = [f for f in downloaded_files
-                              if f.is_file() and not f.name.endswith('.temp.mkv')]
-
-            if not downloaded_files:
-                # List all files in cache directory for debugging
-                all_files = list(self.cache_dir.glob(f"{video_id}*"))
-                logger.error(f"No downloaded file found for {video_id}. Files in cache: {[f.name for f in all_files]}")
-                raise Exception(f"Download failed - no file found in cache directory")
-
-            # Use the largest file if multiple files found
-            cache_path = max(downloaded_files, key=lambda f: f.stat().st_size)
-            logger.info(f"Found downloaded file: {cache_path.name} ({cache_path.stat().st_size} bytes)")
-
-            # Cancel before processing/DB writes
+            # Step 6: cancel check before DB write (and cleanup file if needed)
             if self._is_cancel_requested(video_id):
-                # Try to remove the partially downloaded file
-                try:
+                with contextlib.suppress(Exception):
                     if cache_path.exists():
                         cache_path.unlink(missing_ok=True)  # type: ignore[arg-type]
-                except Exception:
-                    pass
                 self._finalize_canceled(video_id, url)
                 return
 
+            # Step 7: process and persist
             self._update_progress(video_id, 'processing', 80, 'Processing downloaded file...')
-
-            # Extract metadata
             video_title = title or video_info.get('title', 'Unknown')
-            platform = self._extract_platform(url)
-            duration = video_info.get('duration', 0)
-            file_size = cache_path.stat().st_size
-            format_name = video_info.get('format_id', 'unknown')
-
             self._update_progress(video_id, 'finalizing', 90, 'Saving to database...')
+            self._persist_cache_entry(video_id, video_info, url, video_title, cache_path)
 
-            # Store in database
-            now = datetime.now().isoformat()
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("""
-                    INSERT INTO cached_videos
-                    (id, title, url, platform, file_path, file_size, duration,
-                     cached_at, last_accessed, video_id, format)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    video_id, video_title, url, platform, str(cache_path),
-                    file_size, duration, now, now, video_info.get('id', video_id), format_name,
-                ))
-
+            # Step 8: finalize
             self._update_progress(video_id, 'completed', 100, f'Successfully cached: {video_title}')
-
             logger.info(f"Successfully cached video: {video_title}")
-
-            # Clean up successful download from progress tracking after a short delay
-            def cleanup_completed_download() -> None:
-                time.sleep(2)  # Brief delay to allow UI to see completion
-                with self._download_lock:
-                    if video_id in self._download_progress:
-                        del self._download_progress[video_id]
-                    # Remove thread ref
-                    self._download_threads.pop(video_id, None)
-                    logger.debug(f"Cleaned up completed download tracking for {video_id}")
-
-            cleanup_thread = threading.Thread(target=cleanup_completed_download)
-            cleanup_thread.daemon = True
-            cleanup_thread.start()
+            self._schedule_completed_cleanup(video_id)
 
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Download failed for {url}: {error_msg}")
-
-            # Include video URL in error message for user identification
-            video_identifier = title if title else url
-
-            # Provide user-friendly error messages with video identification
-            if "yt-dlp failed" in error_msg:
-                user_error_msg = f"Failed to download '{video_identifier}': Video might be private, deleted, or not available in your region."
-            elif "Download failed - no file found" in error_msg:
-                user_error_msg = f"Download of '{video_identifier}' completed but no file found. This might be a temporary issue - please try again."
-            elif "Failed to get video info" in error_msg:
-                user_error_msg = f"Could not access video information for '{video_identifier}'. Please check the URL and try again."
-            else:
-                user_error_msg = f"Failed to download '{video_identifier}': {error_msg}"
-
-            # Keep error status in progress tracking for longer so UI can show it
-            # Mark error and keep for UI visibility
+            user_error_msg = self._format_user_error(title or None, url, error_msg)
             self._update_progress(video_id, 'error', 0, user_error_msg)
-
-            # Don't automatically clean up failed downloads - let the user see the error
-            # They can manually clear it or it will be cleaned up on app restart
             logger.info(f"Download failed for {video_id}, keeping error status for user visibility")
         finally:
             # Ensure thread map cleanup if not already removed
             with self._download_lock:
                 self._download_threads.pop(video_id, None)
+
+    def _build_clipper_state(self, video_id: str, url: str,
+                              ytdl_location: Optional[str],
+                              format_spec: Optional[str],
+                              format_sort: Optional[List[str]],
+                              auto_update: bool) -> ClipperState:
+        """Prepare a minimal ClipperState for yt-dlp operations."""
+        cache_filename = f"{video_id}"
+        cache_path_template = self.cache_dir / cache_filename
+
+        clipper_paths = ClipperPaths()
+        if ytdl_location:
+            clipper_paths.ytdlPath = ytdl_location
+            logger.info(f"Using custom yt-dlp location: {ytdl_location}")
+        else:
+            logger.info(f"No custom yt-dlp location provided, using default: {clipper_paths.ytdlPath}")
+
+        settings = {
+            'videoPageURL': url,
+            'downloadVideoPath': str(cache_path_template).replace('\\', '/'),
+            'format': format_spec or None,
+            'formatSort': format_sort or None,
+            'cookiefile': '',
+            'username': '',
+            'password': '',
+            'downloadVideo': True,
+            'ytdlLocation': ytdl_location or '',
+            'ytdlAutoUpdate': auto_update,
+        }
+        logger.debug(f"Download settings for {video_id}: {settings}")
+        return ClipperState(settings=settings, clipper_paths=clipper_paths)
+
+    def _retrieve_video_info(self, cs: ClipperState) -> Dict[str, Any]:
+        """Retrieve video info using yt-dlp and propagate friendly errors."""
+        try:
+            info, _ = ytdl_bin_get_video_info(cs, True)
+            return info or {}
+        except subprocess.CalledProcessError as e:
+            error_msg = f"yt-dlp failed: {e!s}"
+            logger.error(error_msg)
+            raise Exception(error_msg) from e
+        except Exception as e:
+            error_msg = f"Failed to download video: {e!s}"
+            logger.error(error_msg)
+            raise Exception(error_msg) from e
+
+    def _select_downloaded_file(self, video_id: str) -> Path:
+        """Find the downloaded file for the given video_id or raise."""
+        downloaded_files = list(self.cache_dir.glob(f"{video_id}.*"))
+        downloaded_files = [f for f in downloaded_files if f.is_file() and not f.name.endswith('.temp.mkv')]
+        if not downloaded_files:
+            all_files = [f.name for f in self.cache_dir.glob(f"{video_id}*")]
+            logger.error(f"No downloaded file found for {video_id}. Files in cache: {all_files}")
+            raise Exception("Download failed - no file found in cache directory")
+        # Use largest file when multiple present
+        return max(downloaded_files, key=lambda f: f.stat().st_size)
+
+    def _persist_cache_entry(self, video_id: str, video_info: Dict[str, Any], url: str,
+                              video_title: str, cache_path: Path) -> None:
+        """Write the cache metadata entry into the database."""
+        platform = self._extract_platform(url)
+        duration = video_info.get('duration', 0)
+        file_size = cache_path.stat().st_size
+        format_name = video_info.get('format_id', 'unknown')
+        now = datetime.now().isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO cached_videos
+                (id, title, url, platform, file_path, file_size, duration,
+                 cached_at, last_accessed, video_id, format)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    video_id, video_title, url, platform, str(cache_path),
+                    file_size, duration, now, now, video_info.get('id', video_id), format_name,
+                ),
+            )
+
+    def _schedule_completed_cleanup(self, video_id: str) -> None:
+        """Schedule cleanup to remove completed progress entry after a short delay."""
+        def cleanup_completed_download() -> None:
+            time.sleep(2)
+            with self._download_lock:
+                if video_id in self._download_progress:
+                    del self._download_progress[video_id]
+                self._download_threads.pop(video_id, None)
+                logger.debug(f"Cleaned up completed download tracking for {video_id}")
+
+        t = threading.Thread(target=cleanup_completed_download, daemon=True)
+        t.start()
+
+    def _format_user_error(self, title: Optional[str], url: str, error_msg: str) -> str:
+        """Return a friendly error message with video identification."""
+        video_identifier = title if title else url
+        if "yt-dlp failed" in error_msg:
+            return (
+                f"Failed to download '{video_identifier}': Video might be private, "
+                f"deleted, or not available in your region."
+            )
+        if "Download failed - no file found" in error_msg:
+            return (
+                f"Download of '{video_identifier}' completed but no file found. "
+                f"This might be a temporary issue - please try again."
+            )
+        if "Failed to get video info" in error_msg:
+            return f"Could not access video information for '{video_identifier}'. Please check the URL and try again."
+        return f"Failed to download '{video_identifier}': {error_msg}"
 
     def _update_progress(self, video_id: str, status: str, progress: float, message: str = "") -> None:
         """Update download progress."""

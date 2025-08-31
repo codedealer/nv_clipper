@@ -1,9 +1,9 @@
 """Main GUI application using pywebview."""
 
 import contextlib
-import multiprocessing
 import json
 import logging
+import multiprocessing
 import subprocess
 import tempfile
 import threading
@@ -37,7 +37,7 @@ def _processing_worker(job_id_local: str,
             settings_overrides=settings_local,
             markup_data=markup_data_local,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         result = {"status": "error", "message": str(e)}
     # Write result to temp file
     try:
@@ -173,7 +173,7 @@ class ClipperGUI:
         self._notify_processing_update({
             'job_id': job_id,
             'status': 'starting',
-            'message': 'Starting processing...'
+            'message': 'Starting processing...',
         })
 
         # Spawn the worker process
@@ -195,7 +195,7 @@ class ClipperGUI:
         self._notify_processing_update({
             'job_id': job_id,
             'status': 'processing',
-            'message': 'Processing files...'
+            'message': 'Processing files...',
         })
 
         # Watcher thread to collect result when process exits
@@ -205,9 +205,9 @@ class ClipperGUI:
                 # Read result
                 result: Dict[str, Any]
                 try:
-                    with open(result_path, 'r', encoding='utf-8') as f:
+                    with open(result_path, encoding='utf-8') as f:
                         result = json.load(f)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     result = {"status": "error", "message": f"Failed to read job result: {e}"}
 
                 with self.job_lock:
@@ -282,7 +282,7 @@ class ClipperGUI:
             if proc.is_alive():
                 proc.terminate()
                 proc.join(timeout=2.0)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self.logger.error(f"Failed to terminate job {job_id}: {e}")
             return {"status": "error", "message": f"Failed to terminate job: {e!s}"}
 
