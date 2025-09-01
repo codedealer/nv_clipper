@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 from clipper.clipper_types import KnownPlatform, Settings
 from clipper.ytc_logger import logger

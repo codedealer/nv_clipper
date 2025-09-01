@@ -73,7 +73,7 @@ def loadSettings(settings: Settings, markup_data: Optional[Dict[str, Any]] = Non
                     f"DEBUG: Markers JSON file at path '{settings["json"]}' has initial content:\n {markersJson[:200]}]\n...",
                 )
                 if os.environ.get("YTC_GUI_WORKER") == "1":
-                    raise ValueError(f"Invalid markers JSON: {e}")
+                    raise ValueError(f"Invalid markers JSON: {e}") from e
                 sys.exit(1)
 
         markersDataFileStem = markers_json_path.stem
@@ -114,7 +114,7 @@ def loadSettings(settings: Settings, markup_data: Optional[Dict[str, Any]] = Non
         settings["enableSpeedMaps"] = not settings.get("noSpeedMaps", False)
 
 
-def getInputVideo(cs: ClipperState) -> None:
+def getInputVideo(cs: ClipperState) -> None:  # noqa: PLR0912
     settings = cs.settings
     cp = cs.clipper_paths
 
@@ -441,7 +441,7 @@ def getMoreVideoInfo(
     autoSetCropMultiples(settings)
 
 
-def getGlobalSettings(cs: ClipperState) -> None:
+def getGlobalSettings(cs: ClipperState) -> None:  # noqa: PLR0912
     settings = cs.settings
     cp = cs.clipper_paths
 
@@ -593,7 +593,9 @@ def filterDash(
     for rep in reps:
         elementId = rep.getAttribute("id")
         if elementId not in dashFormatIDs:
-            rep.parentNode.removeChild(rep)
+            parent = rep.parentNode
+            if parent is not None:
+                parent.removeChild(rep)
 
     filteredDashPath = Path(f"{cp.clipsPath}/filtered-dash.xml")
     with filteredDashPath.open("w+", encoding="utf-8") as filteredDash:

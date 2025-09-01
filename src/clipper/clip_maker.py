@@ -1582,23 +1582,23 @@ def getMarkerPairQueue(
     if onlyMarkerPairs != "":
         try:
             onlyPairsList = markerPairsCSVToList(onlyMarkerPairs)
-        except ValueError:
+        except ValueError as e:
             logger.critical(
                 f"Argument provided to --only was invalid: {onlyMarkerPairs}",
             )
             if os.environ.get("YTC_GUI_WORKER") == "1":
-                raise ValueError(f"Invalid --only argument: {onlyMarkerPairs}")
+                raise ValueError(f"Invalid --only argument: {onlyMarkerPairs}") from e
             sys.exit(1)
         onlyPairsSet = {x - 1 for x in set(onlyPairsList)}
     if exceptMarkerPairs != "":
         try:
             exceptPairsList = markerPairsCSVToList(exceptMarkerPairs)
-        except ValueError:
+        except ValueError as e:
             logger.critical(
                 f"Argument provided to --except was invalid: {exceptMarkerPairs}",
             )
             if os.environ.get("YTC_GUI_WORKER") == "1":
-                raise ValueError(f"Invalid --except argument: {exceptMarkerPairs}")
+                raise ValueError(f"Invalid --except argument: {exceptMarkerPairs}") from e
             sys.exit(1)
         exceptPairsSet = {x - 1 for x in set(exceptPairsList)}
 

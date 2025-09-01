@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 from fractions import Fraction
 from functools import reduce
 from math import floor, log
@@ -245,7 +245,7 @@ def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
             "slowmo": mps["minterpMode"].endswith("slow"),
         }
         return minterpFilter
-    elif "topaz" in mps["minterpProvider"].lower():
+    if "topaz" in mps["minterpProvider"].lower():
         minterpFilter = getTopazInterpFilter(mps["minterpProvider"], genFractor, dedupeThreshold)
         mps["__needsTopazFormatFix"] = True
     else:
