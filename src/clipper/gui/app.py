@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 import multiprocessing
+import os
 import subprocess
 import tempfile
 import threading
@@ -28,6 +29,9 @@ def _processing_worker(job_id_local: str,
                        settings_local: Dict[str, Any],
                        markup_data_local: Optional[Dict[str, Any]],
                        out_path: str) -> None:
+    # Mark process as GUI worker for downstream code that may want to adapt behavior
+    os.environ["YTC_GUI_WORKER"] = "1"
+    result: Dict[str, Any] = {"status": "error", "message": "Unknown failure"}
     try:
         from clipper.gui.engine import ClipperEngine
         engine = ClipperEngine()
@@ -37,14 +41,25 @@ def _processing_worker(job_id_local: str,
             settings_overrides=settings_local,
             markup_data=markup_data_local,
         )
-    except Exception as e:
-        result = {"status": "error", "message": str(e)}
-    # Write result to temp file
-    try:
-        with open(out_path, 'w', encoding='utf-8') as f:
-            json.dump(result, f)
-    except Exception:
-        pass
+    except BaseException as e:  # Catch SystemExit too so we can return structured error JSON
+        import traceback as _tb
+        if isinstance(e, SystemExit):
+            code = e.code
+            msg = f"Processing terminated (exit {code})"
+        else:
+            msg = str(e)
+        result = {
+            "status": "error",
+            "message": msg,
+            "details": _tb.format_exc(limit=10),
+        }
+    finally:
+        # Always write a result to avoid frontend JSON parse errors
+        try:
+            with open(out_path, 'w', encoding='utf-8') as f:
+                json.dump(result, f)
+        except Exception:
+            pass
 
 
 class ClipperGUI:
@@ -1481,4 +1496,10 @@ def main_dev() -> None:
 
 
 if __name__ == '__main__':
+    # IMPORTANT for PyInstaller + multiprocessing on Windows:
+    # Ensure child processes do not relaunch the full GUI when spawned.
+    import multiprocessing as _mp
+    _mp.freeze_support()
+    with contextlib.suppress(RuntimeError):
+        _mp.set_start_method('spawn', force=True)
     main()

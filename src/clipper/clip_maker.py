@@ -409,8 +409,22 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
                 _RIFE_CACHE["extract_video_frames"] = extract_video_frames
                 _RIFE_CACHE["run_rife_interpolation"] = run_rife_interpolation
             except ImportError as e:
-                logger.error("RIFE interpolation is enabled but required dependencies are missing: %s", e)
-                logger.error("Please install onnxruntime and ensure all RIFE dependencies are available, or disable RIFE interpolation.")
+                # In GUI worker context, return a structured error instead of exiting the process
+                if os.environ.get("YTC_GUI_WORKER") == "1":
+                    err = (
+                        f"RIFE interpolation is enabled but required dependencies are missing: {e}. "
+                        "Install onnxruntime/CUDA deps or disable RIFE interpolation."
+                    )
+                    logger.error(err)
+                    return {**(settings["markerPairs"][markerPairIndex]), **mp, "error": err, "returncode": 1}
+                # CLI run: preserve previous behavior
+                logger.error(
+                    "RIFE interpolation is enabled but required dependencies are missing: %s",
+                    e,
+                )
+                logger.error(
+                    "Please install onnxruntime and ensure all RIFE dependencies are available, or disable RIFE interpolation.",
+                )
                 sys.exit(1)
 
         logger.notice("Preloading CUDA/cuDNN DLLs for RIFE interpolation provider.")
@@ -419,15 +433,33 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         # Determine DLL directory based on execution context
         dll_directory = None
         if getattr(sys, 'frozen', False):
-            # Running as executable - look for DLLs in lib-cuda subfolder
+            # Running as executable - look for DLLs in lib-cuda subfolder next to the exe,
+            # and fall back to the working directory's lib-cuda if launched via a shortcut.
             exe_dir = Path(sys.executable).parent
-            dll_directory = exe_dir / "lib-cuda"
-            if not dll_directory.exists():
-                logger.error(f"CUDA DLL directory not found: {dll_directory}")
-                logger.error("GPU acceleration will not be available for RIFE interpolation.")
+            candidates = [exe_dir / "lib-cuda", Path.cwd() / "lib-cuda"]
+
+            found_dir: Optional[Path] = None
+            for cand in candidates:
+                if cand.exists():
+                    found_dir = cand
+                    break
+
+            if not found_dir:
+                err = (
+                    "CUDA DLL directory not found. Looked in the following locations: "
+                    f"{candidates[0]} and {candidates[1]}. "
+                    "GPU acceleration for RIFE is unavailable. Place a 'lib-cuda' folder next to the EXE "
+                    "or in the working directory, or rebuild with cached/runtime GPU libs."
+                )
+                if os.environ.get("YTC_GUI_WORKER") == "1":
+                    logger.error(err)
+                    return {**(settings["markerPairs"][markerPairIndex]), **mp, "error": err, "returncode": 2}
+                logger.error(err)
                 sys.exit(1)
-            dll_directory = str(dll_directory)
-            logger.info(f"Loading CUDA DLLs from: {dll_directory}")
+
+            dll_directory = str(found_dir)
+            loc = "exe directory" if Path(dll_directory).parent == exe_dir else "working directory"
+            logger.info(f"Loading CUDA DLLs from {loc}: {dll_directory}")
         else:
             # Running as Python script - use system search
             logger.info("Loading CUDA DLLs from system PATH")
@@ -436,8 +468,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             ort.preload_dlls(cuda=True, cudnn=True, msvc=False, directory=dll_directory)
             settings["__RIFE_LOADED"] = True
         except Exception as e:
-            logger.error(f"Failed to preload CUDA DLLs: {e}")
-            logger.error("GPU acceleration will not be available for RIFE interpolation.")
+            err = f"Failed to preload CUDA DLLs: {e}. GPU acceleration for RIFE is unavailable."
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                logger.error(err)
+                return {**(settings["markerPairs"][markerPairIndex]), **mp, "error": err, "returncode": 3}
+            logger.error(err)
             sys.exit(1)
 
     # Use cached symbols below instead of globals
@@ -674,6 +709,10 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             logger.error(
                 "Preview mode unexpectedly did not have vidoe filters before corrections available.",
             )
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                mp["returncode"] = 1
+                mp["error"] = "Preview mode error: missing filters before corrections"
+                return {**(settings["markerPairs"][markerPairIndex]), **mp}
             sys.exit(1)
 
         return runffplayCommand(
@@ -1547,6 +1586,8 @@ def getMarkerPairQueue(
             logger.critical(
                 f"Argument provided to --only was invalid: {onlyMarkerPairs}",
             )
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                raise ValueError(f"Invalid --only argument: {onlyMarkerPairs}")
             sys.exit(1)
         onlyPairsSet = {x - 1 for x in set(onlyPairsList)}
     if exceptMarkerPairs != "":
@@ -1556,6 +1597,8 @@ def getMarkerPairQueue(
             logger.critical(
                 f"Argument provided to --except was invalid: {exceptMarkerPairs}",
             )
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                raise ValueError(f"Invalid --except argument: {exceptMarkerPairs}")
             sys.exit(1)
         exceptPairsSet = {x - 1 for x in set(exceptPairsList)}
 

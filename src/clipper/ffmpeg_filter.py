@@ -1,4 +1,5 @@
 import sys
+import os
 from fractions import Fraction
 from functools import reduce
 from math import floor, log
@@ -187,6 +188,8 @@ def getVideoEnhancementFilter(mp: DictStrAny, mps: DictStrAny) -> str:
         model = "iris-2" # iris-2 is for medium quality, iris-3 is for low quality sources
     else:
         logger.critical(f"Unknown video enhancement model {model}.")
+        if os.environ.get("YTC_GUI_WORKER") == "1":
+            raise ValueError(f"Unknown video enhancement model {model}.")
         sys.exit(1)
 
     enhance_filter = f",tvai_up=model={model}:scale=0:preblur={video_enhancement['preblur']}:noise={video_enhancement['noise']}:details={video_enhancement['details']}:halo={video_enhancement['halo']}:blur={video_enhancement['blur']}:compression={video_enhancement['compression']}:blend={video_enhancement['blend']}:device=0:vram=1:instances=1"
@@ -205,6 +208,8 @@ def getTopazInterpFilter(model: str, genFractor: int, rdt: float | None, device:
         model = "aion-1"
     else:
         logger.critical(f"Unknown Topaz model {model}.")
+        if os.environ.get("YTC_GUI_WORKER") == "1":
+            raise ValueError(f"Unknown Topaz model {model}.")
         sys.exit(1)
 
     rdf = f":rdt={rdt}" if rdt is not None else ""
@@ -240,13 +245,15 @@ def getMinterpFilter(mp: Dict[str, Any], mps: Dict[str, Any]) -> str:
             "slowmo": mps["minterpMode"].endswith("slow"),
         }
         return minterpFilter
-    if "topaz" in mps["minterpProvider"].lower():
+    elif "topaz" in mps["minterpProvider"].lower():
         minterpFilter = getTopazInterpFilter(mps["minterpProvider"], genFractor, dedupeThreshold)
         mps["__needsTopazFormatFix"] = True
     else:
         logger.critical(
             f"Unknown minterpolation provider {mps['minterpProvider']}. ",
         )
+        if os.environ.get("YTC_GUI_WORKER") == "1":
+            raise ValueError(f"Unknown minterpolation provider {mps['minterpProvider']}")
         sys.exit(1)
 
     logger.debug(minterpFilter)
@@ -302,6 +309,8 @@ def getSubsFilter(
     else:
         logger.critical(f"Uknown subtitle file extension {subs_ext}.")
         logger.critical("Only .vtt, .sbv, and .srt are supported for now.")
+        if os.environ.get("YTC_GUI_WORKER") == "1":
+            raise ValueError(f"Unsupported subtitle extension {subs_ext}")
         sys.exit(1)
 
     subsStart = mp["start"]

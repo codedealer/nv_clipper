@@ -1,4 +1,5 @@
 import sys
+import os
 
 from clipper.clipper_types import KnownPlatform, Settings
 from clipper.ytc_logger import logger
@@ -41,7 +42,11 @@ def getVideoPageURL(settings: Settings, platform: str, videoID: str) -> str:
             return videoPageUrl
 
         logger.fatal(f"Neither video page URL nor input video provided.")
+        if os.environ.get("YTC_GUI_WORKER") == "1":
+            raise ValueError("Missing video page URL and input video")
         sys.exit(1)
 
     logger.fatal(f"Unknown platform: {platform}")
+    if os.environ.get("YTC_GUI_WORKER") == "1":
+        raise ValueError(f"Unknown platform: {platform}")
     sys.exit(1)

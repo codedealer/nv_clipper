@@ -72,6 +72,8 @@ def loadSettings(settings: Settings, markup_data: Optional[Dict[str, Any]] = Non
                 print(
                     f"DEBUG: Markers JSON file at path '{settings["json"]}' has initial content:\n {markersJson[:200]}]\n...",
                 )
+                if os.environ.get("YTC_GUI_WORKER") == "1":
+                    raise ValueError(f"Invalid markers JSON: {e}")
                 sys.exit(1)
 
         markersDataFileStem = markers_json_path.stem
@@ -85,6 +87,8 @@ def loadSettings(settings: Settings, markup_data: Optional[Dict[str, Any]] = Non
                 f"""markersDataFileStem={markersDataFileStem!r}.""",
             )
             logger.fatal("Exiting...")
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                raise FileNotFoundError(f"Input video not found: {settings['inputVideo']}")
             sys.exit(1)
 
     # Common post-processing for both cases
@@ -196,6 +200,8 @@ def getInputVideo(cs: ClipperState) -> None:
                 f'Input video file "{settings["inputVideo"]}" does not exist or is not a file.',
             )
             logger.critical(f"Exiting...")
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                raise RuntimeError("Failed to download subtitles")
             sys.exit(1)
         else:
             logger.info(f'Using input video file "{settings["inputVideo"]}".')
@@ -450,6 +456,8 @@ def getGlobalSettings(cs: ClipperState) -> None:
             logger.critical(
                 f'Could not download subtitles with language id {settings["autoSubsLang"]}.',
             )
+            if os.environ.get("YTC_GUI_WORKER") == "1":
+                raise FileNotFoundError(f"Subtitles not found: {settings['subsFilePath']}")
             sys.exit(1)
     elif settings["subsFilePath"] != "":
         if not Path(settings["subsFilePath"]).is_file():
@@ -473,6 +481,8 @@ def getGlobalSettings(cs: ClipperState) -> None:
                 settings["subsFilePath"] = ""
             else:
                 logger.error("Exiting...")
+                if os.environ.get("YTC_GUI_WORKER") == "1":
+                    raise RuntimeError("Unsupported subtitle extension")
                 sys.exit(1)
 
     if settings["inputVideo"]:
