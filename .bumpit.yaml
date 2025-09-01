@@ -1,4 +1,4 @@
-current_version: "6.2.3"
+current_version: "6.3.0"
 base_branch: "nv_clipper"
 strategy:
   name: "semver"
@@ -15,3 +15,5 @@ tracked_files:
   - src/markup/yt_clipper.ts
   - pyproject.toml
   - uv.lock
+  - package.json
+  - src/gui-frontend/package.json
