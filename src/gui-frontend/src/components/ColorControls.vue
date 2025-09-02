@@ -75,6 +75,8 @@ import { DocumentCopy, Document, CopyDocument, RefreshLeft } from '@element-plus
 import LiftGammaGainWheels from './LiftGammaGainWheels.vue'
 import { buildBasicFilter } from '@/utils/colorBasics'
 import { parseFilterString, joinFilters } from '@/utils/filterString'
+import { debounce } from '@/utils/debounce'
+
 
 interface Props {
   isMockMarkup?: boolean
@@ -107,8 +109,10 @@ const basicFilter = computed(() => buildBasicFilter({ brightness: brightness.val
 const advancedFilter = computed(() => advancedFilterState.value)
 const generatedFilter = computed(() => joinFilters(basicFilter.value, advancedFilter.value))
 
-const emitFilter = () => { emit('filter-changed', generatedFilter.value) }
-const handleAdvancedFilterChanged = (filter: string) => { advancedFilterState.value = filter; emitFilter() }
+const debouncedFilterEmit = debounce(() => emit('filter-changed', generatedFilter.value), 180)
+const emitFilter = () => { debouncedFilterEmit() }
+const debouncedAdvancedHandler = debounce((filter: string) => { advancedFilterState.value = filter; emitFilter() }, 120)
+const handleAdvancedFilterChanged = (filter: string) => { debouncedAdvancedHandler(filter) }
 
 const reset = () => {
   brightness.value = 0; contrast.value = 1; saturation.value = 1; hue.value = 0; gamma.value = 1; advancedFilterState.value = ''
