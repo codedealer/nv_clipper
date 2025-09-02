@@ -55,12 +55,8 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { ElAlert, ElButton, ElEmpty, ElIcon, ElSelect, ElOption, ElSlider } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import type { ClipInfo, VideoInfo } from '@/types/api'
+import { debounce } from '@/utils/debounce'
 
-// Simple debounce
-function debounce<T extends (...args: any[]) => any>(fn: T, wait: number): T {
-  let t: ReturnType<typeof setTimeout>
-  return ((...args: any[]) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait) }) as T
-}
 
 interface Props {
   selectedClip?: ClipInfo | null
@@ -259,9 +255,10 @@ watch(
   { immediate: true, deep: false }
 )
 
-// React to filter changes
+// React to filter changes with debounce to avoid spamming during drag
+const debouncedFilterPreview = debounce(() => { if (!isInitializing.value) updatePreview() }, 150)
 watch(() => [props.filter, props.previewEnabled, previewResolution.value], () => {
-  if (!isInitializing.value) updatePreview()
+  debouncedFilterPreview()
 })
 </script>
 
