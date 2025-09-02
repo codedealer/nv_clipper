@@ -2,7 +2,7 @@ import atexit
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Dict, Mapping
+from typing import IO, Mapping
 
 import coloredlogs
 import verboselogs
@@ -92,11 +92,7 @@ class YTCLogger(verboselogs.VerboseLogger):
 
             # Wrap the message with the resolved style name; Rich will pick it from the theme
             msg = f"[{style_key}]{msg}"
-            if extra is None:
-                extra = {}
-            else:
-                # copy Mapping to mutable dict, as logging expects a mutable mapping
-                extra = dict(extra)
+            extra = {} if extra is None else dict(extra)
             extra["markup"] = True
 
         return super().log(
