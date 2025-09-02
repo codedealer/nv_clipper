@@ -2,7 +2,7 @@ import atexit
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Dict
+from typing import IO, Dict, Mapping
 
 import coloredlogs
 import verboselogs
@@ -63,15 +63,40 @@ class YTCLogger(verboselogs.VerboseLogger):
         | BaseException = None,
         stack_info: bool = False,
         stacklevel: int = 1,
-        extra: Dict[str, object] | None = None,
+    extra: Mapping[str, object] | None = None,
     ) -> None:
         if not self.no_rich_logs:
-            level_name = logging.getLevelName(level)
-            color = self.console.get_style(f"logging.level.{level_name.lower()}")
+            # Map numeric levels to known Rich theme style keys to avoid invalid style names
+            # that can occur with custom levels (e.g., "Level 34").
+            style_by_level = {
+                logging.DEBUG: "logging.level.debug",
+                verboselogs.VERBOSE: "logging.level.verbose",
+                logging.INFO: "logging.level.info",
+                # Some code paths use 'success' level via verboselogs
+                getattr(verboselogs, "SUCCESS", 25): "logging.level.success",
+                IMPORTANT: "logging.level.important",
+                NOTICE: "logging.level.notice",
+                HEADER: "logging.level.header",
+                REPORT: "logging.level.report",
+                logging.WARNING: "logging.level.warning",
+                logging.ERROR: "logging.level.error",
+                logging.CRITICAL: "logging.level.error",
+            }
 
-            msg = f"[{color}]{msg}"
+            style_key = style_by_level.get(level)
+            if style_key is None:
+                # Fall back to a best-effort mapping based on the level name
+                level_name = str(logging.getLevelName(level)).lower().replace(" ", "_")
+                candidate = f"logging.level.{level_name}"
+                style_key = candidate if candidate in THEME_COLORS_LOG_LEVELS else "logging.level.info"
+
+            # Wrap the message with the resolved style name; Rich will pick it from the theme
+            msg = f"[{style_key}]{msg}"
             if extra is None:
                 extra = {}
+            else:
+                # copy Mapping to mutable dict, as logging expects a mutable mapping
+                extra = dict(extra)
             extra["markup"] = True
 
         return super().log(
