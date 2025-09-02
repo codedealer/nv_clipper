@@ -1,7 +1,9 @@
 import json
+import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 from clipper.clipper_types import ClipperPaths, ClipperState
@@ -44,7 +46,18 @@ def ytdl_bin_get_args_base(cs: ClipperState) -> List[str]:
     ytdl_args.extend(["--output", shlex.quote(f'{settings["downloadVideoPath"]}')])
 
     if getattr(sys, "frozen", False):
-        ytdl_args.extend(["--ffmpeg-location", shlex.quote(cp.ffmpegPath)])
+        # Only pass --ffmpeg-location if it points to an existing executable
+        ffmpeg_path = cp.ffmpegPath
+        try:
+            exists = os.path.isfile(ffmpeg_path)
+        except Exception:
+            exists = False
+        if exists:
+            ytdl_args.extend(["--ffmpeg-location", shlex.quote(ffmpeg_path)])
+        else:
+            logger.debug(
+                f"Skipping --ffmpeg-location: path not found -> {ffmpeg_path!r}"
+            )
 
     cookies = settings["cookiefile"]
 
