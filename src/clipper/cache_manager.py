@@ -3,6 +3,8 @@ Video cache management API for the GUI frontend.
 """
 
 import contextlib
+import os
+import sys
 import hashlib
 import sqlite3
 import subprocess
@@ -253,6 +255,20 @@ class VideoCacheManager:
         cache_path_template = self.cache_dir / cache_filename
 
         clipper_paths = ClipperPaths()
+        # In frozen (PyInstaller) builds, point to bundled binaries by default
+        if getattr(sys, "frozen", False):
+            bin_dir = "./bin"
+            ext = ".exe" if sys.platform == "win32" else ""
+            clipper_paths.ffmpegPath = f"{bin_dir}/ffmpeg{ext}"
+            clipper_paths.ffprobePath = f"{bin_dir}/ffprobe{ext}"
+            clipper_paths.ffplayPath = f"{bin_dir}/ffplay{ext}"
+            clipper_paths.ytdlPath = f"{bin_dir}/yt-dlp{ext}"
+            # Normalize slashes for subprocess readability
+            clipper_paths.ffmpegPath = clipper_paths.ffmpegPath.replace("\\", "/")
+            clipper_paths.ffprobePath = clipper_paths.ffprobePath.replace("\\", "/")
+            clipper_paths.ffplayPath = clipper_paths.ffplayPath.replace("\\", "/")
+            clipper_paths.ytdlPath = clipper_paths.ytdlPath.replace("\\", "/")
+
         if ytdl_location:
             clipper_paths.ytdlPath = ytdl_location
             logger.info(f"Using custom yt-dlp location: {ytdl_location}")
