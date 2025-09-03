@@ -1,5 +1,4 @@
 import json
-import os
 import shlex
 import subprocess
 import sys
@@ -49,14 +48,14 @@ def ytdl_bin_get_args_base(cs: ClipperState) -> List[str]:
         # Only pass --ffmpeg-location if it points to an existing executable
         ffmpeg_path = cp.ffmpegPath
         try:
-            exists = os.path.isfile(ffmpeg_path)
+            exists = Path(ffmpeg_path).is_file()
         except Exception:
             exists = False
         if exists:
             ytdl_args.extend(["--ffmpeg-location", shlex.quote(ffmpeg_path)])
         else:
             logger.debug(
-                f"Skipping --ffmpeg-location: path not found -> {ffmpeg_path!r}"
+                f"Skipping --ffmpeg-location: path not found -> {ffmpeg_path!r}",
             )
 
     cookies = settings["cookiefile"]

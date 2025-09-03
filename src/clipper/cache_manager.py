@@ -3,11 +3,10 @@ Video cache management API for the GUI frontend.
 """
 
 import contextlib
-import os
-import sys
 import hashlib
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timedelta
