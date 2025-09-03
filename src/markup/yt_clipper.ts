@@ -3,8 +3,8 @@
 // BANNER GUARD
 // @locale       english
 // @name         nv_clipper
-// @version      6.3.2
-// @version      6.3.2
+// @version      6.3.3
+// @version      6.3.3
 // @description  Mark up YouTube videos and quickly generate clipped webms.
 // @author       elwm
 // @namespace    https://github.com/codedealer
@@ -35,7 +35,7 @@
 // ==/UserScript==
 // BANNER GUARD
 
-const __version__ = '6.3.2';
+const __version__ = '6.3.3';
 import { Chart, ChartConfiguration } from 'chart.js';
 import { safeSetInnerHtml } from './util/util';
 import { stripIndent } from 'common-tags';
