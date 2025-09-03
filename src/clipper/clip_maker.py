@@ -1468,37 +1468,37 @@ def getDefaultEncodeSettings(videobr: int) -> DictStrAny:
         }
     elif videobr <= 4000:
         encodeSettings = {
-            "crf": 24,
+            "crf": 22,
             "autoTargetMaxBitrate": int(1.6 * videobr),
             "twoPass": False,
         }
     elif videobr <= 6000:
         encodeSettings = {
-            "crf": 26,
+            "crf": 24,
             "autoTargetMaxBitrate": int(1.4 * videobr),
             "twoPass": False,
         }
     elif videobr <= 10000:
         encodeSettings = {
-            "crf": 28,
+            "crf": 26,
             "autoTargetMaxBitrate": int(1.2 * videobr),
             "twoPass": False,
         }
     elif videobr <= 14000:
         encodeSettings = {
-            "crf": 30,
+            "crf": 26,
             "autoTargetMaxBitrate": int(1.1 * videobr),
             "twoPass": False,
         }
     elif videobr <= 18000:
         encodeSettings = {
-            "crf": 30,
+            "crf": 26,
             "autoTargetMaxBitrate": int(1.0 * videobr),
             "twoPass": False,
         }
     elif videobr <= 25000:
         encodeSettings = {
-            "crf": 32,
+            "crf": 30,
             "autoTargetMaxBitrate": int(0.9 * videobr),
             "twoPass": False,
         }
