@@ -49,8 +49,6 @@ class ClipperEngine:
             return {"status": "error", "message": "Either markup_path or markup_data must be provided"}
 
         try:
-            print(f"DEBUG: Starting file processing with CLI-identical logic and GUI settings...")
-
             # Validate inputs - either markup_path OR markup_data must be provided
             if markup_path:
                 markup_file = Path(markup_path)
@@ -64,13 +62,11 @@ class ClipperEngine:
 
             # Create a fresh clipper state for this processing session
             self.cs = clipper_types.ClipperState()
-            print("DEBUG: Created fresh ClipperState for processing")
 
             # Get comprehensive GUI settings
             from clipper.gui.settings_manager import SettingsManager
             settings_manager = SettingsManager()
             gui_settings = settings_manager.get_combined_settings()
-            print(f"DEBUG: Loaded GUI settings: {len(gui_settings)} settings")
 
             # Build minimal argv for required arguments only (no settings)
             simulated_argv = ["yt_clipper"]
@@ -170,8 +166,6 @@ class ClipperEngine:
                 # Get input video and global settings (CLI flow)
                 ytc_settings.getInputVideo(self.cs)
                 ytc_settings.getGlobalSettings(self.cs)
-
-                print("DEBUG: Starting clip processing...")
 
                 # Process clips exactly like CLI
                 if not self.cs.settings.get("preview", False):

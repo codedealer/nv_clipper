@@ -138,7 +138,7 @@
             </el-form-item>
             <el-form-item label="Target FPS">
               <el-input-number
-                :model-value="props.settings?.target_fps || null"
+                :model-value="props.settings?.target_fps ?? null"
                 @change="(value) => handleNumberChange('target_fps', value)"
                 :min="1"
                 :max="300"
@@ -150,7 +150,7 @@
             </el-form-item>
             <el-form-item label="CRF (0-51)">
               <el-input-number
-                :model-value="props.settings?.crf || null"
+                :model-value="props.settings?.crf ?? null"
                 @change="(value) => handleNumberChange('crf', value)"
                 :min="0"
                 :max="51"
