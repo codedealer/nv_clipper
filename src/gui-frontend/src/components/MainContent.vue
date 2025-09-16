@@ -14,13 +14,14 @@
   <!-- Color Grading Panel (Full Area) -->
   <div v-else-if="canShowPanel" class="color-grading-area">
       <ColorGradingPanel
+        :key="previewMountKey"
         :selected-clip="selectedClip"
         :video-path="videoFile"
         :video-duration="videoDuration"
         :video-info="videoInfo"
         :is-processing="isProcessing"
         :is-mock-markup="props.isMockMarkup"
-    :markup-video-url="markupVideoUrl"
+        :markup-video-url="markupVideoUrl"
         :get-clip-color-grading="getClipColorGrading"
         @color-grading-changed="handleColorGradingChanged"
         @copy-to-all-clips="handleCopyToAllClips"
@@ -36,6 +37,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useClipperStore } from '@/stores/counter'
 import { Document } from '@element-plus/icons-vue'
 import ColorGradingPanel from './ColorGradingPanel.vue'
 import type { ClipInfo, VideoInfo } from '@/types/api'
@@ -47,7 +49,6 @@ interface Props {
   clipCount: number
   selectedClips: number[]
   parsedClips: ClipInfo[]
-  activeColorGradingClip?: number | null
   videoDuration?: number | null
   videoInfo?: VideoInfo | null
   isProcessing?: boolean
@@ -56,9 +57,10 @@ interface Props {
   getClipColorGrading?: (clipNumber: number) => string | undefined
 }
 
+import type { ColorGradingState } from '@/types/colorGrading'
 interface Emits {
-  (e: 'color-grading-changed', clipNumber: number, filter: string): void
-  (e: 'copy-to-all-clips', filter: string): void
+  (e: 'color-grading-changed', clipNumber: number, filter: string, state: ColorGradingState): void
+  (e: 'copy-to-all-clips', state: ColorGradingState): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -75,15 +77,16 @@ const emit = defineEmits<Emits>()
 // Computed properties
 const canShowPanel = computed(() => props.clipCount > 0 && (props.hasVideoFile || !!props.markupVideoUrl))
 
+// Remount key from store ensures full reset on any selectedFiles change
+const clipperStore = useClipperStore()
+const previewMountKey = computed(() => clipperStore.previewMountKey)
+
 const selectedClip = computed(() => {
   const clips = props.parsedClips
   if (!clips.length) return null
 
   // Prefer active color grading clip if valid
-  const active = props.activeColorGradingClip
-  if (typeof active === 'number' && active >= 0 && active < clips.length) {
-    return clips[active]
-  }
+  // activeColorGradingClip removed; rely on selectedClips or first clip
 
   // Fallback to first selected clip if available
   if (props.selectedClips.length > 0) {
@@ -95,12 +98,13 @@ const selectedClip = computed(() => {
   return clips[0]
 })
 
-function handleColorGradingChanged(clipNumber: number, filter: string) {
-  emit('color-grading-changed', clipNumber, filter)
+
+function handleColorGradingChanged(clipNumber: number, filter: string, state: ColorGradingState) {
+  emit('color-grading-changed', clipNumber, filter, state)
 }
 
-function handleCopyToAllClips(filter: string) {
-  emit('copy-to-all-clips', filter)
+function handleCopyToAllClips(state: ColorGradingState) {
+  emit('copy-to-all-clips', state)
 }
 </script>
 

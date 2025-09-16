@@ -4,23 +4,22 @@
       <div class="color-grading-content">
           <!-- Left Column: Preview + Timeline -->
           <ColorPreview
-            :selected-clip="props.selectedClip"
             :video-path="props.videoPath"
             :video-duration="props.videoDuration"
             :video-info="props.videoInfo"
             :markup-video-url="props.markupVideoUrl"
             :filter="generatedFilter"
             :preview-enabled="previewEnabled"
+            :selected-clip="props.selectedClip"
           />
 
           <!-- Color Controls -->
           <ColorControls
             :is-mock-markup="props.isMockMarkup"
             :preview-enabled="previewEnabled"
-            :initial-filter="initialFilterForClip"
             @filter-changed="onFilterChanged"
             @toggle-preview="onTogglePreview"
-            @copy-to-all-clips="(f:string)=>emit('copy-to-all-clips', f)"
+            @copy-to-all-clips="(s:ColorGradingState)=>emit('copy-to-all-clips', s)"
           />
         </div>
       </div>
@@ -28,7 +27,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
+import { buildFilterFromState } from '@/utils/colorFilterBuild'
+import type { ColorGradingState } from '@/types/colorGrading'
 import type { ClipInfo, VideoInfo } from '@/types/api'
 import ColorPreview from './ColorPreview.vue'
 import ColorControls from './ColorControls.vue'
@@ -45,8 +46,8 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'color-grading-changed', clipNumber: number, filter: string): void
-  (e: 'copy-to-all-clips', filter: string): void
+  (e: 'color-grading-changed', clipNumber: number, filter: string, state: ColorGradingState): void
+  (e: 'copy-to-all-clips', state: ColorGradingState): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -65,25 +66,23 @@ const emit = defineEmits<Emits>()
 // State
 const previewEnabled = ref(true)
 
+// Sync initial preview enabled from child prop if provided (optional future extensibility)
+
 // Computed properties
 // const hasVideo = computed(() => !!props.videoPath)
 // Keep a generated filter for passing to preview, but filter is owned by ColorControls
 const generatedFilter = ref('')
-const onFilterChanged = (f: string) => {
-  generatedFilter.value = f
-  if (props.selectedClip) emit('color-grading-changed', props.selectedClip.number, f)
+const onFilterChanged = (clipNumber: number, state: ColorGradingState) => {
+  const filter = buildFilterFromState(state)
+  generatedFilter.value = filter
+  emit('color-grading-changed', clipNumber, filter, state)
 }
 
 const onTogglePreview = (enabled: boolean) => {
   previewEnabled.value = enabled
 }
 
-// Provide the initial filter for the current clip to controls
-const initialFilterForClip = computed(() => {
-  if (!props.selectedClip) return ''
-  if (props.getClipColorGrading) return props.getClipColorGrading(props.selectedClip.number) || ''
-  return (props.selectedClip.overrides?.colorGrading as string) || ''
-})
+// filterForClip no longer needed: ColorControls reads directly from store
 </script>
 
 <style scoped>

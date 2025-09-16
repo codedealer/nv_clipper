@@ -47,7 +47,6 @@
         :clip-count="markupOps.parsedClips.value.length"
         :selected-clips="markupOps.selectedClips.value"
         :parsed-clips="markupOps.parsedClips.value"
-        :active-color-grading-clip="colorGrading.activeColorGradingClip.value"
         :video-duration="videoOps.videoDuration.value"
         :video-info="videoOps.videoInfo.value"
         :is-processing="fileHandler.isProcessing.value"
@@ -76,16 +75,18 @@
       @import-settings="dialogManager.handleImportSettings"
       @clear-settings-error="settingsStore.clearError"
     />
+  <DebugState />
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted } from 'vue'
 import { ElContainer, ElHeader, ElMessage } from 'element-plus'
 import ClipperHeader from '@/components/ClipperHeader.vue'
 import ClipperSidebar from '@/components/ClipperSidebar.vue'
 import ClipperDialogs from '@/components/ClipperDialogs.vue'
 import MainContent from '@/components/MainContent.vue'
+import DebugState from '@/components/DebugState.vue'
 
 import { useClipperStore } from '@/stores/counter'
 import { useSettingsStore } from '@/stores/settings'
@@ -143,20 +144,7 @@ function setupCacheVideoId() {
   dialogManager.setSelectedCacheVideoId(cachedVideo?.id)
 }
 
-// Watch for clips changes to initialize color grading
-watch(
-  markupOps.parsedClips,
-  (newClips) => {
-    if (newClips.length > 0) {
-      // Initialize active clip for color grading when clips are loaded
-      colorGrading.initializeActiveClip(newClips)
-    } else {
-      // Reset color grading when no clips
-      colorGrading.resetColorGradingState()
-    }
-  },
-  { immediate: true }
-)
+// Centralized clips come from store now; color grading composable will react via store
 
 // Event handlers
 async function handleProcessFiles() {

@@ -26,7 +26,10 @@
             </div>
           </el-tab-pane>
           <el-tab-pane label="Advanced (Lift/Gamma/Gain)" name="advanced">
-            <LiftGammaGainWheels @advanced-filter-changed="handleAdvancedFilterChanged" />
+            <LiftGammaGainWheels
+              :wheel-state="advancedWheelState"
+              @wheel-state-changed="handleWheelStateChanged"
+            />
           </el-tab-pane>
         </el-tabs>
 
@@ -42,17 +45,21 @@
           </div>
           <div class="filter-actions">
             <div class="action-group primary-actions">
-              <el-button size="small" type="primary" @click="copyFilter" :disabled="!generatedFilter" plain>
+              <el-button size="small" type="primary" @click="copyState" plain :disabled="isNeutral">
                 <el-icon><DocumentCopy /></el-icon>
                 Copy Filter
               </el-button>
-              <el-button size="small" @click="showPasteDialog" plain>
+              <el-button size="small" @click="pasteFromBuffer" :disabled="!canPaste" plain>
                 <el-icon><Document /></el-icon>
                 Paste Filter
               </el-button>
+              <el-button size="small" @click="copyFilterString" :disabled="!generatedFilter || isNeutral" plain>
+                <el-icon><DocumentCopy /></el-icon>
+                Copy String
+              </el-button>
             </div>
             <div class="action-group secondary-actions">
-              <el-button size="small" type="success" @click="$emit('copy-to-all-clips', generatedFilter)" :disabled="!generatedFilter || isMockMarkup" plain v-if="!isMockMarkup">
+              <el-button size="small" type="success" @click="$emit('copy-to-all-clips', gradingState)" :disabled="isNeutral || isMockMarkup" plain v-if="!isMockMarkup">
                 <el-icon><CopyDocument /></el-icon>
                 Copy to All Clips
               </el-button>
@@ -70,98 +77,152 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useClipperStore } from '@/stores/counter'
 import { ElMessage } from 'element-plus'
 import { DocumentCopy, Document, CopyDocument, RefreshLeft } from '@element-plus/icons-vue'
 import LiftGammaGainWheels from './LiftGammaGainWheels.vue'
-import { buildBasicFilter } from '@/utils/colorBasics'
-import { parseFilterString, joinFilters } from '@/utils/filterString'
-import { debounce } from '@/utils/debounce'
+import { buildFilterFromState } from '@/utils/colorFilterBuild'
+import type { ColorGradingState, LggWheelState } from '@/types/colorGrading'
+import { createDefaultColorGradingState, cloneColorGradingState } from '@/types/colorGrading'
+import { setColorGradingBuffer, getColorGradingBuffer, useColorGradingBufferReactive } from '@/utils/colorGradingBuffer'
 
 
 interface Props {
   isMockMarkup?: boolean
   previewEnabled?: boolean
-  initialFilter?: string | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isMockMarkup: false,
   previewEnabled: true,
-  initialFilter: null
 })
 
+// Events now carry structured state; filter string is derived presentation only
 const emit = defineEmits<{
-  (e: 'filter-changed', filter: string): void
+  (e: 'filter-changed', clipNumber: number, state: ColorGradingState): void
   (e: 'toggle-preview', enabled: boolean): void
-  (e: 'copy-to-all-clips', filter: string): void
+  (e: 'copy-to-all-clips', state: ColorGradingState): void
 }>()
 
 const activeTab = ref<'basic' | 'advanced'>('basic')
-const brightness = ref(0)
-const contrast = ref(1)
-const saturation = ref(1)
-const hue = ref(0)
-const gamma = ref(1)
-const advancedFilterState = ref('')
+const gradingState = ref<ColorGradingState>(createDefaultColorGradingState())
+const brightness = ref(gradingState.value.basic.brightness)
+const contrast = ref(gradingState.value.basic.contrast)
+const saturation = ref(gradingState.value.basic.saturation)
+const hue = ref(gradingState.value.basic.hue)
+const gamma = ref(gradingState.value.basic.gamma)
+const advancedWheelState = ref<LggWheelState>(cloneColorGradingState(gradingState.value).lgg)
 const previewEnabledLocal = ref<boolean>(props.previewEnabled)
 
-const basicFilter = computed(() => buildBasicFilter({ brightness: brightness.value, contrast: contrast.value, saturation: saturation.value, hue: hue.value, gamma: gamma.value }))
-const advancedFilter = computed(() => advancedFilterState.value)
-const generatedFilter = computed(() => joinFilters(basicFilter.value, advancedFilter.value))
+// Build filter only when displaying (commit based). Wheels update internal state continuously, but emission occurs on commit.
+const generatedFilter = computed(() => buildFilterFromState(gradingState.value))
 
-const debouncedFilterEmit = debounce(() => emit('filter-changed', generatedFilter.value), 180)
-const emitFilter = () => { debouncedFilterEmit() }
-const debouncedAdvancedHandler = debounce((filter: string) => { advancedFilterState.value = filter; emitFilter() }, 120)
-const handleAdvancedFilterChanged = (filter: string) => { debouncedAdvancedHandler(filter) }
+// Store reference for clip identity
+const clipperStore = useClipperStore()
+const { activeSelectedClip } = storeToRefs(clipperStore)
 
-const reset = () => {
-  brightness.value = 0; contrast.value = 1; saturation.value = 1; hue.value = 0; gamma.value = 1; advancedFilterState.value = ''
+// Commit-based emission: continuous wheel movement updates local state only; emission happens on pointerup/change events from wheel component.
+function syncBasicToState() {
+  const b = gradingState.value.basic
+  b.brightness = brightness.value
+  b.contrast = contrast.value
+  b.saturation = saturation.value
+  b.hue = hue.value
+  b.gamma = gamma.value
+}
+function emitFilter(force = false) {
+  const clipNumber = activeSelectedClip.value?.number
+  if (clipNumber == null) return
+  syncBasicToState()
+  if (import.meta.env.DEV) console.log('[ColorControls] emitFilter commit', { clipNumber, state: gradingState.value, force })
+  emit('filter-changed', clipNumber, cloneColorGradingState(gradingState.value))
+}
+const handleWheelStateChanged = (state: LggWheelState) => {
+  // Commit from wheel: update state then emit upward once
+  advancedWheelState.value = state
+  gradingState.value.lgg = cloneColorGradingState({ basic: gradingState.value.basic, lgg: state }).lgg
   emitFilter()
 }
 
-const copyFilter = async () => {
-  try { await navigator.clipboard.writeText(generatedFilter.value); ElMessage.success('Filter copied to clipboard') }
-  catch (e) { console.error('Failed to copy filter:', e); ElMessage.error('Failed to copy filter to clipboard') }
+const internalResetState = () => {
+  gradingState.value = createDefaultColorGradingState()
+  const b = gradingState.value.basic
+  brightness.value = b.brightness
+  contrast.value = b.contrast
+  saturation.value = b.saturation
+  hue.value = b.hue
+  gamma.value = b.gamma
+  advancedWheelState.value = cloneColorGradingState(gradingState.value).lgg
 }
 
-const showPasteDialog = async () => {
+const reset = () => {
+  console.log('[ColorControls] reset() invoked')
+  internalResetState()
+  emitFilter(true)
+}
+
+const copyState = () => {
+  setColorGradingBuffer(cloneColorGradingState(gradingState.value))
+  ElMessage.success('Filter state copied')
+}
+const pasteFromBuffer = () => {
+  const buf = getColorGradingBuffer()
+  if (!buf) return
+  gradingState.value = cloneColorGradingState(buf)
+  const b = gradingState.value.basic
+  brightness.value = b.brightness
+  contrast.value = b.contrast
+  saturation.value = b.saturation
+  hue.value = b.hue
+  gamma.value = b.gamma
+  advancedWheelState.value = cloneColorGradingState(gradingState.value).lgg
+  emitFilter(true)
+  ElMessage.success('Filter state pasted')
+}
+const copyFilterString = async () => {
   try {
-    const clipboardText = await navigator.clipboard.readText()
-    if (clipboardText.trim()) { pasteFilter(clipboardText.trim()) }
-    else { ElMessage.warning('Clipboard is empty') }
-  } catch (e) { ElMessage.error('Failed to access clipboard. Please check permissions.'); console.error('Clipboard access failed:', e) }
+    await navigator.clipboard.writeText(generatedFilter.value)
+    ElMessage.success('Filter string copied')
+  } catch {
+    ElMessage.error('Copy failed')
+  }
 }
-
-const pasteFilter = (text: string) => {
-  try { parseAndApplyFilter(text); emitFilter() }
-  catch (e) { ElMessage.error(`Failed to apply filter: ${String(e)}`) }
-}
-
-const parseAndApplyFilter = (filterString: string) => {
-  reset()
-  const parsed = parseFilterString(filterString)
-  brightness.value = parsed.brightness
-  contrast.value = parsed.contrast
-  saturation.value = parsed.saturation
-  hue.value = parsed.hue
-  gamma.value = parsed.gamma
-  if (parsed.advanced) advancedFilterState.value = parsed.advanced
-}
-
-watch(
-  () => props.initialFilter,
-  (f) => {
-    if (f != null) {
-      parseAndApplyFilter(f)
-      emitFilter()
-    }
-  },
-  { immediate: true }
-)
+const bufferRef = useColorGradingBufferReactive()
+const canPaste = computed(() => !!bufferRef.value)
 
 defineExpose({ generatedFilter })
 
 const isMockMarkup = computed(() => props.isMockMarkup)
+const isNeutral = computed(() => {
+  const b = gradingState.value.basic
+  const w = gradingState.value.lgg
+  const neutralBasic = b.brightness === 0 && b.contrast === 1 && b.saturation === 1 && b.hue === 0 && b.gamma === 1
+  const neutralW = w.lift.hex.toLowerCase() === '#ffffff' && w.lift.sat === 0 && w.lift.amount === 0.5 &&
+    w.mid.hex.toLowerCase() === '#ffffff' && w.mid.sat === 0 && w.mid.amount === 0.5 &&
+    w.gain.hex.toLowerCase() === '#ffffff' && w.gain.sat === 0 && w.gain.amount === 0.5 &&
+    w.globalGamma === 1
+  return neutralBasic && neutralW
+})
+
+// --- Store-only clip identity watcher to ensure reset on clip switch ---
+watch(
+  () => activeSelectedClip.value?.number,
+  () => {
+    const storeState = (activeSelectedClip.value?.overrides as { colorGradingState?: ColorGradingState } | undefined)?.colorGradingState
+    if (storeState) {
+      gradingState.value = cloneColorGradingState(storeState)
+    } else {
+      internalResetState()
+    }
+    const b = gradingState.value.basic
+    brightness.value = b.brightness; contrast.value = b.contrast; saturation.value = b.saturation; hue.value = b.hue; gamma.value = b.gamma
+    advancedWheelState.value = cloneColorGradingState(gradingState.value).lgg
+    // Force sync exactly once on clip switch
+    emitFilter(true)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

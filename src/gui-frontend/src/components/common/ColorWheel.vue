@@ -29,6 +29,7 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const dragging = ref(false)
+const lastHex = ref<string>(props.modelValue)
 
 const center = computed(() => ({ x: props.size / 2, y: props.size / 2 }))
 const radius = computed(() => props.size / 2)
@@ -145,7 +146,7 @@ function setFromPoint(px: number, py: number) {
   const hex = rgbToHex(r, g, b)
   currentPoint.value = { x: cx + Math.cos(angle) * clampedDist, y: cy + Math.sin(angle) * clampedDist }
   emit('update:modelValue', hex)
-  emit('change', hex)
+  lastHex.value = hex
   emit('vector-change', { hex, sat })
 }
 
@@ -171,6 +172,8 @@ function onPointerUp(e?: PointerEvent) {
   if (el && 'releasePointerCapture' in el && e && typeof e.pointerId === 'number') {
     try { (el as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
   }
+  // Commit event on release
+  emit('change', lastHex.value)
 }
 
 function updateThumbFromColor() {
@@ -195,6 +198,7 @@ watch(() => props.size, () => {
 
 watch(() => props.modelValue, () => {
   updateThumbFromColor()
+  lastHex.value = props.modelValue
 })
 // markerSat is used only for appearance; it should not affect thumb position
 </script>

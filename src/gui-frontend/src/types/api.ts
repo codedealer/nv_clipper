@@ -165,7 +165,8 @@ declare global {
         cleanup_old_jobs: () => Promise<{ cleaned: number }>
 
         // Frame preview
-        generate_frame_preview: (videoPath: string, timestamp: number, colorGrading?: string, resolutionScale?: number) => Promise<FramePreviewResult>
+        generate_frame_preview: (videoPath: string, timestamp: number, colorGrading?: string, resolutionScale?: number, requestId?: string) => Promise<FramePreviewResult>
+        cancel_frame_preview: (requestId?: string) => Promise<{ status: string; message?: string }>
         get_direct_video_url: (pageUrl: string) => Promise<{ status: 'success' | 'error'; url?: string; message?: string }>
 
         // Video info

@@ -1,9 +1,11 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
-import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus } from '@/types/api'
+import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus, ClipInfo } from '@/types/api'
+import type { ColorGradingState } from '@/types/colorGrading'
 import { waitForPywebview } from '@/utils/api'
 import { useSettingsStore } from './settings'
 import { ElMessage } from 'element-plus'
+import type { MarkupData } from '@/utils/markup'
 
 export const useClipperStore = defineStore('clipper', () => {
   // State
@@ -19,10 +21,46 @@ export const useClipperStore = defineStore('clipper', () => {
   const processingResult = ref<ProcessingResult | null>(null)
   const engineStatus = ref<EngineStatus | null>(null)
 
+  // New: video info (single source of truth for loaded video metadata)
+  const videoInfo = ref<null | {
+    duration: number | null
+    width: number | null
+    height: number | null
+    frame_rate?: string | null
+    codec_name?: string | null
+    bit_rate?: string | null
+    path: string | null
+  }>(null)
+
+  // Markup / clips state (single source of truth for UI)
+  const parsedClips = ref<ClipInfo[]>([])
+  const selectedClips = ref<number[]>([])
+  const parsedMarkupData = ref<MarkupData | null>(null)
+  const activeColorGradingClip = ref<number | null>(null)
+  // Key to force remount of preview / grading panel when selected files change in any way
+  const previewMountKey = ref(0)
+
+  // Derived clip state
+  const hasClips = computed(() => parsedClips.value.length > 0)
+  const activeSelectedClip = computed(() => {
+    if (!parsedClips.value.length) return null
+    if (activeColorGradingClip.value !== null && activeColorGradingClip.value >= 0 && activeColorGradingClip.value < parsedClips.value.length) {
+      return parsedClips.value[activeColorGradingClip.value]
+    }
+    if (selectedClips.value.length) {
+      const idx = selectedClips.value[0]
+      return parsedClips.value[idx] || null
+    }
+    return parsedClips.value[0]
+  })
+  // Alias for preview usage (semantic clarity)
+  const currentPreviewClip = activeSelectedClip
+
   // Getters
   const hasMarkupFile = computed(() => !!selectedFiles.value.markup)
   const hasVideoFile = computed(() => !!selectedFiles.value.video)
   const canProcess = computed(() => hasMarkupFile.value && !isProcessing.value && !isCanceling.value)
+  const videoDuration = computed(() => videoInfo.value?.duration ?? null)
 
   // Actions
   function setSelectedFiles(files: SelectedFiles) {
@@ -37,11 +75,16 @@ export const useClipperStore = defineStore('clipper', () => {
     selectedFiles.value.video = path
   }
 
+  function setVideoInfo(info: typeof videoInfo.value) {
+    videoInfo.value = info
+  }
+
+  function clearVideoInfo() {
+    videoInfo.value = null
+  }
+
   function clearSelectedFiles() {
-    selectedFiles.value = {
-      markup: null,
-      video: null
-    }
+    selectedFiles.value = { markup: null, video: null }
   }
 
   async function startProcessing(selectedClips?: number[], markupData?: Record<string, unknown>): Promise<ProcessingResult> {
@@ -198,6 +241,113 @@ export const useClipperStore = defineStore('clipper', () => {
     }
   }
 
+  // ----- Clip / Markup Actions -----
+  function setParsedClips(clips: ClipInfo[]) {
+    parsedClips.value = [...clips]
+    selectedClips.value = clips.map((_, i) => i)
+    activeColorGradingClip.value = clips.length ? 0 : null
+  }
+
+  function setSelectedClips(indices: number[]) {
+    selectedClips.value = [...indices]
+  }
+
+  function toggleClipSelection(index: number) {
+    const pos = selectedClips.value.indexOf(index)
+    if (pos > -1) selectedClips.value.splice(pos, 1)
+    else selectedClips.value.push(index)
+  }
+
+  function selectAllClips() {
+    selectedClips.value = Array.from({ length: parsedClips.value.length }, (_, i) => i)
+  }
+
+  function deselectAllClips() {
+    selectedClips.value = []
+  }
+
+  function setParsedMarkupData(data: MarkupData | null) {
+    parsedMarkupData.value = data
+  }
+
+  function resetMarkupState() {
+    parsedClips.value = []
+    selectedClips.value = []
+    parsedMarkupData.value = null
+    activeColorGradingClip.value = null
+  }
+
+  // ---------- Color Grading Override Utilities ----------
+  interface GradingOverrides { colorGrading?: string; colorGradingState?: ColorGradingState }
+  function cloneColorGradingState(state: ColorGradingState): ColorGradingState {
+    try {
+      if (typeof structuredClone === 'function') return structuredClone(state)
+    } catch { /* ignore */ }
+    // Fallback
+    return JSON.parse(JSON.stringify(state)) as ColorGradingState
+  }
+  function stripGrading(o: Record<string, unknown> | undefined): void {
+    if (!o) return
+    delete (o as GradingOverrides).colorGrading
+    delete (o as GradingOverrides).colorGradingState
+  }
+  function clearAllGrading(): void {
+    for (const clip of parsedClips.value) stripGrading(clip.overrides as Record<string, unknown>)
+    const pm = parsedMarkupData.value as { markerPairs?: Array<{ overrides?: Record<string, unknown> }> } | null
+    if (pm?.markerPairs && Array.isArray(pm.markerPairs)) {
+      for (const mp of pm.markerPairs) stripGrading(mp.overrides as Record<string, unknown> | undefined)
+    }
+  }
+
+  watch(selectedFiles, (newVal) => {
+    if (!newVal.markup && !newVal.video) {
+      clearVideoInfo()
+      resetMarkupState()
+      previewMountKey.value++
+      return
+    }
+    if (!newVal.video) clearVideoInfo()
+    clearAllGrading()
+    activeColorGradingClip.value = parsedClips.value.length ? 0 : null
+    previewMountKey.value++
+  }, { deep: true })
+
+  function setActiveColorGradingClip(index: number | null) {
+    if (index === null) { activeColorGradingClip.value = null; return }
+    if (index < 0 || index >= parsedClips.value.length) return
+    activeColorGradingClip.value = index
+  }
+
+  function updateClipColorGrading(clipNumber: number, filterString: string, newState?: ColorGradingState): boolean {
+    const targetClip = parsedClips.value.find(c => c.number === clipNumber)
+    if (!targetClip) return false
+    const resolvedState: ColorGradingState | undefined = newState ? cloneColorGradingState(newState) : (targetClip.overrides as GradingOverrides)?.colorGradingState
+    targetClip.overrides = { ...targetClip.overrides, colorGrading: filterString || undefined, colorGradingState: resolvedState }
+
+    const markup = parsedMarkupData.value as { markerPairs?: Array<{ number: number; overrides?: GradingOverrides }> } | null
+    if (markup?.markerPairs) {
+      const markerPair = markup.markerPairs.find(m => m.number === clipNumber)
+      if (markerPair) {
+        const mirroredState: ColorGradingState | undefined = newState ? cloneColorGradingState(newState) : markerPair.overrides?.colorGradingState
+        markerPair.overrides = { ...markerPair.overrides, colorGrading: filterString || undefined, colorGradingState: mirroredState }
+      }
+    }
+    return true
+  }
+
+  function applyColorGradingToAllClips(filter: string, state?: ColorGradingState): number {
+    let count = 0
+    parsedClips.value.forEach(c => {
+      const changed = updateClipColorGrading(c.number, filter, state)
+      if (changed) count++
+    })
+    return count
+  }
+
+  function hasValidMarkup(): boolean {
+    return parsedClips.value.length > 0 || parsedMarkupData.value !== null
+  }
+
   return {
     // State
     selectedFiles,
@@ -207,22 +357,46 @@ export const useClipperStore = defineStore('clipper', () => {
     processingStatus,
     processingResult,
     engineStatus,
+    parsedClips,
+    selectedClips,
+    parsedMarkupData,
+    activeColorGradingClip,
+    videoInfo,
+    previewMountKey,
 
     // Getters
     hasMarkupFile,
     hasVideoFile,
     canProcess,
+    hasClips,
+    activeSelectedClip,
+    currentPreviewClip,
+    videoDuration,
 
     // Actions
     setSelectedFiles,
     setMarkupFile,
     setVideoFile,
     clearSelectedFiles,
+    setVideoInfo,
+    clearVideoInfo,
     startProcessing,
     getEngineStatus,
     selectFiles,
     parseMarkupFile,
     onProcessingEvent,
-    cancelCurrentJob
+    cancelCurrentJob,
+    // Clip / markup actions
+    setParsedClips,
+    setSelectedClips,
+    toggleClipSelection,
+    selectAllClips,
+    deselectAllClips,
+    setParsedMarkupData,
+    resetMarkupState,
+    setActiveColorGradingClip,
+    updateClipColorGrading,
+    applyColorGradingToAllClips,
+    hasValidMarkup
   }
 })
