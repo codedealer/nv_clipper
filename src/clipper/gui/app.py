@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -103,9 +104,10 @@ class ClipperGUI:
         # Preview subprocess management (hard cancel support)
         self._preview_proc_lock = threading.Lock()
         self._active_preview_proc = None
-        # Idempotent preview in-progress & result cache for color-graded outputs
+        # Idempotent preview in-progress & result cache (LRU bounded)
         # key: (video_path|timestamp_ms|scale|filter or 'base') -> {'status': 'success', 'image_bytes': b'..', 'mime': 'image/jpeg'}
-        self._preview_result_cache = {}
+        self._preview_result_cache = OrderedDict()  # type: ignore[var-annotated]
+        self._preview_result_cache_max = 64  # Reasonable default; holds recent previews
         self._preview_inflight = {}
 
     # ---------------------
@@ -168,6 +170,8 @@ class ClipperGUI:
             if cached and cached.get('status') == 'success':
                 image_bytes_cached = cached.get('image_bytes')
                 if isinstance(image_bytes_cached, (bytes, bytearray)):
+                    # Move to MRU position
+                    self._preview_result_cache.move_to_end(full_key, last=True)
                     import base64
                     return {
                         'status': 'success',
@@ -199,6 +203,8 @@ class ClipperGUI:
         with self._preview_proc_lock:
             cached = self._preview_result_cache.get(full_key)
         if cached and cached.get('status') == 'success':
+            with self._preview_proc_lock:
+                self._preview_result_cache.move_to_end(full_key, last=True)
             import base64
             return {
                 'status': 'success',
@@ -287,6 +293,10 @@ class ClipperGUI:
         }
         with self._preview_proc_lock:
             self._preview_result_cache[full_key] = {'status': 'success', 'image_bytes': image_bytes, 'mime': 'image/jpeg'}
+            self._preview_result_cache.move_to_end(full_key, last=True)
+            # Evict LRU entries beyond max size
+            while len(self._preview_result_cache) > self._preview_result_cache_max:
+                self._preview_result_cache.popitem(last=False)
             waiters = self._preview_inflight.pop(full_key, [])
             for ev in waiters:
                 ev.set()
