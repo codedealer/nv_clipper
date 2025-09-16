@@ -82,7 +82,15 @@
     </div>
 
     <div class="control-group">
-      <div class="control-label">Projection Gain</div>
+      <div class="control-label">Projection Gain
+        <el-tooltip placement="top" effect="dark">
+          <template #content>
+            Controls how strongly the selected hue pushes complementary channels toward neutrality.<br/>
+            Lower = subtle separation. Higher = more pronounced color isolation.
+          </template>
+          <el-icon style="margin-left:4px; cursor: help; font-size:14px; opacity:0.8"><InfoFilled /></el-icon>
+        </el-tooltip>
+      </div>
       <el-slider
         v-model="projectionGainLocal"
         :min="0.5"
@@ -103,6 +111,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { RefreshLeft } from '@element-plus/icons-vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 import ColorWheel from './common/ColorWheel.vue'
 import { buildLggFilterFromWheels } from '@/utils/lgg'
 import type { LggWheelState } from '@/types/colorGrading'
@@ -230,6 +239,14 @@ async function onProjectionGainCommit() {
   }
   emitChange()
 }
+
+// Reactively sync if settings store projection gain changes elsewhere (e.g., Settings panel)
+watch(() => settingsStore.generalSettings?.lgg_projection_gain, (nv) => {
+  if (typeof nv === 'number' && Math.abs(nv - projectionGainLocal.value) > 1e-6) {
+    projectionGainLocal.value = nv
+    emitChange()
+  }
+})
 </script>
 
 <style scoped>
