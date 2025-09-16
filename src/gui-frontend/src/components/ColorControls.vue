@@ -3,7 +3,7 @@
     <el-scrollbar height="100%">
       <div class="color-controls-content">
         <el-tabs v-model="activeTab" type="border-card">
-          <el-tab-pane label="Color Adjustments" name="basic">
+          <el-tab-pane label="Filters" name="basic">
             <div class="control-group">
               <div class="control-label">Brightness</div>
               <el-slider v-model="brightness" :min="-0.5" :max="0.5" :step="0.01" @change="emitFilter" show-input input-size="small" />
@@ -25,7 +25,7 @@
               <el-slider v-model="gamma" :min="0.1" :max="3" :step="0.01" @change="emitFilter" show-input input-size="small" />
             </div>
           </el-tab-pane>
-          <el-tab-pane label="Advanced (Lift/Gamma/Gain)" name="advanced">
+          <el-tab-pane label="Colors (Lift/Gamma/Gain)" name="advanced">
             <LiftGammaGainWheels
               :wheel-state="advancedWheelState"
               @wheel-state-changed="handleWheelStateChanged"
