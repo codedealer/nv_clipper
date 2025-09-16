@@ -678,6 +678,16 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "default": 5000,
                 "cli_args": ["--cache-max-size-mb"],
             },
+            # Color Grading / UI tuning (GUI only for now)
+            "lgg_projection_gain": {
+                "type": "number",
+                "description": "Intensity multiplier for Lift/Gamma/Gain color wheel hue projection (0.5-2.0)",
+                "min": 0.5,
+                "max": 2.0,
+                "default": 1.5,
+                # Intentionally no cli_args yet; internal GUI tuning parameter
+                "cli_args": [],
+            },
         },
         "video": {
             "video_title": {
