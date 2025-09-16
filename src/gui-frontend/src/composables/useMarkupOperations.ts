@@ -1,31 +1,42 @@
-import { ref, readonly, computed } from 'vue'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
 import type { ClipInfo } from '@/types/api'
 import type { MarkupData } from '@/utils/markup'
 import { SUPPORTED_MARKUP_EXTENSIONS, MOCK_MARKUP_DEFAULTS } from '@/constants'
+import type { ColorGradingState } from '@/types/colorGrading'
+
+function cloneState<T>(obj: T): T {
+  if (obj == null) return obj
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(obj as unknown as T)
+    }
+  } catch { /* ignore */ }
+  return JSON.parse(JSON.stringify(obj)) as T
+}
 
 /**
  * Composable for markup-related operations including parsing, clip management,
  * and markup data manipulation
  */
 export function useMarkupOperations() {
-  // State
-  const parsedClips = ref<ClipInfo[]>([])
-  const selectedClips = ref<number[]>([])
-  const parsedMarkupData = ref<MarkupData | null>(null)
-
-  // Store
+  // Central store (single source of truth)
   const clipperStore = useClipperStore()
+  const parsedClips = computed(() => clipperStore.parsedClips)
+  const selectedClips = computed({
+    get: () => clipperStore.selectedClips,
+    set: (v: number[]) => clipperStore.setSelectedClips(v)
+  })
+  const parsedMarkupData = computed(() => clipperStore.parsedMarkupData)
 
   // Computed properties
   const isMockMarkup = computed(() => {
     // Mock markup is identified by having exactly one clip that starts at 0
     // and the markup data having the generic platform structure
-    if (parsedClips.value.length !== 1) return false
-
-    const clip = parsedClips.value[0]
-    const markupData = parsedMarkupData.value
+  if (parsedClips.value.length !== 1) return false
+  const clip = parsedClips.value[0]
+  const markupData = parsedMarkupData.value as MarkupData | null
 
     return (
       clip.start === 0 &&
@@ -40,14 +51,11 @@ export function useMarkupOperations() {
    */
   async function parseMarkupFile(filePath: string): Promise<boolean> {
     try {
-      const result = await clipperStore.parseMarkupFile(filePath)
+  const result = await clipperStore.parseMarkupFile(filePath)
 
       if (result.status === 'success' && result.clips) {
-        parsedClips.value = result.clips
-        selectedClips.value = Array.from({ length: result.clips.length }, (_, i) => i)
-
-        // Load the complete markup structure to enable color grading modifications
-        await loadFullMarkupData(filePath)
+  clipperStore.setParsedClips(result.clips)
+  await loadFullMarkupData(filePath) // loads markup data
 
         ElMessage.success(`Loaded ${result.clips.length} clips from markup`)
         return true
@@ -59,7 +67,7 @@ export function useMarkupOperations() {
       ElMessage.error(`Failed to parse markup file: ${error}`)
 
       // Reset state on failure
-      resetMarkupState()
+  resetMarkupState()
       return false
     }
   }
@@ -69,18 +77,18 @@ export function useMarkupOperations() {
    */
   async function loadFullMarkupData(filePath: string): Promise<void> {
     try {
-      const fullMarkupData = await window.pywebview.api.load_markup_file_data(filePath)
+  const fullMarkupData = await window.pywebview.api.load_markup_file_data(filePath)
 
       if (fullMarkupData.status === 'success' && fullMarkupData.data) {
-        parsedMarkupData.value = fullMarkupData.data
+        clipperStore.setParsedMarkupData(fullMarkupData.data as MarkupData)
       } else {
-        parsedMarkupData.value = null
+        clipperStore.setParsedMarkupData(null)
         if (fullMarkupData.message) {
           ElMessage.warning(`Color grading may not work: ${fullMarkupData.message}`)
         }
       }
-  } catch {
-      parsedMarkupData.value = null
+    } catch {
+      clipperStore.setParsedMarkupData(null)
       ElMessage.warning('Color grading changes may not persist due to file loading error')
     }
   }
@@ -89,15 +97,14 @@ export function useMarkupOperations() {
    * Set parsed markup data and clips from external source (e.g., mock markup)
    */
   function setMarkupData(markupData: MarkupData, clips: ClipInfo[]) {
-    parsedMarkupData.value = markupData
-    parsedClips.value = clips
-    selectedClips.value = Array.from({ length: clips.length }, (_, i) => i)
+    clipperStore.setParsedMarkupData(markupData)
+    clipperStore.setParsedClips(clips)
   }
 
   /**
    * Apply color grading filter to all clips
    */
-  function applyColorGradingToAllClips(filter: string): boolean {
+  function applyColorGradingToAllClips(filter: string, state?: ColorGradingState): boolean {
     if (isMockMarkup.value) {
       ElMessage.warning('Cannot apply to all clips in mock markup')
       return false
@@ -105,19 +112,22 @@ export function useMarkupOperations() {
 
     let appliedCount = 0
 
-    parsedClips.value.forEach(clip => {
+  parsedClips.value.forEach(clip => {
       clip.overrides = {
         ...clip.overrides,
-        colorGrading: filter || undefined
+        colorGrading: filter || undefined,
+        colorGradingState: state ? cloneState(state) : (clip.overrides as { colorGradingState?: ColorGradingState } | undefined)?.colorGradingState
       }
 
       // Also update the markup data structure
-      if (parsedMarkupData.value?.markerPairs && Array.isArray(parsedMarkupData.value.markerPairs)) {
-  const markerPair = parsedMarkupData.value.markerPairs.find((mp: { number?: unknown }) => mp.number === clip.number)
+  const pm = parsedMarkupData.value as unknown as { markerPairs?: Array<{ number: number; overrides?: { colorGrading?: string; colorGradingState?: ColorGradingState } }> } | null
+      if (pm?.markerPairs && Array.isArray(pm.markerPairs)) {
+        const markerPair = pm.markerPairs.find((mp: { number?: unknown }) => mp.number === clip.number)
         if (markerPair) {
           markerPair.overrides = {
             ...markerPair.overrides,
-            colorGrading: filter || undefined
+            colorGrading: filter || undefined,
+            colorGradingState: state ? cloneState(state) : markerPair.overrides?.colorGradingState
           }
           appliedCount++
         }
@@ -132,23 +142,26 @@ export function useMarkupOperations() {
       return false
     }
   }
-  function updateClipColorGrading(clipNumber: number, filter: string): boolean {
+  function updateClipColorGrading(clipNumber: number, filter: string, state?: ColorGradingState): boolean {
     // Find the clip and update its color grading
-    const clip = parsedClips.value.find(c => c.number === clipNumber)
+  const clip = parsedClips.value.find(c => c.number === clipNumber)
     if (clip) {
       // Update the clip's color grading in the overrides
       clip.overrides = {
         ...clip.overrides,
-        colorGrading: filter || undefined
+        colorGrading: filter || undefined,
+        colorGradingState: state ? cloneState(state) : (clip.overrides as { colorGradingState?: ColorGradingState } | undefined)?.colorGradingState
       }
 
       // Also update the markup data structure to ensure backend receives changes
-      if (parsedMarkupData.value?.markerPairs && Array.isArray(parsedMarkupData.value.markerPairs)) {
-  const markerPair = parsedMarkupData.value.markerPairs.find((mp: { number?: unknown }) => mp.number === clipNumber)
+  const pm = parsedMarkupData.value as unknown as { markerPairs?: Array<{ number: number; overrides?: { colorGrading?: string; colorGradingState?: ColorGradingState } }> } | null
+      if (pm?.markerPairs && Array.isArray(pm.markerPairs)) {
+        const markerPair = pm.markerPairs.find((mp: { number?: unknown }) => mp.number === clipNumber)
         if (markerPair) {
           markerPair.overrides = {
             ...markerPair.overrides,
-            colorGrading: filter || undefined
+            colorGrading: filter || undefined,
+            colorGradingState: state ? cloneState(state) : markerPair.overrides?.colorGradingState
           }
         }
       }
@@ -166,14 +179,11 @@ export function useMarkupOperations() {
    */
   function getActiveClip(activeIndex: number | null): ClipInfo | null {
     if (!parsedClips.value.length) return null
-
-    // Use the active color grading clip if set, otherwise use the first selected clip
     let targetIndex = activeIndex
     if (targetIndex === null || targetIndex === undefined) {
       if (!selectedClips.value.length) return null
       targetIndex = selectedClips.value[0]
     }
-
     return parsedClips.value[targetIndex] || null
   }
 
@@ -190,49 +200,42 @@ export function useMarkupOperations() {
    * Reset all markup-related state
    */
   function resetMarkupState() {
-    parsedClips.value = []
-    selectedClips.value = []
-    parsedMarkupData.value = null
+  clipperStore.resetMarkupState()
   }
 
   /**
    * Toggle clip selection for processing
    */
   function toggleClipSelection(clipIndex: number) {
-    const currentIndex = selectedClips.value.indexOf(clipIndex)
-    if (currentIndex > -1) {
-      selectedClips.value.splice(currentIndex, 1)
-    } else {
-      selectedClips.value.push(clipIndex)
-    }
+  clipperStore.toggleClipSelection(clipIndex)
   }
 
   /**
    * Select all clips for processing
    */
   function selectAllClips() {
-    selectedClips.value = Array.from({ length: parsedClips.value.length }, (_, i) => i)
+  clipperStore.selectAllClips()
   }
 
   /**
    * Deselect all clips
    */
   function deselectAllClips() {
-    selectedClips.value = []
+  clipperStore.deselectAllClips()
   }
 
   /**
    * Check if we have valid markup data for processing
    */
   function hasValidMarkup(): boolean {
-    return parsedClips.value.length > 0 || parsedMarkupData.value !== null
+  return clipperStore.hasValidMarkup()
   }
 
   return {
     // State
-    parsedClips,
-    selectedClips,
-    parsedMarkupData: readonly(parsedMarkupData),
+  parsedClips,
+  selectedClips,
+  parsedMarkupData,
 
     // Computed
     isMockMarkup,

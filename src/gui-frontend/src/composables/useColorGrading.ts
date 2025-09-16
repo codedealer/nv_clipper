@@ -1,9 +1,12 @@
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useVideoOperations } from './useVideoOperations'
 import { useMarkupOperations } from './useMarkupOperations'
+import type { ColorGradingState } from '@/types/colorGrading'
 import type { ClipInfo } from '@/types/api'
+import { buildFilterFromState } from '@/utils/colorFilterBuild'
 import { UI_MESSAGES } from '@/constants'
+import { useClipperStore } from '@/stores/counter'
 
 /**
  * Composable for color grading functionality including active clip management
@@ -13,8 +16,12 @@ export function useColorGrading(
   videoOps?: ReturnType<typeof useVideoOperations>,
   markupOps?: ReturnType<typeof useMarkupOperations>
 ) {
-  // State
-  const activeColorGradingClip = ref<number | null>(null)
+  const clipperStore = useClipperStore()
+  // Must expose the numeric index, not the ref object itself, or downstream typeof checks fail
+  const activeColorGradingClip = computed({
+    get: () => clipperStore.activeColorGradingClip,
+    set: (v: number | null) => clipperStore.setActiveColorGradingClip(v)
+  })
 
   // Use passed composables or create new instances (for backward compatibility)
   const { videoDuration, findFirstValidClip } = videoOps || useVideoOperations()
@@ -40,7 +47,7 @@ export function useColorGrading(
       return
     }
 
-    activeColorGradingClip.value = clipIndex
+  activeColorGradingClip.value = clipIndex
 
     if (clipIndex !== null) {
       ElMessage.info(UI_MESSAGES.CLIP_SWITCHED(clipIndex))
@@ -61,8 +68,9 @@ export function useColorGrading(
   /**
    * Handle color grading changes for the active clip
    */
-  function handleColorGradingChanged(clipNumber: number, filter: string) {
-    const success = updateClipColorGrading(clipNumber, filter)
+  function handleColorGradingChanged(clipNumber: number, filter: string, state?: ColorGradingState) {
+    const effectiveFilter = (!filter || !filter.length) && state ? buildFilterFromState(state) : filter
+    const success = updateClipColorGrading(clipNumber, effectiveFilter, state)
     if (!success) {
       ElMessage.error('Failed to apply color grading changes')
     }
@@ -73,20 +81,20 @@ export function useColorGrading(
    */
   function initializeActiveClip(clips: ClipInfo[]) {
     if (clips.length === 0) {
-      activeColorGradingClip.value = null
+  activeColorGradingClip.value = null
       return
     }
 
     // Set the first valid clip as active for color grading
     const firstValidIndex = findFirstValidClip(clips, videoDuration.value)
-    activeColorGradingClip.value = firstValidIndex
+  activeColorGradingClip.value = firstValidIndex
   }
 
   /**
    * Reset color grading state
    */
   function resetColorGradingState() {
-    activeColorGradingClip.value = null
+  activeColorGradingClip.value = null
   }
 
   /**
@@ -128,13 +136,13 @@ export function useColorGrading(
   /**
    * Apply color grading filter to all clips
    */
-  function handleCopyToAllClips(filter: string): boolean {
+  function handleCopyToAllClips(state: ColorGradingState): boolean {
     if (isMockMarkup.value) {
       ElMessage.warning('Mock markup only has one clip')
       return false
     }
-
-    return applyColorGradingToAllClips(filter)
+    const filter = buildFilterFromState(state)
+    return applyColorGradingToAllClips(filter, state)
   }
   /**
    * Move to previous clip for color grading

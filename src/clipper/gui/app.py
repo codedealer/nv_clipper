@@ -100,6 +100,13 @@ class ClipperGUI:
             'image_bytes': None,
             'mime': 'image/jpeg',
         }
+        # Preview subprocess management (hard cancel support)
+        self._preview_proc_lock = threading.Lock()
+        self._active_preview_proc = None
+        # Idempotent preview in-progress & result cache for color-graded outputs
+        # key: (video_path|timestamp_ms|scale|filter or 'base') -> {'status': 'success', 'image_bytes': b'..', 'mime': 'image/jpeg'}
+        self._preview_result_cache = {}
+        self._preview_inflight = {}
 
     # ---------------------
     # Preview cache helpers
@@ -1060,7 +1067,8 @@ class ClipperGUI:
 
     def generate_frame_preview(self, video_path: str, timestamp: float,
                              color_grading: Optional[str] = None,
-                             resolution_scale: float = 1.0) -> Dict[str, Any]:
+                             resolution_scale: float = 1.0,
+                             request_id: Optional[str] = None) -> Dict[str, Any]:
         """Generate a frame preview with optional color grading filters.
 
         Args:
@@ -1068,6 +1076,7 @@ class ClipperGUI:
             timestamp: Time in seconds to extract frame from
             color_grading: Optional FFmpeg color grading filter string
             resolution_scale: Scale factor for output resolution (0.1, 0.25, 0.5, 1.0)
+            request_id: Deprecated (ignored).
 
         Returns:
             Dict with status, message, and base64_image for success
@@ -1075,6 +1084,7 @@ class ClipperGUI:
         try:
             import base64
 
+            # request_id kept for backward compatibility; no longer used for control flow
             self.logger.info(f"Generating frame preview for {video_path} at {timestamp}s")
 
             # Validate inputs: support local files and direct HTTP(S) URLs
@@ -1109,6 +1119,56 @@ class ClipperGUI:
                         'message': 'Invalid color grading filter string',
                     }
 
+            # Compose a normalized key (milliseconds precision)
+            key_base = f"{video_path}|{self._norm_ts(timestamp)}|{resolution_scale}"
+            filter_key = color_grading or 'base'
+            full_key = f"{key_base}|{filter_key}"
+
+            # Fast path: return completed cached result (color graded or base)
+            with self._preview_proc_lock:
+                cached = self._preview_result_cache.get(full_key)
+                if cached and cached.get('status') == 'success':
+                    image_bytes_cached = cached.get('image_bytes')
+                    if isinstance(image_bytes_cached, (bytes, bytearray)):
+                        import base64
+                        return {
+                            'status': 'success',
+                            'message': 'Frame preview (cached)',
+                            'base64_image': base64.b64encode(image_bytes_cached).decode('utf-8'),
+                            'mime_type': cached.get('mime', 'image/jpeg'),
+                            'timestamp': timestamp,
+                            'resolution_scale': resolution_scale,
+                            'cached': True,
+                        }
+
+            # If an identical request is already in-flight, wait for it instead of spawning another
+            wait_event: Optional[threading.Event] = None
+            if full_key not in self._preview_result_cache:
+                with self._preview_proc_lock:
+                    if full_key in self._preview_inflight:
+                        wait_event = threading.Event()
+                        self._preview_inflight[full_key].append(wait_event)
+                    else:
+                        # Mark in-flight with list of waiters
+                        self._preview_inflight[full_key] = []
+            if wait_event:
+                # Block until original finishes or timeout
+                wait_event.wait(timeout=30)
+                with self._preview_proc_lock:
+                    cached = self._preview_result_cache.get(full_key)
+                if cached and cached.get('status') == 'success':
+                    import base64
+                    return {
+                        'status': 'success',
+                        'message': 'Frame preview (deduped)',
+                        'base64_image': base64.b64encode(cached['image_bytes']).decode('utf-8'),  # type: ignore[index]
+                        'mime_type': cached.get('mime', 'image/jpeg'),
+                        'timestamp': timestamp,
+                        'resolution_scale': resolution_scale,
+                        'deduped': True,
+                    }
+                # Fall through to recompute (original may have failed)
+
             # Helper: ensure cached naked frame (scaled/padded, no color filters)
             def ensure_cached_frame() -> Optional[bytes]:
                 cache_key_path = str(video_path)
@@ -1136,15 +1196,34 @@ class ClipperGUI:
                 base_cmd.append('pipe:1')
 
                 self.logger.debug(f"FFmpeg (cache base) command: {' '.join(base_cmd)}")
-                result = subprocess.run(base_cmd, capture_output=True, timeout=30, check=False)
-                if result.returncode != 0 or not result.stdout:
+                # Hard-cancel previous preview extraction if still running
+                with self._preview_proc_lock:
+                    if self._active_preview_proc and self._active_preview_proc.poll() is None:
+                        self.logger.debug("Terminating previous preview ffmpeg process")
+                        with contextlib.suppress(Exception):
+                            self._active_preview_proc.terminate()
+                        try:
+                            self._active_preview_proc.wait(timeout=0.5)
+                        except Exception:
+                            with contextlib.suppress(Exception):
+                                self._active_preview_proc.kill()
+                    proc = subprocess.Popen(base_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self._active_preview_proc = proc
+
+                stdout, stderr = proc.communicate(timeout=30)
+                if proc.returncode != 0 or not stdout:
                     self.logger.error("Failed to generate base frame for cache")
-                    if result.stderr:
-                        self.logger.error(result.stderr.decode(errors='ignore'))
+                    if stderr:
+                        self.logger.error(stderr.decode(errors='ignore'))
                     return None
 
-                self._store_cached_frame(cache_key_path, normalized_ts, resolution_scale, result.stdout)
-                return result.stdout
+                # Store cache only if this request is still current (avoid race overwriting newer)
+                with self._preview_proc_lock:
+                    # Always store; latest call already killed any older proc
+                    self._store_cached_frame(cache_key_path, normalized_ts, resolution_scale, stdout)
+                    if self._active_preview_proc is proc:
+                        self._active_preview_proc = None
+                return stdout
 
             # If no color grading (or preview disabled on frontend), just return cached naked frame
             if not color_grading:
@@ -1155,8 +1234,7 @@ class ClipperGUI:
                         'message': 'Failed to generate base frame for preview',
                     }
                 image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                self.logger.info(f"Frame preview generated from cache (base64, {len(image_base64)} chars)")
-                return {
+                result_obj = {
                     'status': 'success',
                     'message': 'Frame preview generated',
                     'base64_image': image_base64,
@@ -1164,6 +1242,17 @@ class ClipperGUI:
                     'timestamp': timestamp,
                     'resolution_scale': resolution_scale,
                 }
+                with self._preview_proc_lock:
+                    self._preview_result_cache[full_key] = {
+                        'status': 'success',
+                        'image_bytes': image_bytes,
+                        'mime': 'image/jpeg',
+                    }
+                    # Release waiters
+                    waiters = self._preview_inflight.pop(full_key, [])
+                    for ev in waiters:
+                        ev.set()
+                return result_obj
 
             # With color grading: reuse cached base frame and apply filters only
             base_frame = ensure_cached_frame()
@@ -1189,19 +1278,26 @@ class ClipperGUI:
             ]
 
             self.logger.debug(f"FFmpeg (apply filters) command: {' '.join(filter_cmd)}")
-            result = subprocess.run(filter_cmd, input=base_frame, capture_output=True, timeout=30, check=False)
-            if result.returncode != 0 or not result.stdout:
+            # Apply filters (pure CPU, fast) - run as subprocess (no caching needed)
+            result2 = subprocess.run(filter_cmd, input=base_frame, capture_output=True, timeout=30, check=False)
+            if result2.returncode != 0 or not result2.stdout:
                 self.logger.error("FFmpeg filter application failed")
-                if result.stderr:
-                    self.logger.error(result.stderr.decode(errors='ignore'))
-                return {
+                if result2.stderr:
+                    self.logger.error(result2.stderr.decode(errors='ignore'))
+                err_obj = {
                     'status': 'error',
                     'message': 'Failed to apply color grading to cached frame',
                 }
+                with self._preview_proc_lock:
+                    # Release waiters with failure
+                    waiters = self._preview_inflight.pop(full_key, [])
+                    for ev in waiters:
+                        ev.set()
+                return err_obj
 
-            image_base64 = base64.b64encode(result.stdout).decode('utf-8')
+            image_base64 = base64.b64encode(result2.stdout).decode('utf-8')
             self.logger.info(f"Frame preview generated successfully (base64, {len(image_base64)} chars)")
-            return {
+            success_obj = {
                 'status': 'success',
                 'message': 'Frame preview generated',
                 'base64_image': image_base64,
@@ -1209,6 +1305,16 @@ class ClipperGUI:
                 'timestamp': timestamp,
                 'resolution_scale': resolution_scale,
             }
+            with self._preview_proc_lock:
+                self._preview_result_cache[full_key] = {
+                    'status': 'success',
+                    'image_bytes': result2.stdout,
+                    'mime': 'image/jpeg',
+                }
+                waiters = self._preview_inflight.pop(full_key, [])
+                for ev in waiters:
+                    ev.set()
+            return success_obj
 
         except subprocess.TimeoutExpired:
             return {
@@ -1221,6 +1327,28 @@ class ClipperGUI:
                 'status': 'error',
                 'message': f'Failed to generate frame preview: {e!s}',
             }
+
+    def cancel_frame_preview(self, request_id: Optional[str] = None) -> Dict[str, Any]:
+        """Cancel the active frame preview ffmpeg process.
+
+        request_id parameter is deprecated and ignored.
+        """
+        with self._preview_proc_lock:
+            proc = self._active_preview_proc
+            if not proc or proc.poll() is not None:
+                return {'status': 'success', 'message': 'No active preview process'}
+            try:
+                self.logger.debug('Canceling active preview process')
+                proc.terminate()
+                try:
+                    proc.wait(timeout=0.5)
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        proc.kill()
+                self._active_preview_proc = None
+                return {'status': 'success', 'message': 'Preview process canceled'}
+            except Exception as e:
+                return {'status': 'error', 'message': f'Failed to cancel preview: {e!s}'}
 
     def get_direct_video_url(self, page_url: str) -> Dict[str, Any]:
         """Resolve a direct media URL using yt-dlp based on GUI settings.

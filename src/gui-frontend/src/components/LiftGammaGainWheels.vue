@@ -89,54 +89,92 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { RefreshLeft } from '@element-plus/icons-vue'
 import ColorWheel from './common/ColorWheel.vue'
 import { buildLggFilterFromWheels } from '@/utils/lgg'
+import type { LggWheelState } from '@/types/colorGrading'
 
 interface Emits {
-  (e: 'advanced-filter-changed', filter: string): void
+  (e: 'wheel-state-changed', state: LggWheelState, filter: string): void
 }
+
+interface Props {
+  wheelState: LggWheelState
+}
+
+const props = defineProps<Props>()
 
 const emit = defineEmits<Emits>()
 
-// State
-const liftHex = ref('#ffffff')
-const midHex = ref('#ffffff')
-const gainHex = ref('#ffffff')
-// Wheel radial (sat) captured from drag; Amount is the user intensity (0..1)
-const liftSat = ref(0)
-const midSat = ref(0)
-const gainSat = ref(0)
-// Slider midpoint (0.5) is neutral (no change), 0 darkens/lowers, 1 brightens/boosts
-const liftAmount = ref(0.5)
-const midAmount = ref(0.5)
-const gainAmount = ref(0.5)
-const globalGamma = ref(1)
+// Local refs bound to prop (decoupled so we can debounce & emit consolidated state)
+const liftHex = ref(props.wheelState.lift.hex)
+const midHex = ref(props.wheelState.mid.hex)
+const gainHex = ref(props.wheelState.gain.hex)
+const liftSat = ref(props.wheelState.lift.sat)
+const midSat = ref(props.wheelState.mid.sat)
+const gainSat = ref(props.wheelState.gain.sat)
+const liftAmount = ref(props.wheelState.lift.amount)
+const midAmount = ref(props.wheelState.mid.amount)
+const gainAmount = ref(props.wheelState.gain.amount)
+const globalGamma = ref(props.wheelState.globalGamma)
 const wheelSize = 140
 
+function buildState(): LggWheelState {
+  return {
+    lift: { hex: liftHex.value, sat: liftSat.value, amount: liftAmount.value },
+    mid: { hex: midHex.value, sat: midSat.value, amount: midAmount.value },
+    gain: { hex: gainHex.value, sat: gainSat.value, amount: gainAmount.value },
+    globalGamma: globalGamma.value,
+  }
+}
 function computeFilter(): string {
-  const f = buildLggFilterFromWheels(
+  return buildLggFilterFromWheels(
     {
-  lift: { hex: liftHex.value, strength: liftSat.value, neutral: liftAmount.value },
-  mid: { hex: midHex.value, strength: midSat.value, neutral: midAmount.value },
-  gain: { hex: gainHex.value, strength: gainSat.value, neutral: gainAmount.value }
+      lift: { hex: liftHex.value, strength: liftSat.value, neutral: liftAmount.value },
+      mid: { hex: midHex.value, strength: midSat.value, neutral: midAmount.value },
+      gain: { hex: gainHex.value, strength: gainSat.value, neutral: gainAmount.value }
     },
     globalGamma.value
   )
-  return f
 }
-
 function emitChange() {
-  emit('advanced-filter-changed', computeFilter())
+  if (import.meta.env.DEV) console.log('[LGGWheels] commit emitChange')
+  emit('wheel-state-changed', buildState(), computeFilter())
 }
 
-onMounted(() => emitChange())
+// Sync when parent prop changes (e.g., clip switch, paste state)
+watch(() => props.wheelState, (ns) => {
+  if (!ns) return
+  // Equality guard to prevent redundant reactivity churn
+  const same =
+    liftHex.value.toLowerCase() === ns.lift.hex.toLowerCase() &&
+    midHex.value.toLowerCase() === ns.mid.hex.toLowerCase() &&
+    gainHex.value.toLowerCase() === ns.gain.hex.toLowerCase() &&
+    liftSat.value === ns.lift.sat &&
+    midSat.value === ns.mid.sat &&
+    gainSat.value === ns.gain.sat &&
+    liftAmount.value === ns.lift.amount &&
+    midAmount.value === ns.mid.amount &&
+    gainAmount.value === ns.gain.amount &&
+    globalGamma.value === ns.globalGamma
+  if (same) return
+  liftHex.value = ns.lift.hex
+  midHex.value = ns.mid.hex
+  gainHex.value = ns.gain.hex
+  liftSat.value = ns.lift.sat
+  midSat.value = ns.mid.sat
+  gainSat.value = ns.gain.sat
+  liftAmount.value = ns.lift.amount
+  midAmount.value = ns.mid.amount
+  gainAmount.value = ns.gain.amount
+  globalGamma.value = ns.globalGamma
+  // Do NOT emit here; this is a parent-driven sync.
+}, { deep: true })
 
-// Recompute any time a value changes (v-model or slider)
-watch([liftHex, midHex, gainHex, liftSat, midSat, gainSat, liftAmount, midAmount, gainAmount, globalGamma], () => {
-  emitChange()
-})
+// No initial emit; parent will decide when to emit a filter change
+
+// Removed external filter parsing; state is source of truth now.
 
 function resetLift() {
   liftHex.value = '#ffffff'
