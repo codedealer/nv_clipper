@@ -369,6 +369,21 @@
               />
               <el-text class="setting-help" type="info">Show system notification when done</el-text>
             </el-form-item>
+            <el-form-item label="Projection Gain">
+              <el-slider
+                :model-value="props.settings?.lgg_projection_gain ?? 1.5"
+                :min="0.5"
+                :max="2.0"
+                :step="0.01"
+                style="width: 280px;"
+                @change="(value:number) => handleNumberChange('lgg_projection_gain', value)"
+                show-input
+                input-size="small"
+              />
+              <el-text class="setting-help" type="info">
+                Intensity multiplier for LGG color wheel hue projection. Lower = gentler isolation; higher = stronger channel separation.
+              </el-text>
+            </el-form-item>
           </el-form>
         </div>
       </el-tab-pane>
