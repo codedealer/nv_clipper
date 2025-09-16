@@ -72,16 +72,16 @@ function hexToHueDeg(hex: string): number {
 // (RGB-based mapping variant intentionally removed; using angle-based projection)
 
 // Angle-based mapping: aligned axis remains neutral (base), complementary axes reduce.
-// w_c = clamp(base - GAIN * amount * ((1 - cos(delta))/2), 0, 1)
-const PROJECTION_GAIN = 1.5
-function wheelAngleToW(angleDeg: number, amount: number, base: number): { wr: number; wg: number; wb: number } {
+// w_c = clamp(base - projectionGain * amount * ((1 - cos(delta))/2), 0, 1)
+function wheelAngleToW(angleDeg: number, amount: number, base: number, projectionGain: number): { wr: number; wg: number; wb: number } {
   const rad = Math.PI / 180
   const a = clamp(amount, 0, 1)
   const b = clamp(base, 0, 1)
   const del = (ax: number) => (1 - Math.cos((angleDeg - ax) * rad)) / 2 // 0..1
-  const wr = clamp(b - PROJECTION_GAIN * a * del(0), 0, 1)
-  const wg = clamp(b - PROJECTION_GAIN * a * del(120), 0, 1)
-  const wb = clamp(b - PROJECTION_GAIN * a * del(240), 0, 1)
+  const pg = clamp(projectionGain, 0.01, 10) // safety clamp
+  const wr = clamp(b - pg * a * del(0), 0, 1)
+  const wg = clamp(b - pg * a * del(120), 0, 1)
+  const wb = clamp(b - pg * a * del(240), 0, 1)
   return { wr, wg, wb }
 }
 
@@ -92,7 +92,7 @@ function scaleWheelToValueV1(w: number): number {
   return w * 2
 }
 
-export function lggParamsFromWheels(input: LGGFromWheelsInput): LGGParams {
+export function lggParamsFromWheels(input: LGGFromWheelsInput, projectionGain = 1.5): LGGParams {
   // Map color wheel + amount to per-channel parameters using Shotcut V1 semantics
   const liftHue = hexToHueDeg(input.lift.hex)
   const midHue = hexToHueDeg(input.mid.hex)
@@ -105,9 +105,9 @@ export function lggParamsFromWheels(input: LGGFromWheelsInput): LGGParams {
   const mn = input.mid.neutral !== undefined ? clamp(input.mid.neutral, 0, 1) : 0.5
   const hn = input.gain.neutral !== undefined ? clamp(input.gain.neutral, 0, 1) : 0.5
 
-  const lw = wheelAngleToW(liftHue, la, ln)
-  const mw = wheelAngleToW(midHue, ma, mn)
-  const hw = wheelAngleToW(hiHue, ha, hn)
+  const lw = wheelAngleToW(liftHue, la, ln, projectionGain)
+  const mw = wheelAngleToW(midHue, ma, mn, projectionGain)
+  const hw = wheelAngleToW(hiHue, ha, hn, projectionGain)
 
   // Lift per channel in [-1, 1] -> Shotcut uses liftwheel.channelF * 2 - 1
   const rlift = +(lw.wr * 2 - 1).toFixed(6)
@@ -151,8 +151,8 @@ export function buildLutrgbFromParams(p: LGGParams): string {
   return `lutrgb=r=${r}:g=${g}:b=${b}`
 }
 
-export function buildLggFilterFromWheels(input: LGGFromWheelsInput, globalGamma?: number): string {
-  const params = lggParamsFromWheels(input)
+export function buildLggFilterFromWheels(input: LGGFromWheelsInput, globalGamma?: number, projectionGain = 1.5): string {
+  const params = lggParamsFromWheels(input, projectionGain)
   const isLiftNeutral = Math.abs(params.rlift) < 1e-6 && Math.abs(params.glift) < 1e-6 && Math.abs(params.blift) < 1e-6
   const isGammaNeutral = Math.abs(params.rgamma - 1) < 1e-6 && Math.abs(params.ggamma - 1) < 1e-6 && Math.abs(params.bgamma - 1) < 1e-6
   const isGainNeutral = Math.abs(params.rgain - 1) < 1e-6 && Math.abs(params.ggain - 1) < 1e-6 && Math.abs(params.bgain - 1) < 1e-6

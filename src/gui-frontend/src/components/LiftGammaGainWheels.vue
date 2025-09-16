@@ -82,6 +82,18 @@
     </div>
 
     <div class="control-group">
+      <div class="control-label">Projection Gain</div>
+      <el-slider
+        v-model="projectionGainLocal"
+        :min="0.5"
+        :max="2.0"
+        :step="0.01"
+        @change="onProjectionGainCommit"
+        show-input
+        input-size="small"
+      />
+    </div>
+    <div class="control-group">
       <div class="control-label">Global Gamma</div>
       <el-slider v-model="globalGamma" :min="0.1" :max="3" :step="0.01" @change="emitChange" show-input input-size="small" />
     </div>
@@ -94,6 +106,7 @@ import { RefreshLeft } from '@element-plus/icons-vue'
 import ColorWheel from './common/ColorWheel.vue'
 import { buildLggFilterFromWheels } from '@/utils/lgg'
 import type { LggWheelState } from '@/types/colorGrading'
+import { useSettingsStore } from '@/stores/settings'
 
 interface Emits {
   (e: 'wheel-state-changed', state: LggWheelState, filter: string): void
@@ -118,6 +131,9 @@ const liftAmount = ref(props.wheelState.lift.amount)
 const midAmount = ref(props.wheelState.mid.amount)
 const gainAmount = ref(props.wheelState.gain.amount)
 const globalGamma = ref(props.wheelState.globalGamma)
+// Projection gain comes from settings (persisted). Keep a local ref for immediate UI responsiveness.
+const settingsStore = useSettingsStore()
+const projectionGainLocal = ref(settingsStore.generalSettings?.lgg_projection_gain ?? 1.5)
 const wheelSize = 140
 
 function buildState(): LggWheelState {
@@ -135,7 +151,8 @@ function computeFilter(): string {
       mid: { hex: midHex.value, strength: midSat.value, neutral: midAmount.value },
       gain: { hex: gainHex.value, strength: gainSat.value, neutral: gainAmount.value }
     },
-    globalGamma.value
+    globalGamma.value,
+    projectionGainLocal.value
   )
 }
 function emitChange() {
@@ -200,6 +217,18 @@ function onVectorMid(payload: { hex: string; sat: number }) {
 }
 function onVectorGain(payload: { hex: string; sat: number }) {
   gainSat.value = payload.sat
+}
+
+async function onProjectionGainCommit() {
+  // Persist to backend settings then emit change to rebuild filter
+  try {
+    if (settingsStore.generalSettings) {
+      await settingsStore.updateGeneralSettings({ lgg_projection_gain: projectionGainLocal.value })
+    }
+  } catch (e) {
+    console.error('Failed updating projection gain setting', e)
+  }
+  emitChange()
 }
 </script>
 

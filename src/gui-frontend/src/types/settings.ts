@@ -52,6 +52,9 @@ export interface GeneralSettings {
   // === CACHE OPTIONS ===
   cache_folder_path: string
   cache_max_size_mb: number // 0 = unlimited
+
+  // === COLOR GRADING / UI TUNING ===
+  lgg_projection_gain: number
 }
 
 export interface VideoSpecificSettings {

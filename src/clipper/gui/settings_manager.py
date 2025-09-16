@@ -66,6 +66,10 @@ class GeneralSettings:
     cache_folder_path: str = ""
     cache_max_size_mb: int = 5000
 
+    # === COLOR GRADING / UI TUNING ===
+    # Multiplier applied to LGG color wheel hue projection (was hardcoded 1.5)
+    lgg_projection_gain: float = 1.5
+
     # === WINDOW OPTIONS ===
     window_width: int = 1000  # Default window width
     window_height: int = 800  # Default window height

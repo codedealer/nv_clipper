@@ -239,6 +239,29 @@ Settings flow through the system in this order:
 ### Testing
 After adding a setting:
 1. Test CLI usage: `python -m clipper.yt_clipper --your-setting 50 markup.json`
+2. For GUI-only tuning parameters (no CLI args) like `lgg_projection_gain` (an intensity multiplier for Lift/Gamma/Gain color wheel hue projection), ensure:
+   - Added to schema with empty `cli_args` list so it persists
+   - Added to `GeneralSettings` dataclass (`lgg_projection_gain: float = 1.5`)
+   - Consumed in frontend logic (e.g., passed into `buildLggFilterFromWheels`)
+   - UI control updates backend via `update_general_settings` API
+
+Example schema entry (general section):
+```python
+"lgg_projection_gain": {
+  "type": "number",
+  "description": "Intensity multiplier for Lift/Gamma/Gain color wheel hue projection (0.5-2.0)",
+  "min": 0.5,
+  "max": 2.0,
+  "default": 1.5,
+  "cli_args": [],
+},
+```
+
+Frontend usage snippet:
+```ts
+const projectionGain = settingsStore.generalSettings?.lgg_projection_gain ?? 1.5
+buildLggFilterFromWheels(wheelsInput, globalGamma, projectionGain)
+```
 2. Test GUI usage: Verify setting appears in Settings Panel and persists when saved
 3. Test processing: Ensure setting affects video output as expected
 4. Test validation: Verify min/max ranges work in both CLI and GUI
