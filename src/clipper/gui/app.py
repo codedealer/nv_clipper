@@ -142,6 +142,163 @@ class ClipperGUI:
             'image_bytes': None,
         })
 
+    # --------- New helper methods to simplify generate_frame_preview (reduce branching) ---------
+    def _validate_preview_inputs(self, video_path: str, timestamp: float, resolution_scale: float,
+                                 color_grading: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Validate basic preview inputs. Return error dict if invalid, else None."""
+        is_http = str(video_path).startswith(('http://', 'https://'))
+        if not is_http:
+            video_file = Path(video_path)
+            if not video_file.exists():
+                return {'status': 'error', 'message': f'Video file not found: {video_path}'}
+        if timestamp < 0:
+            return {'status': 'error', 'message': 'Timestamp must be non-negative'}
+        if resolution_scale not in [0.1, 0.25, 0.5, 1.0]:
+            return {'status': 'error', 'message': 'Resolution scale must be 0.1, 0.25, 0.5, or 1.0'}
+        if color_grading:
+            from clipper.ffmpeg_filter import _validate_color_grading_filter
+            if not _validate_color_grading_filter(color_grading):
+                return {'status': 'error', 'message': 'Invalid color grading filter string'}
+        return None
+
+    def _get_cached_preview(self, full_key: str, timestamp: float, resolution_scale: float) -> Optional[Dict[str, Any]]:
+        """Return cached preview result (already base64 encoded) if available."""
+        with self._preview_proc_lock:
+            cached = self._preview_result_cache.get(full_key)
+            if cached and cached.get('status') == 'success':
+                image_bytes_cached = cached.get('image_bytes')
+                if isinstance(image_bytes_cached, (bytes, bytearray)):
+                    import base64
+                    return {
+                        'status': 'success',
+                        'message': 'Frame preview (cached)',
+                        'base64_image': base64.b64encode(image_bytes_cached).decode('utf-8'),
+                        'mime_type': cached.get('mime', 'image/jpeg'),
+                        'timestamp': timestamp,
+                        'resolution_scale': resolution_scale,
+                        'cached': True,
+                    }
+        return None
+
+    def _register_inflight_or_wait(self, full_key: str) -> Optional[threading.Event]:
+        """Register request as in-flight or attach as waiter. Returns wait_event if should wait."""
+        wait_event: Optional[threading.Event] = None
+        if full_key not in self._preview_result_cache:
+            with self._preview_proc_lock:
+                if full_key in self._preview_inflight:
+                    wait_event = threading.Event()
+                    self._preview_inflight[full_key].append(wait_event)
+                else:
+                    self._preview_inflight[full_key] = []  # This caller becomes producer
+        return wait_event
+
+    def _wait_for_inflight(self, full_key: str, wait_event: threading.Event, timestamp: float,
+                            resolution_scale: float) -> Optional[Dict[str, Any]]:
+        """Wait for existing in-flight result and return standardized response if success."""
+        wait_event.wait(timeout=30)
+        with self._preview_proc_lock:
+            cached = self._preview_result_cache.get(full_key)
+        if cached and cached.get('status') == 'success':
+            import base64
+            return {
+                'status': 'success',
+                'message': 'Frame preview (deduped)',
+                'base64_image': base64.b64encode(cached['image_bytes']).decode('utf-8'),  # type: ignore[index]
+                'mime_type': cached.get('mime', 'image/jpeg'),
+                'timestamp': timestamp,
+                'resolution_scale': resolution_scale,
+                'deduped': True,
+            }
+        return None
+
+    def _ensure_base_frame(self, video_path: str, normalized_ts: float, resolution_scale: float) -> Optional[bytes]:
+        """Ensure a cached base frame exists (no color grading). Return bytes or None."""
+        cache_key_path = str(video_path)
+        if self._cache_matches(cache_key_path, normalized_ts, resolution_scale):
+            self.logger.debug("Using cached base frame for preview")
+            return self._preview_frame_cache.get('image_bytes')
+
+        base_cmd = [
+            'ffmpeg', '-ss', str(normalized_ts), '-i', str(video_path),
+            '-vframes', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-pix_fmt', 'yuvj420p', '-q:v', '2',
+        ]
+        vf_parts = []
+        if resolution_scale != 1.0:
+            vf_parts.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}:force_original_aspect_ratio=decrease')
+            vf_parts.append('pad=ceil(iw/2)*2:ceil(ih/2)*2:(ow-iw)/2:(oh-ih)/2:color=black')
+        if vf_parts:
+            base_cmd.extend(['-vf', ','.join(vf_parts)])
+        base_cmd.append('pipe:1')
+
+        self.logger.debug(f"FFmpeg (cache base) command: {' '.join(base_cmd)}")
+        with self._preview_proc_lock:
+            if self._active_preview_proc and self._active_preview_proc.poll() is None:
+                self.logger.debug("Terminating previous preview ffmpeg process")
+                with contextlib.suppress(Exception):
+                    self._active_preview_proc.terminate()
+                try:
+                    self._active_preview_proc.wait(timeout=0.5)
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        self._active_preview_proc.kill()
+            proc = subprocess.Popen(base_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self._active_preview_proc = proc
+
+        try:
+            stdout, stderr = proc.communicate(timeout=30)
+        except Exception:
+            with contextlib.suppress(Exception):
+                proc.kill()
+            return None
+        if proc.returncode != 0 or not stdout:
+            self.logger.error("Failed to generate base frame for cache")
+            if stderr:
+                self.logger.error(stderr.decode(errors='ignore'))
+            return None
+        with self._preview_proc_lock:
+            self._store_cached_frame(cache_key_path, normalized_ts, resolution_scale, stdout)
+            if self._active_preview_proc is proc:
+                self._active_preview_proc = None
+        return stdout
+
+    def _apply_color_grading_filters(self, base_frame: bytes, color_grading: str) -> Optional[bytes]:
+        """Apply ffmpeg color grading filters to a base JPEG frame."""
+        filter_cmd = [
+            'ffmpeg', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-i', 'pipe:0',
+            '-vframes', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-pix_fmt', 'yuvj420p', '-q:v', '2',
+            '-vf', color_grading, 'pipe:1',
+        ]
+        self.logger.debug(f"FFmpeg (apply filters) command: {' '.join(filter_cmd)}")
+        result2 = subprocess.run(filter_cmd, input=base_frame, capture_output=True, timeout=30, check=False)
+        if result2.returncode != 0 or not result2.stdout:
+            self.logger.error("FFmpeg filter application failed")
+            if result2.stderr:
+                self.logger.error(result2.stderr.decode(errors='ignore'))
+            return None
+        return result2.stdout
+
+    # Finalization helpers to reduce branching in main preview method
+    def _finalize_preview_success(self, full_key: str, image_bytes: bytes, timestamp: float, resolution_scale: float) -> Dict[str, Any]:
+        import base64
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        success_obj = {
+            'status': 'success', 'message': 'Frame preview generated', 'base64_image': image_base64,
+            'mime_type': 'image/jpeg', 'timestamp': timestamp, 'resolution_scale': resolution_scale,
+        }
+        with self._preview_proc_lock:
+            self._preview_result_cache[full_key] = {'status': 'success', 'image_bytes': image_bytes, 'mime': 'image/jpeg'}
+            waiters = self._preview_inflight.pop(full_key, [])
+            for ev in waiters:
+                ev.set()
+        return success_obj
+
+    def _finalize_preview_failure(self, full_key: str, message: str) -> Dict[str, Any]:
+        with self._preview_proc_lock:
+            waiters = self._preview_inflight.pop(full_key, [])
+            for ev in waiters:
+                ev.set()
+        return {'status': 'error', 'message': message}
+
     def _update_cache_manager_settings(self) -> None:
         """Update cache manager with current settings."""
         try:
@@ -1066,9 +1223,9 @@ class ClipperGUI:
             }
 
     def generate_frame_preview(self, video_path: str, timestamp: float,
-                             color_grading: Optional[str] = None,
-                             resolution_scale: float = 1.0,
-                             request_id: Optional[str] = None) -> Dict[str, Any]:
+                               color_grading: Optional[str] = None,
+                               resolution_scale: float = 1.0,
+                               request_id: Optional[str] = None) -> Dict[str, Any]:
         """Generate a frame preview with optional color grading filters.
 
         Args:
@@ -1082,251 +1239,47 @@ class ClipperGUI:
             Dict with status, message, and base64_image for success
         """
         try:
-            import base64
-
-            # request_id kept for backward compatibility; no longer used for control flow
             self.logger.info(f"Generating frame preview for {video_path} at {timestamp}s")
 
-            # Validate inputs: support local files and direct HTTP(S) URLs
-            is_http = str(video_path).startswith(('http://', 'https://'))
-            video_file = Path(video_path) if not is_http else None
-            if not is_http and (not video_file or not video_file.exists()):
-                return {
-                    'status': 'error',
-                    'message': f'Video file not found: {video_path}',
-                }
-
-            if timestamp < 0:
-                return {
-                    'status': 'error',
-                    'message': 'Timestamp must be non-negative',
-                }
-
-            if resolution_scale not in [0.1, 0.25, 0.5, 1.0]:
-                return {
-                    'status': 'error',
-                    'message': 'Resolution scale must be 0.1, 0.25, 0.5, or 1.0',
-                }
+            # Basic validation
+            err = self._validate_preview_inputs(video_path, timestamp, resolution_scale, color_grading)
+            if err:
+                return err
 
             normalized_ts = self._norm_ts(timestamp)
+            key_base = f"{video_path}|{normalized_ts}|{resolution_scale}"
+            full_key = f"{key_base}|{color_grading or 'base'}"
 
-            # Validate color grading string early (if provided)
-            if color_grading:
-                from clipper.ffmpeg_filter import _validate_color_grading_filter
-                if not _validate_color_grading_filter(color_grading):
-                    return {
-                        'status': 'error',
-                        'message': 'Invalid color grading filter string',
-                    }
+            # Fast cached lookup
+            cached = self._get_cached_preview(full_key, timestamp, resolution_scale)
+            if cached:
+                return cached
 
-            # Compose a normalized key (milliseconds precision)
-            key_base = f"{video_path}|{self._norm_ts(timestamp)}|{resolution_scale}"
-            filter_key = color_grading or 'base'
-            full_key = f"{key_base}|{filter_key}"
+            # Dedup logic (may return or proceed)
+            wait_event = self._register_inflight_or_wait(full_key)
+            if wait_event and (deduped := self._wait_for_inflight(full_key, wait_event, timestamp, resolution_scale)):
+                return deduped
 
-            # Fast path: return completed cached result (color graded or base)
-            with self._preview_proc_lock:
-                cached = self._preview_result_cache.get(full_key)
-                if cached and cached.get('status') == 'success':
-                    image_bytes_cached = cached.get('image_bytes')
-                    if isinstance(image_bytes_cached, (bytes, bytearray)):
-                        import base64
-                        return {
-                            'status': 'success',
-                            'message': 'Frame preview (cached)',
-                            'base64_image': base64.b64encode(image_bytes_cached).decode('utf-8'),
-                            'mime_type': cached.get('mime', 'image/jpeg'),
-                            'timestamp': timestamp,
-                            'resolution_scale': resolution_scale,
-                            'cached': True,
-                        }
-
-            # If an identical request is already in-flight, wait for it instead of spawning another
-            wait_event: Optional[threading.Event] = None
-            if full_key not in self._preview_result_cache:
-                with self._preview_proc_lock:
-                    if full_key in self._preview_inflight:
-                        wait_event = threading.Event()
-                        self._preview_inflight[full_key].append(wait_event)
-                    else:
-                        # Mark in-flight with list of waiters
-                        self._preview_inflight[full_key] = []
-            if wait_event:
-                # Block until original finishes or timeout
-                wait_event.wait(timeout=30)
-                with self._preview_proc_lock:
-                    cached = self._preview_result_cache.get(full_key)
-                if cached and cached.get('status') == 'success':
-                    import base64
-                    return {
-                        'status': 'success',
-                        'message': 'Frame preview (deduped)',
-                        'base64_image': base64.b64encode(cached['image_bytes']).decode('utf-8'),  # type: ignore[index]
-                        'mime_type': cached.get('mime', 'image/jpeg'),
-                        'timestamp': timestamp,
-                        'resolution_scale': resolution_scale,
-                        'deduped': True,
-                    }
-                # Fall through to recompute (original may have failed)
-
-            # Helper: ensure cached naked frame (scaled/padded, no color filters)
-            def ensure_cached_frame() -> Optional[bytes]:
-                cache_key_path = str(video_path)
-                if self._cache_matches(cache_key_path, normalized_ts, resolution_scale):
-                    self.logger.debug("Using cached base frame for preview")
-                    return self._preview_frame_cache.get('image_bytes')
-
-                # Build command to extract a single JPEG frame with scale/pad only
-                base_cmd = [
-                    'ffmpeg',
-                    '-ss', str(normalized_ts),
-                    '-i', str(video_path),
-                    '-vframes', '1',
-                    '-f', 'image2pipe',
-                    '-vcodec', 'mjpeg',
-                    '-pix_fmt', 'yuvj420p',
-                    '-q:v', '2',
-                ]
-                vf_parts = []
-                if resolution_scale != 1.0:
-                    vf_parts.append(f'scale=iw*{resolution_scale}:ih*{resolution_scale}:force_original_aspect_ratio=decrease')
-                    vf_parts.append('pad=ceil(iw/2)*2:ceil(ih/2)*2:(ow-iw)/2:(oh-ih)/2:color=black')
-                if vf_parts:
-                    base_cmd.extend(['-vf', ','.join(vf_parts)])
-                base_cmd.append('pipe:1')
-
-                self.logger.debug(f"FFmpeg (cache base) command: {' '.join(base_cmd)}")
-                # Hard-cancel previous preview extraction if still running
-                with self._preview_proc_lock:
-                    if self._active_preview_proc and self._active_preview_proc.poll() is None:
-                        self.logger.debug("Terminating previous preview ffmpeg process")
-                        with contextlib.suppress(Exception):
-                            self._active_preview_proc.terminate()
-                        try:
-                            self._active_preview_proc.wait(timeout=0.5)
-                        except Exception:
-                            with contextlib.suppress(Exception):
-                                self._active_preview_proc.kill()
-                    proc = subprocess.Popen(base_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    self._active_preview_proc = proc
-
-                stdout, stderr = proc.communicate(timeout=30)
-                if proc.returncode != 0 or not stdout:
-                    self.logger.error("Failed to generate base frame for cache")
-                    if stderr:
-                        self.logger.error(stderr.decode(errors='ignore'))
-                    return None
-
-                # Store cache only if this request is still current (avoid race overwriting newer)
-                with self._preview_proc_lock:
-                    # Always store; latest call already killed any older proc
-                    self._store_cached_frame(cache_key_path, normalized_ts, resolution_scale, stdout)
-                    if self._active_preview_proc is proc:
-                        self._active_preview_proc = None
-                return stdout
-
-            # If no color grading (or preview disabled on frontend), just return cached naked frame
-            if not color_grading:
-                image_bytes = ensure_cached_frame()
-                if not image_bytes:
-                    return {
-                        'status': 'error',
-                        'message': 'Failed to generate base frame for preview',
-                    }
-                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                result_obj = {
-                    'status': 'success',
-                    'message': 'Frame preview generated',
-                    'base64_image': image_base64,
-                    'mime_type': 'image/jpeg',
-                    'timestamp': timestamp,
-                    'resolution_scale': resolution_scale,
-                }
-                with self._preview_proc_lock:
-                    self._preview_result_cache[full_key] = {
-                        'status': 'success',
-                        'image_bytes': image_bytes,
-                        'mime': 'image/jpeg',
-                    }
-                    # Release waiters
-                    waiters = self._preview_inflight.pop(full_key, [])
-                    for ev in waiters:
-                        ev.set()
-                return result_obj
-
-            # With color grading: reuse cached base frame and apply filters only
-            base_frame = ensure_cached_frame()
+            # Obtain base frame (cached or freshly extracted)
+            base_frame = self._ensure_base_frame(video_path, normalized_ts, resolution_scale)
             if not base_frame:
-                return {
-                    'status': 'error',
-                    'message': 'Failed to generate base frame for preview with filters',
-                }
+                return self._finalize_preview_failure(full_key, 'Failed to generate base frame for preview')
 
-            # Build ffmpeg to read JPEG from stdin, apply color filters, and output JPEG
-            filter_cmd = [
-                'ffmpeg',
-                '-f', 'image2pipe',
-                '-vcodec', 'mjpeg',
-                '-i', 'pipe:0',
-                '-vframes', '1',
-                '-f', 'image2pipe',
-                '-vcodec', 'mjpeg',
-                '-pix_fmt', 'yuvj420p',
-                '-q:v', '2',
-                '-vf', color_grading,
-                'pipe:1',
-            ]
+            # If no color grading requested
+            if not color_grading:
+                return self._finalize_preview_success(full_key, base_frame, timestamp, resolution_scale)
 
-            self.logger.debug(f"FFmpeg (apply filters) command: {' '.join(filter_cmd)}")
-            # Apply filters (pure CPU, fast) - run as subprocess (no caching needed)
-            result2 = subprocess.run(filter_cmd, input=base_frame, capture_output=True, timeout=30, check=False)
-            if result2.returncode != 0 or not result2.stdout:
-                self.logger.error("FFmpeg filter application failed")
-                if result2.stderr:
-                    self.logger.error(result2.stderr.decode(errors='ignore'))
-                err_obj = {
-                    'status': 'error',
-                    'message': 'Failed to apply color grading to cached frame',
-                }
-                with self._preview_proc_lock:
-                    # Release waiters with failure
-                    waiters = self._preview_inflight.pop(full_key, [])
-                    for ev in waiters:
-                        ev.set()
-                return err_obj
-
-            image_base64 = base64.b64encode(result2.stdout).decode('utf-8')
-            self.logger.info(f"Frame preview generated successfully (base64, {len(image_base64)} chars)")
-            success_obj = {
-                'status': 'success',
-                'message': 'Frame preview generated',
-                'base64_image': image_base64,
-                'mime_type': 'image/jpeg',
-                'timestamp': timestamp,
-                'resolution_scale': resolution_scale,
-            }
-            with self._preview_proc_lock:
-                self._preview_result_cache[full_key] = {
-                    'status': 'success',
-                    'image_bytes': result2.stdout,
-                    'mime': 'image/jpeg',
-                }
-                waiters = self._preview_inflight.pop(full_key, [])
-                for ev in waiters:
-                    ev.set()
-            return success_obj
+            # Apply color grading filters to cached base frame
+            graded_bytes = self._apply_color_grading_filters(base_frame, color_grading)
+            if not graded_bytes:
+                return self._finalize_preview_failure(full_key, 'Failed to apply color grading to cached frame')
+            return self._finalize_preview_success(full_key, graded_bytes, timestamp, resolution_scale)
 
         except subprocess.TimeoutExpired:
-            return {
-                'status': 'error',
-                'message': 'Frame extraction timed out',
-            }
+            return {'status': 'error', 'message': 'Frame extraction timed out'}
         except Exception as e:
             self.logger.error(f"Error generating frame preview: {e}", exc_info=True)
-            return {
-                'status': 'error',
-                'message': f'Failed to generate frame preview: {e!s}',
-            }
+            return {'status': 'error', 'message': f'Failed to generate frame preview: {e!s}'}
 
     def cancel_frame_preview(self, request_id: Optional[str] = None) -> Dict[str, Any]:
         """Cancel the active frame preview ffmpeg process.
