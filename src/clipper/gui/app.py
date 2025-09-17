@@ -861,6 +861,39 @@ class ClipperGUI:
                 'message': f'Failed to download video: {e!s}',
             }
 
+    def send_download_notification(self, info: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a system notification (best-effort) after a successful quick download.
+
+        Args:
+            info: Dict containing optional 'title' and 'video_id'/'url'.
+        Returns:
+            Dict with status indicating best-effort result.
+        """
+        try:
+            title = info.get('title') or 'Video'
+            # Lazy import so missing dependency doesn't break runtime
+            from clipper import util as _util  # type: ignore
+            if _util.is_module_available('notifypy'):
+                from notifypy import Notify  # type: ignore
+                n = Notify()
+                n.application_name = 'yt_clipper'
+                n.title = 'Download Complete'
+                n.message = f"{title} downloaded to cache."
+                try:
+                    n.send(block=False)
+                except Exception:
+                    # Fallback to util.notifyOnComplete style messaging if direct send fails
+                    import contextlib
+                    with contextlib.suppress(Exception):
+                        _util.notifyOnComplete(title)
+            else:
+                # Fallback silent success if notifications not available
+                self.logger.debug('notifypy not available; skipping download notification')
+            return {'status': 'success'}
+        except Exception as e:  # pragma: no cover - notification errors are non-critical
+            self.logger.warning(f"Failed to send download notification: {e}")
+            return {'status': 'error', 'message': str(e)}
+
     def get_download_progress(self, video_id: str) -> Dict[str, Any]:
         """Get download progress for a video"""
         try:

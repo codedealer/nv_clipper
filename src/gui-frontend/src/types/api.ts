@@ -195,6 +195,9 @@ declare global {
         purge_cache: (options: ApiCachePurgeOptions) => Promise<CacheApiResponse>
         update_video_access_time: (videoId: string) => Promise<CacheApiResponse>
 
+        // Notifications
+        send_download_notification: (info: { title?: string; video_id?: string; url?: string }) => Promise<{ status: 'success' | 'error'; message?: string }>
+
         // Drag and drop
         setup_drag_drop: () => Promise<{ status: string; message?: string }>
         get_current_files: () => Promise<{ status: string; files: string[]; count?: number }>

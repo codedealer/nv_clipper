@@ -8,7 +8,6 @@
         style="width: 300px;"
         clearable
         @keyup.enter="handleQuickDownload"
-        :loading="isQuickDownloading"
         :disabled="isQuickDownloading"
       >
         <template #append>
@@ -41,7 +40,8 @@ import { Download, Loading } from '@element-plus/icons-vue'
 import { useCacheStore } from '@/stores/cache'
 import { useClipperStore } from '@/stores/counter'
 import { useSettingsStore } from '@/stores/settings'
-import type { CachedVideo } from '@/types/cache'
+import { waitForPywebview } from '@/utils/api'
+import type { CachedVideo, CacheDownloadProgress } from '@/types/cache'
 
 // Stores
 const cacheStore = useCacheStore()
@@ -108,7 +108,8 @@ async function handleQuickDownload() {
   try {
     const result = await cacheStore.downloadVideo({
       url,
-      use_settings_format: false, // Use default format for quick download
+      // Respect GUI format settings like VideoUrlExtractor does
+      use_settings_format: true,
       auto_update: settingsStore.generalSettings?.ytdl_auto_update ?? true
     })
 
@@ -152,7 +153,7 @@ function selectVideo(video: CachedVideo) {
   }
 }
 
-function handleQuickDownloadComplete(progress: { title?: string; url?: string; [key: string]: unknown }) {
+function handleQuickDownloadComplete(progress: CacheDownloadProgress) {
   const videoTitle = progress.title || progress.url
   ElMessage.success({
     message: `Download completed: ${videoTitle}`,
@@ -188,7 +189,7 @@ function handleQuickDownloadComplete(progress: { title?: string; url?: string; [
   }
 }
 
-function handleQuickDownloadError(progress: { message?: string; [key: string]: unknown }) {
+function handleQuickDownloadError(progress: CacheDownloadProgress) {
   const errorMessage = progress.message || 'Download failed with unknown error'
   ElMessage.error({
     message: `Download failed: ${errorMessage}`,
@@ -201,12 +202,23 @@ function handleQuickDownloadError(progress: { message?: string; [key: string]: u
 }
 
 // Watch for download progress changes
-watch(currentQuickDownload, (newProgress) => {
+watch(currentQuickDownload, async (newProgress: CacheDownloadProgress | undefined | null) => {
   if (!newProgress) return
 
-  // Handle completion and error states
   if (newProgress.status === 'completed') {
     handleQuickDownloadComplete(newProgress)
+    // Fire backend notification (best-effort) once completed
+    try {
+      const api = await waitForPywebview()
+      await api.send_download_notification({
+        title: newProgress.title || newProgress.url || 'Video',
+        video_id: quickDownloadVideoId.value ?? undefined,
+        url: newProgress.url
+      })
+    } catch (e) {
+      // Non-fatal; log silently in console
+      console.log('Notification send failed (non-fatal):', e)
+    }
   } else if (newProgress.status === 'error') {
     handleQuickDownloadError(newProgress)
   }

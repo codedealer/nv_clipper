@@ -39,7 +39,7 @@ export function flashMessage(msg: string, color: string, lifetime = 3000) {
 export async function retryUntilTruthyResult<R>(fn: () => R, wait = 200) {
   let result: R = fn();
   while (!result) {
-    console.debug(
+    console.log(
       `Retrying function: ${
         fn.name || 'arrow'
       } with body ${fn.toString()} because result was ${result}`
