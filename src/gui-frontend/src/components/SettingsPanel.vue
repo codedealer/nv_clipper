@@ -384,6 +384,14 @@
                 Intensity multiplier for LGG color wheel hue projection. Lower = gentler isolation; higher = stronger channel separation.
               </el-text>
             </el-form-item>
+            <el-form-item label="Move markup on success">
+              <el-switch
+                :model-value="props.settings?.move_markup_on_success || false"
+                @update:model-value="(value) => updateBooleanSetting('move_markup_on_success', value)"
+                :loading="isLoading"
+              />
+              <el-text class="setting-help" type="info">After successful processing, move the original markup JSON into the output clips folder for archival.</el-text>
+            </el-form-item>
           </el-form>
         </div>
       </el-tab-pane>

@@ -69,6 +69,7 @@ class GeneralSettings:
     # === COLOR GRADING / UI TUNING ===
     # Multiplier applied to LGG color wheel hue projection (was hardcoded 1.5)
     lgg_projection_gain: float = 1.5
+    move_markup_on_success: bool = False
 
     # === WINDOW OPTIONS ===
     window_width: int = 1000  # Default window width

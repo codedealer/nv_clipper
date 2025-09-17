@@ -175,6 +175,47 @@ class ClipperEngine:
                     clip_maker.previewClips(self.cs)
                     message = "Preview completed successfully"
 
+                # After successful processing, optionally move the original markup JSON
+                # into the output folder if the user has enabled the setting and we
+                # actually processed from a file (not in-memory data). This helps keep
+                # related artifacts together for archival/organization.
+                try:
+                    if (
+                        message.startswith("Clips")  # only on real generation
+                        and markup_path  # only if we have a source file path
+                        and gui_settings.get("move_markup_on_success")
+                    ):
+                        src_path = Path(markup_path)
+                        if src_path.exists():
+                            dest_dir = Path(self.cs.clipper_paths.clipsPath)
+                            dest_dir.mkdir(parents=True, exist_ok=True)
+                            dest_path = dest_dir / src_path.name
+                            # Use replace to overwrite if it already exists
+                            if dest_path.resolve() == src_path.resolve():
+                                # Already in the output folder; nothing to do
+                                self.logger.debug(
+                                    "Markup file already located in output directory; skipping move"
+                                )
+                            else:
+                                self.logger.debug(
+                                    "Moving markup JSON '%s' -> '%s'", src_path, dest_path
+                                )
+                                try:
+                                    # Attempt an atomic-ish move; fallback to copy+unlink if needed
+                                    src_path.replace(dest_path)
+                                except Exception:
+                                    import shutil
+                                    shutil.copy2(src_path, dest_path)
+                                    src_path.unlink(missing_ok=True)  # type: ignore[arg-type]
+                                self.logger.info(
+                                    "Moved markup JSON to output directory: %s", dest_path
+                                )
+                except Exception as move_err:
+                    # Non-fatal: we still succeeded overall.
+                    self.logger.warning(
+                        "Failed to move markup JSON to output directory: %s", move_err
+                    )
+
                 # Update persistent cache after processing (preserve RIFE loaded state)
                 self._update_persistent_cache()
 
@@ -297,6 +338,7 @@ class ClipperEngine:
             # Other settings
             'preview': 'preview',
             'notify_on_completion': 'notifyOnCompletion',
+            'move_markup_on_success': 'moveMarkupOnSuccess',  # GUI-only behavioral setting
 
             # yt-dlp settings
             'ytdl_location': 'ytdlLocation',

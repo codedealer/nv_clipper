@@ -678,6 +678,12 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "default": 5000,
                 "cli_args": ["--cache-max-size-mb"],
             },
+            "move_markup_on_success": {
+                "type": "boolean",
+                "description": "Move original markup JSON into output folder after successful processing",
+                "default": False,
+                "cli_args": ["--move-markup-on-success"],
+            },
             # Color Grading / UI tuning (GUI only for now)
             "lgg_projection_gain": {
                 "type": "number",

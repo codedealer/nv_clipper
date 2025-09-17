@@ -55,6 +55,7 @@ export interface GeneralSettings {
 
   // === COLOR GRADING / UI TUNING ===
   lgg_projection_gain: number
+  move_markup_on_success: boolean
 }
 
 export interface VideoSpecificSettings {
