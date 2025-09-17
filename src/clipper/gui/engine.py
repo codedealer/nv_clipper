@@ -194,11 +194,11 @@ class ClipperEngine:
                             if dest_path.resolve() == src_path.resolve():
                                 # Already in the output folder; nothing to do
                                 self.logger.debug(
-                                    "Markup file already located in output directory; skipping move"
+                                    "Markup file already located in output directory; skipping move",
                                 )
                             else:
                                 self.logger.debug(
-                                    "Moving markup JSON '%s' -> '%s'", src_path, dest_path
+                                    "Moving markup JSON '%s' -> '%s'", src_path, dest_path,
                                 )
                                 try:
                                     # Attempt an atomic-ish move; fallback to copy+unlink if needed
@@ -208,12 +208,12 @@ class ClipperEngine:
                                     shutil.copy2(src_path, dest_path)
                                     src_path.unlink(missing_ok=True)  # type: ignore[arg-type]
                                 self.logger.info(
-                                    "Moved markup JSON to output directory: %s", dest_path
+                                    "Moved markup JSON to output directory: %s", dest_path,
                                 )
                 except Exception as move_err:
                     # Non-fatal: we still succeeded overall.
                     self.logger.warning(
-                        "Failed to move markup JSON to output directory: %s", move_err
+                        "Failed to move markup JSON to output directory: %s", move_err,
                     )
 
                 # Update persistent cache after processing (preserve RIFE loaded state)
