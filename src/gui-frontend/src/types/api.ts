@@ -6,6 +6,10 @@ export interface ProcessingResult {
   job_id?: string
   report?: string
   output_path?: string
+  // New: markup move metadata
+  markup_moved?: boolean
+  moved_markup_path?: string
+  original_markup_path?: string
 }
 
 export interface JobStatus {
@@ -14,6 +18,10 @@ export interface JobStatus {
   job_id?: string
   report?: string
   output_path?: string
+  // New: markup move metadata (emitted on success)
+  markup_moved?: boolean
+  moved_markup_path?: string
+  original_markup_path?: string
 }
 
 export interface EngineStatus {

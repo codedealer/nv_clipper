@@ -128,6 +128,22 @@ export const useClipperStore = defineStore('clipper', () => {
       processingStatus.value = result.message
       isProcessing.value = false
       currentJobId.value = null
+      // If processing succeeded and markup was moved, update path now
+      if (result.status === 'success' && result.markup_moved && result.moved_markup_path) {
+        // Only update if the currently stored markup matches the original path or is non-existent
+        if (!selectedFiles.value.markup ||
+            (result.original_markup_path && selectedFiles.value.markup === result.original_markup_path)) {
+          selectedFiles.value.markup = result.moved_markup_path
+          // Optionally re-parse to refresh UI if needed
+          try {
+            const api = await waitForPywebview()
+            const parseRes = await api.parse_markup_file(result.moved_markup_path)
+            if (parseRes.status === 'success' && parseRes.clips) {
+              setParsedClips(parseRes.clips)
+            }
+          } catch { /* best-effort refresh */ }
+        }
+      }
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -164,6 +180,13 @@ export const useClipperStore = defineStore('clipper', () => {
       isProcessing.value = false
       isCanceling.value = false
       currentJobId.value = null
+      // Update markup path if it was moved by backend
+      if (payload.markup_moved && payload.moved_markup_path) {
+        if (!selectedFiles.value.markup ||
+            (payload.original_markup_path && selectedFiles.value.markup === payload.original_markup_path)) {
+          selectedFiles.value.markup = payload.moved_markup_path
+        }
+      }
       // Show completion toast
       ElMessage.success(processingStatus.value)
       return

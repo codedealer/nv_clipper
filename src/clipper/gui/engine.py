@@ -49,6 +49,10 @@ class ClipperEngine:
             return {"status": "error", "message": "Either markup_path or markup_data must be provided"}
 
         try:
+            # Track markup move results to inform GUI of new path
+            markup_moved: bool = False
+            moved_markup_path: Optional[str] = None
+            original_markup_path: Optional[str] = markup_path if markup_path else None
             # Validate inputs - either markup_path OR markup_data must be provided
             if markup_path:
                 markup_file = Path(markup_path)
@@ -210,6 +214,9 @@ class ClipperEngine:
                                 self.logger.info(
                                     "Moved markup JSON to output directory: %s", dest_path,
                                 )
+                            # Mark as moved and record final path
+                            markup_moved = True
+                            moved_markup_path = str(dest_path)
                 except Exception as move_err:
                     # Non-fatal: we still succeeded overall.
                     self.logger.warning(
@@ -242,6 +249,10 @@ class ClipperEngine:
                 "message": message,
                 "report": report,
                 "output_path": self.cs.clipper_paths.clipsPath,
+                # Inform GUI about markup move so it can update state
+                "markup_moved": markup_moved,
+                "moved_markup_path": moved_markup_path,
+                "original_markup_path": original_markup_path,
             }
 
         except Exception as e:
