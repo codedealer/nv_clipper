@@ -117,7 +117,7 @@ export namespace Tooltips {
   export const minterpModeTooltip = stripIndent`
     Motion interpolation is done with AI models to add interpolated frames to the video.
     VideoFPS targets the effective FPS of the input video. Fractions of the video's speed not divisible by 2 may not be supported by some providers.
-    x2slow, x4slow, and x8slow modes will double, quadruple, or octuple the input video duration respectively while keeping the target's FPS.
+    x2slow, x4slow, x6slow, and x8slow modes will double, quadruple, sextuple, or octuple the input video duration respectively while keeping the target's FPS.
     `;
 
   export const minterpFPSTooltip = stripIndent`

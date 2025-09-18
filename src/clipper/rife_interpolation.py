@@ -164,6 +164,22 @@ class AIInterpolation:
 
             generated_images.extend([image_A, image_B, image_C])
 
+        elif self.frame_gen_factor == 6:
+            # Approximate 5 evenly spaced frames at t = 1/6, 2/6, 3/6, 4/6, 5/6 using midpoint-only model
+            # Strategy: build the 8x sequence (midpoint tree) then pick frames closest to the 1/6 grid.
+            # 8x yields frames at t = 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8
+            # Choose indices nearest to 1/6, 2/6, 3/6, 4/6, 5/6 => [1/8, 3/8, 4/8, 5/8, 7/8] => [A, C, D, E, G]
+            image_D = self.interpolate_single(image1, image2)           # 4/8
+            image_B = self.interpolate_single(image1, image_D)          # 2/8
+            image_A = self.interpolate_single(image1, image_B)          # 1/8
+            image_C = self.interpolate_single(image_B, image_D)         # 3/8
+            image_F = self.interpolate_single(image_D, image2)          # 6/8
+            image_E = self.interpolate_single(image_D, image_F)         # 5/8
+            image_G = self.interpolate_single(image_F, image2)          # 7/8
+
+            # Select closest to 1/6 steps: A(1/8), C(3/8), D(4/8), E(5/8), G(7/8)
+            generated_images.extend([image_A, image_C, image_D, image_E, image_G])
+
         elif self.frame_gen_factor == 8:
             # Generate 7 images
             image_D = self.interpolate_single(image1, image2)
