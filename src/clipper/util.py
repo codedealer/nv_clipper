@@ -41,3 +41,6 @@ def escapeSingleQuotesFFmpeg(string: str) -> str:
 def floorToEven(x: Union[int, str, float]) -> int:
     x = int(x)
     return x & ~1
+
+def escapeBracketsFFmpeg(string: str) -> str:
+    return string.replace("[", "\\[").replace("]", "\\]")

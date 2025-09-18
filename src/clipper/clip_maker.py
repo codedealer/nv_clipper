@@ -40,7 +40,7 @@ from clipper.ffmpeg_filter import (
     wrapVideoFilterForHardwareAcceleration,
 )
 from clipper.platforms import getFfmpegHeaders
-from clipper.util import escapeSingleQuotesFFmpeg, getTrimmedBase64Hash
+from clipper.util import escapeBracketsFFmpeg, escapeSingleQuotesFFmpeg, getTrimmedBase64Hash
 from clipper.ytc_logger import logger
 
 # Module-level cache for RIFE symbols
@@ -812,6 +812,9 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             not mps["is_hw_encode"],
         )
 
+        vidstabdetectFilter = escapeBracketsFFmpeg(vidstabdetectFilter)
+        vidstabtransformFilter = escapeBracketsFFmpeg(vidstabtransformFilter)
+
         if len(video_filter) > MAX_VFILTER_SIZE:
             logger.info(f"Video filter is larger than {MAX_VFILTER_SIZE} characters.")
             logger.info(
@@ -868,6 +871,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             not mps["is_hw_decode"],
             not mps["is_hw_encode"],
         )
+
+        video_filter = escapeBracketsFFmpeg(video_filter)
 
         if len(video_filter) > MAX_VFILTER_SIZE:
             logger.info(f"Video filter is larger than {MAX_VFILTER_SIZE} characters.")
