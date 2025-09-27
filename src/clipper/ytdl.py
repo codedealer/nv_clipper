@@ -123,11 +123,11 @@ def ytdl_bin_update(cs: ClipperState) -> None:
     if not getattr(sys, "frozen", False):
         return
 
-    if settings["ytdlLocation"]:
-        logger.report(
-            "Skipping check for yt-dlp updates as user specified their own version of yt-dlp.",
-        )
-        return
+    # if settings["ytdlLocation"]:
+    #     logger.report(
+    #         "Skipping check for yt-dlp updates as user specified their own version of yt-dlp.",
+    #     )
+    #     return
 
     if not settings["ytdlAutoUpdate"]:
         logger.report(
