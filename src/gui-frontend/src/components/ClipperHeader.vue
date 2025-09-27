@@ -37,15 +37,16 @@
 
     <QuickDownload @video-selected="$emit('video-selected', $event)" />
 
-    <div class="status-indicator">
-      <el-tag
-        :type="getStatusType()"
-        :icon="getStatusIcon()"
-        size="large"
-      >
-        {{ getStatusMessage() }}
-      </el-tag>
-    </div>
+        <div class="status-indicator">
+          <span v-if="appVersionLabel" class="app-version">{{ appVersionLabel }}</span>
+          <el-tag
+            :type="getStatusType()"
+            :icon="getStatusIcon()"
+            size="large"
+          >
+            {{ getStatusMessage() }}
+          </el-tag>
+        </div>
   </div>
 </template>
 
@@ -57,7 +58,7 @@ import type { EngineStatus } from '@/types/api'
 import type { CachedVideo } from '@/types/cache'
 import { ENGINE_STATUS } from '@/constants'
 import { useSettingsStore } from '@/stores/settings'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 interface Props {
   engineStatus: EngineStatus | null
@@ -76,6 +77,12 @@ defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const crfInput = ref<string>('')
 const targetFpsInput = ref<string>('')
+
+const appVersionLabel = computed(() => {
+  const version = props.engineStatus?.version?.trim()
+  if (!version) return ''
+  return /^v/i.test(version) ? version : `v${version}`
+})
 
 function syncFromStore() {
   const gs = settingsStore.generalSettings
@@ -141,5 +148,17 @@ function getStatusMessage() {
   align-items: center;
   gap: 6px;
   margin-left: 12px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-version {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  text-transform: uppercase;
 }
 </style>
