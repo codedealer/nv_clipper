@@ -677,8 +677,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         loop_filter = ""
         loop_filter += f",split=2[f1][f2];"
         loop_filter += f'[f1]{mp["speedFilter"]}[f];'
-        loop_filter += f"""[f2]{reverseSpeedFilter},select='gt(n,0)',reverse,select='gt(n,0)',"""
-        loop_filter += f"setpts=(PTS-STARTPTS)[r];"
+        loop_filter += f"[f2]trim=start_frame=1,{reverseSpeedFilter},reverse,setpts=(PTS-STARTPTS)[r];"
         loop_filter += f"[f][r]concat=n=2"
     if mps["loop"] == "fade":
         fadeDur = mps["fadeDuration"] = max(
