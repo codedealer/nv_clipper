@@ -755,6 +755,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         shakyPath = f"{cp.clipsPath}/shaky"
         os.makedirs(shakyPath, exist_ok=True)
         transformPath = str(f'{shakyPath}/{mp["fileNameStem"]}.json')
+        transformPathEscaped = escapeSingleQuotesFFmpeg(transformPath)
 
         if not containsValidCharsForVidStab(transformPath):
             # TODO: Write titleSuffix to text file in safe temp work dir for reverse lookup from titleSuffix to hash
@@ -769,8 +770,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             )
             os.makedirs(safeShakyPath, exist_ok=True)
             transformPath = str(f"{safeShakyPath}/{markerPairIndex+1}.json")
+            transformPathEscaped = escapeSingleQuotesFFmpeg(transformPath)
 
-        vidstabdetectFilter = f"{video_filter},tvai_cpe=model=cpe-1:filename={transformPath}:device=0"
+        vidstabdetectFilter = (
+            f"{video_filter},tvai_cpe=model=cpe-1:filename='{transformPathEscaped}':device=0"
+        )
 
         rollingShutter = 1 if mps.get("videoStabilizationRollingShutter") else 0
         jitteryMotionPasses = 2 if mps.get("videoStabilizationJitteryMotion") else 0
@@ -782,7 +786,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             rollingShutter = 0
         vidstabtransformFilter = (
             video_filter
-            + f""",tvai_stb=model=ref-2:filename='{transformPath}':smoothness={vidstab["smoothing"]}"""
+            + f""",tvai_stb=model=ref-2:filename='{transformPathEscaped}':smoothness={vidstab["smoothing"]}"""
             + f""":rst=0:wst=0:cache=128:dof=1111:ws=32:full=0"""
             + f""":roll={rollingShutter}:reduce={jitteryMotionPasses}:device=0:vram=1:instances=1"""
         )

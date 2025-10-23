@@ -43,4 +43,31 @@ def floorToEven(x: Union[int, str, float]) -> int:
     return x & ~1
 
 def escapeBracketsFFmpeg(string: str) -> str:
-    return string.replace("[", "\\[").replace("]", "\\]")
+    """Escape square brackets within quoted segments for FFmpeg filters.
+
+    FFmpeg interprets unescaped brackets as stream labels. We only escape
+    brackets that appear inside quoted substrings (single or double quotes),
+    which is where file paths and other literals reside. Brackets that denote
+    actual stream labels are left untouched so filter graphs continue to work.
+    """
+
+    escaped: list[str] = []
+    in_single = False
+    in_double = False
+    prev_char = ""
+
+    for ch in string:
+        if ch == "'" and not in_double and prev_char != "\\":
+            in_single = not in_single
+            escaped.append(ch)
+        elif ch == '"' and not in_single and prev_char != "\\":
+            in_double = not in_double
+            escaped.append(ch)
+        elif ch in "[]" and (in_single or in_double):
+            escaped.append("\\" + ch)
+        else:
+            escaped.append(ch)
+
+        prev_char = ch
+
+    return "".join(escaped)
