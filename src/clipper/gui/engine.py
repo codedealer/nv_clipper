@@ -289,9 +289,9 @@ class ClipperEngine:
             print("DEBUG: Injected persistent RIFE loaded state - skipping RIFE initialization")
 
     def _update_persistent_cache(self) -> None:
-        """Update persistent cache with RIFE loaded state only."""
-        # Only preserve the RIFE loaded state since the cache itself doesn't mutate
-        # The main issue was garbage collection between processes, not cache mutation
+        """Update persistent cache with RIFE loaded state."""
+        # Currently not used because we spin up a new process for each new job
+        return
         if self.cs and "__RIFE_LOADED" in self.cs.settings:
             self._PERSISTENT_RIFE_CACHE["__RIFE_LOADED"] = self.cs.settings["__RIFE_LOADED"]
             print(f"DEBUG: Updated persistent RIFE loaded state: {self._PERSISTENT_RIFE_CACHE['__RIFE_LOADED']}")
