@@ -2,37 +2,49 @@
   <div class="color-grading-panel">
     <div class="panel-content">
       <div class="color-grading-content">
-          <!-- Left Column: Preview + Timeline -->
-          <ColorPreview
-            :video-path="props.videoPath"
-            :video-duration="props.videoDuration"
-            :video-info="props.videoInfo"
-            :markup-video-url="props.markupVideoUrl"
-            :filter="generatedFilter"
-            :preview-enabled="previewEnabled"
-            :selected-clip="props.selectedClip"
-          />
-
-          <!-- Color Controls -->
-          <ColorControls
-            :is-mock-markup="props.isMockMarkup"
-            :preview-enabled="previewEnabled"
-            @filter-changed="onFilterChanged"
-            @toggle-preview="onTogglePreview"
-            @copy-to-all-clips="(s:ColorGradingState)=>emit('copy-to-all-clips', s)"
-          />
+        <div class="left-column">
+          <el-tabs v-model="activeTab" class="preview-settings-tabs">
+            <el-tab-pane :label="previewTabLabel" name="preview">
+              <ColorPreview
+                :video-path="props.videoPath"
+                :video-duration="props.videoDuration"
+                :video-info="props.videoInfo"
+                :markup-video-url="props.markupVideoUrl"
+                :filter="generatedFilter"
+                :preview-enabled="previewEnabled"
+                :selected-clip="props.selectedClip"
+              />
+            </el-tab-pane>
+            <el-tab-pane :label="settingsTabLabel" name="settings" class="settings-pane">
+              <ClipSettingsPanel
+                :selected-clip="props.selectedClip"
+                :is-dirty="selectedClipDirty"
+              />
+            </el-tab-pane>
+          </el-tabs>
         </div>
+
+        <!-- Color Controls -->
+        <ColorControls
+          :is-mock-markup="props.isMockMarkup"
+          :preview-enabled="previewEnabled"
+          @filter-changed="onFilterChanged"
+          @toggle-preview="onTogglePreview"
+          @copy-to-all-clips="(s:ColorGradingState)=>emit('copy-to-all-clips', s)"
+        />
       </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { buildFilterFromState } from '@/utils/colorFilterBuild'
 import type { ColorGradingState } from '@/types/colorGrading'
 import type { ClipInfo, VideoInfo } from '@/types/api'
 import ColorPreview from './ColorPreview.vue'
 import ColorControls from './ColorControls.vue'
+import ClipSettingsPanel from './ClipSettingsPanel.vue'
 
 interface Props {
   selectedClip?: ClipInfo | null
@@ -43,6 +55,7 @@ interface Props {
   isMockMarkup?: boolean
   markupVideoUrl?: string | null
   getClipColorGrading?: (clipNumber: number) => string | undefined
+  clipSettingsDirty?: Record<number, boolean>
 }
 
 interface Emits {
@@ -58,13 +71,15 @@ const props = withDefaults(defineProps<Props>(), {
   isProcessing: false,
   isMockMarkup: false,
   markupVideoUrl: null,
-  getClipColorGrading: undefined
+  getClipColorGrading: undefined,
+  clipSettingsDirty: () => ({})
 })
 
 const emit = defineEmits<Emits>()
 
 // State
 const previewEnabled = ref(true)
+const activeTab = ref<'preview' | 'settings'>('preview')
 
 // Sync initial preview enabled from child prop if provided (optional future extensibility)
 
@@ -81,6 +96,14 @@ const onFilterChanged = (clipNumber: number, state: ColorGradingState) => {
 const onTogglePreview = (enabled: boolean) => {
   previewEnabled.value = enabled
 }
+
+const previewTabLabel = 'Preview'
+const selectedClipDirty = computed(() => {
+  if (!props.selectedClip?.number) return false
+  return Boolean(props.clipSettingsDirty?.[props.selectedClip.number])
+})
+
+const settingsTabLabel = computed(() => (selectedClipDirty.value ? 'Settings • Modified' : 'Settings'))
 
 // filterForClip no longer needed: ColorControls reads directly from store
 </script>
@@ -100,6 +123,37 @@ const onTogglePreview = (enabled: boolean) => {
   min-height: 0;
 }
 
+.left-column {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-settings-tabs {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-settings-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow-y: auto;
+}
+
+.preview-settings-tabs :deep(.el-tab-pane) {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.preview-settings-tabs :deep(.el-tab-pane > *) {
+  flex: 1;
+  min-height: 0;
+}
+
 /* Responsive layout for larger screens */
 @media (min-width: 1024px) {
   .color-grading-content {
@@ -107,6 +161,7 @@ const onTogglePreview = (enabled: boolean) => {
     grid-template-columns: 1fr 300px;
     gap: 20px;
     height: 100%;
+    overflow-y: auto;
   }
 
   .preview-timeline-column {

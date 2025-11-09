@@ -31,6 +31,7 @@
               :clips="parsedClips"
               :model-value="selectedClips"
               :active-color-grading-clip="activeColorGradingClip"
+              :clip-settings-dirty="clipSettingsDirty"
               @update:model-value="$emit('update:selected-clips', $event)"
               @clip-selected-for-color-grading="$emit('clip-selected-for-color-grading', $event)"
             />
@@ -78,6 +79,7 @@ interface Props {
   parsedMarkupData: { videoUrl?: string; title?: string; [key: string]: unknown } | null
   hasVideoFile: boolean
   overwriteEnabled: boolean
+  clipSettingsDirty: Record<number, boolean>
 }
 
 interface Emits {

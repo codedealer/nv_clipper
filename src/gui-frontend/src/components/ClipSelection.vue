@@ -21,11 +21,14 @@
           v-for="(clip, index) in clips"
           :key="index"
           class="clip-item"
-          :class="{ 'active-color-grading': activeColorGradingClip === index }"
+          :class="{ 'active-color-grading': activeColorGradingClip === index, modified: isClipModified(clip, index) }"
         >
           <el-checkbox :value="index" />
           <div class="clip-info" @click="handleClipClick(index)">
-            <div class="clip-duration">{{ `${clip.number || index + 1} - ${formatDuration(clip)}` }}</div>
+            <div class="clip-info-row">
+              <div class="clip-duration">{{ `${clip.number || index + 1} - ${formatDuration(clip)}` }}</div>
+              <el-tag v-if="isClipModified(clip, index)" type="warning" size="small" effect="plain" class="clip-modified-tag">Modified</el-tag>
+            </div>
           </div>
         </div>
       </el-checkbox-group>
@@ -53,6 +56,7 @@ interface Props {
   clips: Clip[]
   modelValue: number[]
   activeColorGradingClip?: number | null
+  clipSettingsDirty?: Record<number, boolean>
 }
 
 const props = defineProps<Props>()
@@ -93,6 +97,40 @@ watch(selectedClips, (newSelection) => {
   }
 }, { deep: true })
 
+const INTERPOLATION_DURATION_FACTORS: Record<string, number> = {
+  None: 1,
+  VideoFPS: 1,
+  x2slow: 2,
+  x4slow: 4,
+  x6slow: 6,
+  x8slow: 8
+}
+
+function getInterpolationFactor(clip: Clip): number {
+  const raw = clip.overrides?.minterpMode as string | boolean | undefined
+  if (raw === false || raw === undefined || raw === null) {
+    return 1
+  }
+  if (typeof raw === 'string') {
+    return INTERPOLATION_DURATION_FACTORS[raw] ?? 1
+  }
+  return 1
+}
+
+function getProjectedDuration(clip: Clip, baseDuration: number): number {
+  const speedMultiplier = clip.speed && clip.speed > 0 ? clip.speed : 1
+  const interpolationFactor = getInterpolationFactor(clip)
+  const rawProjected = baseDuration * interpolationFactor
+  return rawProjected / (speedMultiplier || 1)
+}
+
+function getEffectiveSpeed(clip: Clip): number {
+  const speedMultiplier = clip.speed && clip.speed > 0 ? clip.speed : 1
+  const interpolationFactor = getInterpolationFactor(clip)
+  const effective = speedMultiplier / (interpolationFactor || 1)
+  return effective > 0 ? effective : 1
+}
+
 // Methods
 function handleSelectAllClips(value: boolean) {
   if (value) {
@@ -104,8 +142,21 @@ function handleSelectAllClips(value: boolean) {
 
 function formatDuration(clip: Clip): string {
   if (typeof clip.start === 'number' && typeof clip.end === 'number') {
-    const duration = clip.end - clip.start
-    return `${formatTime(clip.start)} - ${formatTime(clip.end)} (${formatTime(duration)})`
+    const baseDuration = typeof clip.duration === 'number'
+      ? clip.duration
+      : Math.max(clip.end - clip.start, 0)
+    const projectedDuration = getProjectedDuration(clip, baseDuration)
+    const durationChanged = Math.abs(projectedDuration - baseDuration) > 1e-2
+    const effectiveSpeed = getEffectiveSpeed(clip)
+    const speedChanged = Math.abs(effectiveSpeed - 1) > 1e-3
+    const range = `${formatTime(clip.start)} - ${formatTime(clip.end)}`
+    const baseText = formatTime(baseDuration)
+    const speedText = speedChanged ? ` @ ${effectiveSpeed.toFixed(2)}x` : ''
+    if (!durationChanged) {
+      return `${range} (${baseText})${speedText}`
+    }
+    const projectedText = formatTime(projectedDuration)
+    return `${range} (${projectedText})${speedText}`
   }
   if (clip.start && clip.end) {
     return `${clip.start} - ${clip.end}`
@@ -122,6 +173,11 @@ function formatTime(seconds: number): string {
 function handleClipClick(index: number) {
   // Emit event to notify parent that this clip was selected for color grading
   emit('clip-selected-for-color-grading', index)
+}
+
+function isClipModified(clip: Clip, index: number): boolean {
+  const clipNumber = clip.number ?? index + 1
+  return Boolean(props.clipSettingsDirty?.[clipNumber])
 }
 </script>
 
@@ -174,6 +230,11 @@ function handleClipClick(index: number) {
   border: 1px solid var(--el-color-primary-light-7);
 }
 
+.clip-item.modified:not(.active-color-grading) {
+  border: 1px solid var(--el-color-warning-light-7);
+  background-color: var(--el-color-warning-light-9);
+}
+
 .clip-item:last-child {
   border-bottom: none;
 }
@@ -191,14 +252,20 @@ function handleClipClick(index: number) {
   background-color: var(--el-fill-color-lighter);
 }
 
-.clip-title {
-  font-weight: 500;
-  color: var(--el-text-color-primary);
+.clip-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .clip-duration {
   font-size: 12px;
   line-height: normal;
   color: var(--el-text-color-secondary);
+}
+
+.clip-modified-tag {
+  flex-shrink: 0;
 }
 </style>

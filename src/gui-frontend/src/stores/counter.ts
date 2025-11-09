@@ -2,10 +2,147 @@ import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus, ClipInfo } from '@/types/api'
 import type { ColorGradingState } from '@/types/colorGrading'
+import type { ClipSettingsState, ClipSettingsOverrides, ClipSettingsUpdatePayload } from '@/types/clipSettings'
 import { waitForPywebview } from '@/utils/api'
 import { useSettingsStore } from './settings'
 import { ElMessage } from 'element-plus'
 import type { MarkupData } from '@/utils/markup'
+
+const CLIP_SETTINGS_KEYS: (keyof ClipSettingsOverrides)[] = [
+  'loop',
+  'minterpMode',
+  'minterpProvider',
+  'videoStabilization',
+  'videoStabilizationDynamicZoom',
+  'videoStabilizationRollingShutter',
+  'videoStabilizationJitteryMotion',
+  'videoEnhancementEnabled',
+  'videoEnhancementModel',
+  'videoEnhancementCompression',
+  'videoEnhancementDetails',
+  'videoEnhancementBlur',
+  'videoEnhancementNoise',
+  'videoEnhancementHalo',
+  'videoEnhancementPreblur',
+  'videoEnhancementBlend',
+  'videoEnhancementPrenoise'
+]
+
+function cloneSimple<T>(value: T): T {
+  if (value === undefined || value === null) return value
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value)
+    } catch { /* fallback to JSON */ }
+  }
+  try {
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+function cloneClipSettingsOverrides(overrides: ClipSettingsOverrides): ClipSettingsOverrides {
+  const result: ClipSettingsOverrides = {}
+  for (const key of CLIP_SETTINGS_KEYS) {
+    const rawValue = (overrides as Record<string, unknown>)[key as string]
+    if (rawValue !== undefined) {
+      ;(result as Record<string, unknown>)[key as string] = typeof rawValue === 'object' && rawValue !== null ? cloneSimple(rawValue) : rawValue
+    }
+  }
+  return result
+}
+
+function cloneClipSettingsState(state: ClipSettingsState): ClipSettingsState {
+  return {
+    speed: state.speed,
+    overrides: cloneClipSettingsOverrides(state.overrides)
+  }
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== typeof b) return false
+  if (a === null || b === null) return false
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false
+    }
+    return true
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const aObj = a as Record<string, unknown>
+    const bObj = b as Record<string, unknown>
+    const aKeys = Object.keys(aObj)
+    const bKeys = Object.keys(bObj)
+    if (aKeys.length !== bKeys.length) return false
+    for (const key of aKeys) {
+      if (!deepEqual(aObj[key], bObj[key])) return false
+    }
+    return true
+  }
+  return false
+}
+
+function normalizeOverrides(overrides: ClipSettingsOverrides): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  for (const key of CLIP_SETTINGS_KEYS) {
+    const value = (overrides as Record<string, unknown>)[key as string]
+    if (value !== undefined) {
+      normalized[key as string] = typeof value === 'object' && value !== null ? cloneSimple(value) : value
+    }
+  }
+  return normalized
+}
+
+function areClipSettingsEqual(a: ClipSettingsState, b: ClipSettingsState): boolean {
+  if (Math.abs((a.speed ?? 0) - (b.speed ?? 0)) > 1e-6) return false
+  return deepEqual(normalizeOverrides(a.overrides), normalizeOverrides(b.overrides))
+}
+
+function extractClipSettingsStateFromClip(clip: ClipInfo): ClipSettingsState {
+  const baseOverrides = (clip.overrides || {}) as Record<string, unknown>
+  const overrides: ClipSettingsOverrides = {}
+  for (const key of CLIP_SETTINGS_KEYS) {
+    const value = baseOverrides[key as string]
+    if (value !== undefined) {
+      ;(overrides as Record<string, unknown>)[key as string] = typeof value === 'object' && value !== null ? cloneSimple(value) : value
+    }
+  }
+  return {
+    speed: typeof clip.speed === 'number' ? clip.speed : 1,
+    overrides
+  }
+}
+
+function buildClipSettingsSnapshot(clips: ClipInfo[]): Record<number, ClipSettingsState> {
+  const snapshot: Record<number, ClipSettingsState> = {}
+  for (const clip of clips) {
+    if (typeof clip.number === 'number') {
+      snapshot[clip.number] = cloneClipSettingsState(extractClipSettingsStateFromClip(clip))
+    }
+  }
+  return snapshot
+}
+
+function applyOverrideChanges(target: Record<string, unknown>, changes: Partial<ClipSettingsOverrides>): Record<string, unknown> {
+  const updated = { ...target }
+  for (const [rawKey, rawValue] of Object.entries(changes) as [keyof ClipSettingsOverrides, unknown][]) {
+    const key = rawKey as string
+    const value = rawValue as unknown
+    if (value === null || value === undefined || (typeof value === 'string' && value === '')) {
+      delete updated[key]
+      continue
+    }
+    if (typeof value === 'object' && value !== null) {
+      updated[key] = cloneSimple(value)
+    } else {
+      updated[key] = value
+    }
+  }
+  return updated
+}
 
 export const useClipperStore = defineStore('clipper', () => {
   // State
@@ -39,6 +176,8 @@ export const useClipperStore = defineStore('clipper', () => {
   const activeColorGradingClip = ref<number | null>(null)
   // Key to force remount of preview / grading panel when selected files change in any way
   const previewMountKey = ref(0)
+  const originalClipSettings = ref<Record<number, ClipSettingsState>>({})
+  const clipSettingsDirty = ref<Record<number, boolean>>({})
 
   // Derived clip state
   const hasClips = computed(() => parsedClips.value.length > 0)
@@ -266,9 +405,14 @@ export const useClipperStore = defineStore('clipper', () => {
 
   // ----- Clip / Markup Actions -----
   function setParsedClips(clips: ClipInfo[]) {
-    parsedClips.value = [...clips]
+    parsedClips.value = clips.map(clip => ({
+      ...clip,
+      overrides: { ...(clip.overrides || {}) }
+    }))
     selectedClips.value = clips.map((_, i) => i)
     activeColorGradingClip.value = clips.length ? 0 : null
+    originalClipSettings.value = buildClipSettingsSnapshot(parsedClips.value)
+    clipSettingsDirty.value = {}
   }
 
   function setSelectedClips(indices: number[]) {
@@ -298,6 +442,8 @@ export const useClipperStore = defineStore('clipper', () => {
     selectedClips.value = []
     parsedMarkupData.value = null
     activeColorGradingClip.value = null
+    originalClipSettings.value = {}
+    clipSettingsDirty.value = {}
   }
 
   // ---------- Color Grading Override Utilities ----------
@@ -367,6 +513,125 @@ export const useClipperStore = defineStore('clipper', () => {
     return count
   }
 
+  function findMarkerPair(clipNumber: number) {
+    const markup = parsedMarkupData.value as { markerPairs?: Array<{ number: number; speed?: number; overrides?: Record<string, unknown> }> } | null
+    if (!markup?.markerPairs) return null
+    return markup.markerPairs.find(mp => mp.number === clipNumber) || null
+  }
+
+  function getClipSettingsState(clipNumber: number): ClipSettingsState | null {
+    const clip = parsedClips.value.find(c => c.number === clipNumber)
+    if (!clip) return null
+    return cloneClipSettingsState(extractClipSettingsStateFromClip(clip))
+  }
+
+  function getOriginalClipSettingsState(clipNumber: number): ClipSettingsState | null {
+    const original = originalClipSettings.value[clipNumber]
+    if (!original) return null
+    return cloneClipSettingsState(original)
+  }
+
+  function syncClipSettingsDirtyFlag(clipNumber: number) {
+    const current = getClipSettingsState(clipNumber)
+    const baseline = originalClipSettings.value[clipNumber]
+    if (!current || !baseline) {
+      const { [clipNumber]: _removed, ...rest } = clipSettingsDirty.value
+      clipSettingsDirty.value = rest
+      return
+    }
+    const dirty = !areClipSettingsEqual(current, baseline)
+    clipSettingsDirty.value = { ...clipSettingsDirty.value, [clipNumber]: dirty }
+  }
+
+  function updateClipSettings(clipNumber: number, payload: ClipSettingsUpdatePayload): boolean {
+    const clipIndex = parsedClips.value.findIndex(c => c.number === clipNumber)
+    if (clipIndex === -1) return false
+
+    const existingClip = parsedClips.value[clipIndex]
+    const baseline = originalClipSettings.value[clipNumber]
+
+    let nextSpeed = existingClip.speed
+    if (payload.speed !== undefined) {
+      if (payload.speed === null && baseline) {
+        nextSpeed = baseline.speed
+      } else if (payload.speed !== null) {
+        nextSpeed = payload.speed
+      }
+    }
+
+    const currentOverrides = { ...(existingClip.overrides || {}) }
+    const overridesChanges = payload.overrides as Partial<ClipSettingsOverrides> | undefined
+    const nextOverrides = overridesChanges ? applyOverrideChanges(currentOverrides, overridesChanges) : currentOverrides
+
+    const updatedClip: ClipInfo = {
+      ...existingClip,
+      speed: nextSpeed,
+      overrides: nextOverrides
+    }
+    parsedClips.value.splice(clipIndex, 1, updatedClip)
+
+    const markerPair = findMarkerPair(clipNumber)
+    if (markerPair) {
+      if (payload.speed !== undefined) {
+        markerPair.speed = nextSpeed
+      }
+      if (overridesChanges) {
+        const existingOverrides = markerPair.overrides || {}
+        markerPair.overrides = applyOverrideChanges(existingOverrides, overridesChanges)
+      }
+    }
+
+    syncClipSettingsDirtyFlag(clipNumber)
+    return true
+  }
+
+  function resetClipSettings(clipNumber: number): boolean {
+    const baseline = originalClipSettings.value[clipNumber]
+    if (!baseline) return false
+
+    const clipIndex = parsedClips.value.findIndex(c => c.number === clipNumber)
+    if (clipIndex === -1) return false
+
+    const existingClip = parsedClips.value[clipIndex]
+    const currentOverrides = { ...(existingClip.overrides || {}) }
+    const baselineOverrides = baseline.overrides
+
+    for (const key of CLIP_SETTINGS_KEYS) {
+      const raw = (baselineOverrides as Record<string, unknown>)[key as string]
+      if (raw === undefined) {
+        delete currentOverrides[key as string]
+      } else {
+        currentOverrides[key as string] = typeof raw === 'object' && raw !== null ? cloneSimple(raw) : raw
+      }
+    }
+
+    const updatedClip: ClipInfo = {
+      ...existingClip,
+      speed: baseline.speed,
+      overrides: currentOverrides
+    }
+    parsedClips.value.splice(clipIndex, 1, updatedClip)
+
+    const markerPair = findMarkerPair(clipNumber)
+    if (markerPair) {
+      markerPair.speed = baseline.speed
+      const existingOverrides = markerPair.overrides || {}
+      const nextOverrides: Record<string, unknown> = { ...existingOverrides }
+      for (const key of CLIP_SETTINGS_KEYS) {
+        const raw = (baselineOverrides as Record<string, unknown>)[key as string]
+        if (raw === undefined) {
+          delete nextOverrides[key as string]
+        } else {
+          nextOverrides[key as string] = typeof raw === 'object' && raw !== null ? cloneSimple(raw) : raw
+        }
+      }
+      markerPair.overrides = nextOverrides
+    }
+
+    syncClipSettingsDirtyFlag(clipNumber)
+    return true
+  }
+
   function hasValidMarkup(): boolean {
     return parsedClips.value.length > 0 || parsedMarkupData.value !== null
   }
@@ -385,7 +650,8 @@ export const useClipperStore = defineStore('clipper', () => {
     parsedMarkupData,
     activeColorGradingClip,
     videoInfo,
-    previewMountKey,
+  previewMountKey,
+  clipSettingsDirty,
 
     // Getters
     hasMarkupFile,
@@ -420,6 +686,10 @@ export const useClipperStore = defineStore('clipper', () => {
     setActiveColorGradingClip,
     updateClipColorGrading,
     applyColorGradingToAllClips,
+    updateClipSettings,
+    resetClipSettings,
+    getClipSettingsState,
+    getOriginalClipSettingsState,
     hasValidMarkup
   }
 })

@@ -23,6 +23,7 @@
         :is-mock-markup="props.isMockMarkup"
         :markup-video-url="markupVideoUrl"
         :get-clip-color-grading="getClipColorGrading"
+        :clip-settings-dirty="props.clipSettingsDirty"
         @color-grading-changed="handleColorGradingChanged"
         @copy-to-all-clips="handleCopyToAllClips"
       />
@@ -55,6 +56,7 @@ interface Props {
   isMockMarkup?: boolean
   markupVideoUrl?: string | null
   getClipColorGrading?: (clipNumber: number) => string | undefined
+  clipSettingsDirty?: Record<number, boolean>
 }
 
 import type { ColorGradingState } from '@/types/colorGrading'
@@ -81,20 +83,22 @@ const canShowPanel = computed(() => props.clipCount > 0 && (props.hasVideoFile |
 const clipperStore = useClipperStore()
 const previewMountKey = computed(() => clipperStore.previewMountKey)
 
+const activeColorGradingClip = computed(() => clipperStore.activeColorGradingClip)
+
 const selectedClip = computed(() => {
   const clips = props.parsedClips
   if (!clips.length) return null
 
-  // Prefer active color grading clip if valid
-  // activeColorGradingClip removed; rely on selectedClips or first clip
+  const activeIdx = activeColorGradingClip.value
+  if (typeof activeIdx === 'number' && activeIdx >= 0 && activeIdx < clips.length) {
+    return clips[activeIdx]
+  }
 
-  // Fallback to first selected clip if available
   if (props.selectedClips.length > 0) {
     const idx = props.selectedClips[0]
     if (idx >= 0 && idx < clips.length) return clips[idx]
   }
 
-  // Final fallback to first clip
   return clips[0]
 })
 

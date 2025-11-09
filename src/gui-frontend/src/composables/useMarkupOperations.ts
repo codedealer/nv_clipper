@@ -2,9 +2,11 @@ import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useClipperStore } from '@/stores/counter'
 import type { ClipInfo } from '@/types/api'
+import type { ClipSettingsState, ClipSettingsUpdatePayload } from '@/types/clipSettings'
 import type { MarkupData } from '@/utils/markup'
 import { SUPPORTED_MARKUP_EXTENSIONS, MOCK_MARKUP_DEFAULTS } from '@/constants'
 import type { ColorGradingState } from '@/types/colorGrading'
+import { storeToRefs } from 'pinia'
 
 function cloneState<T>(obj: T): T {
   if (obj == null) return obj
@@ -23,12 +25,7 @@ function cloneState<T>(obj: T): T {
 export function useMarkupOperations() {
   // Central store (single source of truth)
   const clipperStore = useClipperStore()
-  const parsedClips = computed(() => clipperStore.parsedClips)
-  const selectedClips = computed({
-    get: () => clipperStore.selectedClips,
-    set: (v: number[]) => clipperStore.setSelectedClips(v)
-  })
-  const parsedMarkupData = computed(() => clipperStore.parsedMarkupData)
+  const { parsedClips, selectedClips, parsedMarkupData, clipSettingsDirty } = storeToRefs(clipperStore)
 
   // Computed properties
   const isMockMarkup = computed(() => {
@@ -174,6 +171,22 @@ export function useMarkupOperations() {
     }
   }
 
+  function updateClipSettings(clipNumber: number, payload: ClipSettingsUpdatePayload): boolean {
+    return clipperStore.updateClipSettings(clipNumber, payload)
+  }
+
+  function resetClipSettings(clipNumber: number): boolean {
+    return clipperStore.resetClipSettings(clipNumber)
+  }
+
+  function getClipSettingsState(clipNumber: number): ClipSettingsState | null {
+    return clipperStore.getClipSettingsState(clipNumber)
+  }
+
+  function getOriginalClipSettingsState(clipNumber: number): ClipSettingsState | null {
+    return clipperStore.getOriginalClipSettingsState(clipNumber)
+  }
+
   /**
    * Get the currently active clip for color grading
    */
@@ -236,6 +249,7 @@ export function useMarkupOperations() {
   parsedClips,
   selectedClips,
   parsedMarkupData,
+  clipSettingsDirty,
 
     // Computed
     isMockMarkup,
@@ -252,6 +266,10 @@ export function useMarkupOperations() {
     toggleClipSelection,
     selectAllClips,
     deselectAllClips,
-    hasValidMarkup
+    hasValidMarkup,
+    updateClipSettings,
+    resetClipSettings,
+    getClipSettingsState,
+    getOriginalClipSettingsState
   }
 }

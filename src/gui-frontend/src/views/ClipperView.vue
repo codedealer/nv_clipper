@@ -18,6 +18,7 @@
         :parsed-clips="markupOps.parsedClips.value"
         :selected-clips="markupOps.selectedClips.value"
         :active-color-grading-clip="colorGrading.activeColorGradingClip.value"
+        :clip-settings-dirty="markupOps.clipSettingsDirty.value"
         :is-processing="fileHandler.isProcessing.value"
         :is-canceling="clipperIsCanceling"
         :can-process="fileHandler.canProcess.value"
@@ -53,6 +54,7 @@
         :is-mock-markup="colorGrading.isMockMarkup.value"
         :markup-video-url="markupOps.parsedMarkupData.value?.videoUrl || null"
         :get-clip-color-grading="colorGrading.getClipColorGrading"
+        :clip-settings-dirty="markupOps.clipSettingsDirty.value"
         @color-grading-changed="colorGrading.handleColorGradingChanged"
         @copy-to-all-clips="colorGrading.handleCopyToAllClips"
       />
