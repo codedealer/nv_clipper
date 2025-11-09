@@ -516,6 +516,7 @@ function handleReset() {
   flex: 1;
   min-height: 0;
   padding-right: 6px;
+  overflow-y: auto;
 }
 
 .clip-settings-form {
@@ -560,6 +561,7 @@ function handleReset() {
 .panel-footer {
   display: flex;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .no-selection {

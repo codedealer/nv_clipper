@@ -121,16 +121,26 @@ const settingsTabLabel = computed(() => (selectedClipDirty.value ? 'Settings •
   padding: 16px;
   height: 100%;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.color-grading-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .left-column {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .preview-settings-tabs {
-  height: 100%;
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
