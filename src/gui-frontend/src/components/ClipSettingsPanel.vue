@@ -59,6 +59,17 @@
                 </el-select>
               </el-form-item>
             </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="Mirror Video">
+                <el-switch
+                  v-model="form.mirror"
+                  inline-prompt
+                  :active-text="'On'"
+                  :inactive-text="'Off'"
+                  @change="handleMirrorChange"
+                />
+              </el-form-item>
+            </el-col>
           </el-row>
         </section>
 
@@ -198,6 +209,7 @@ interface FormState {
   loop: LoopOption | null
   minterpMode: MinterpModeOption
   minterpProvider: string | null
+  mirror: boolean
   videoStabilizationPreset: number
   videoStabilizationRollingShutter: boolean
   videoStabilizationJitteryMotion: boolean
@@ -251,6 +263,7 @@ const form = reactive<FormState>({
   loop: null,
   minterpMode: 'None',
   minterpProvider: null,
+  mirror: false,
   videoStabilizationPreset: 0,
   videoStabilizationRollingShutter: false,
   videoStabilizationJitteryMotion: false,
@@ -298,6 +311,7 @@ function resetForm() {
   form.loop = null
   form.minterpMode = 'None'
   form.minterpProvider = null
+  form.mirror = false
   form.videoStabilizationPreset = 0
   form.videoStabilizationRollingShutter = false
   form.videoStabilizationJitteryMotion = false
@@ -338,6 +352,7 @@ function applySettings(settings: ClipSettingsState | null) {
   form.loop = (overrides.loop as LoopOption | undefined) ?? null
   form.minterpMode = normalizeMinterpMode(overrides.minterpMode)
   form.minterpProvider = (overrides.minterpProvider as string | undefined) ?? null
+  form.mirror = overrides.mirror ?? false
 
   const presetValue = findPresetValueFromConfig(overrides.videoStabilization as VideoStabilizationOverride | undefined)
   form.videoStabilizationPreset = presetValue
@@ -410,6 +425,12 @@ function handleMinterpProviderChange(value: string | undefined) {
   if (number === null) return
   const resolved = value && value.trim().length ? value.trim() : undefined
   markupOps.updateClipSettings(number, { overrides: { minterpProvider: resolved } })
+}
+
+function handleMirrorChange(value: boolean) {
+  const number = ensureClip()
+  if (number === null) return
+  markupOps.updateClipSettings(number, { overrides: { mirror: value } })
 }
 
 function commitVideoStabilization(applyFlags = true) {

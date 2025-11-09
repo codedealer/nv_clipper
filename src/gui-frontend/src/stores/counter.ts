@@ -12,6 +12,7 @@ const CLIP_SETTINGS_KEYS: (keyof ClipSettingsOverrides)[] = [
   'loop',
   'minterpMode',
   'minterpProvider',
+  'mirror',
   'videoStabilization',
   'videoStabilizationDynamicZoom',
   'videoStabilizationRollingShutter',

@@ -13,6 +13,7 @@ export interface ClipSettingsOverrides {
   loop?: LoopOption
   minterpMode?: string | boolean
   minterpProvider?: string
+  mirror?: boolean
   videoStabilization?: VideoStabilizationOverride
   videoStabilizationDynamicZoom?: boolean
   videoStabilizationRollingShutter?: boolean

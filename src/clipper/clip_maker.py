@@ -266,6 +266,9 @@ def getMarkerPairSettings(  # noqa: PLR0912
     if "targetMaxBitrate" not in mps:
         mps["targetMaxBitrate"] = mps["autoTargetMaxBitrate"]
 
+    mirror_enabled = bool(mps.get("mirror", False))
+    mps["mirror"] = mirror_enabled
+
     titlePrefixLogMsg = f'Title Prefix: {mps.get("titlePrefix", "")}'
     logger.info("-" * 80)
     minterpMsg = f'AI Interpolation Mode: {mps["minterpMode"]} ({mps["minterpProvider"]}), ' if mps["minterpMode"] != "None" else ""
@@ -281,6 +284,7 @@ def getMarkerPairSettings(  # noqa: PLR0912
         + f'Two-pass Encoding Enabled: {mps["twoPass"]}, '
         + f'HDR (High Dynamic Range) Output Enabled: {mps["enableHDR"]}, '
         + f'Audio Enabled: {mps["audio"]}, Denoise: {mps["denoise"]["desc"]}, '
+        + f'Mirror Enabled: {mirror_enabled}, '
         + f'Marker Pair {markerPairIndex + 1} is of variable speed: {mp["isVariableSpeed"]}, '
         + f'Speed Maps Enabled: {mps["enableSpeedMaps"]}, '
         + minterpMsg
@@ -387,6 +391,12 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     if mp["exists"] and not mps["overwrite"]:
         return {**(settings["markerPairs"][markerPairIndex]), **mp}
 
+    if mps["mirror"] and mps["fastTrim"]:
+        logger.notice(
+            "Disabling fast-trim for this clip because mirror override requires re-encoding.",
+        )
+        mps["fastTrim"] = False
+
     if mps["fastTrim"]:
         logger.notice(
             f"Fast-trim enabled for marker pair {markerPairIndex}. Features that require re-encoding (including crop and speed) will be disabled.",
@@ -483,6 +493,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     inputs = ""
     audio_filter = ""
     video_filter = ""
+    mirror_enabled = bool(mps.get("mirror", False))
+    mps["mirror"] = mirror_enabled
 
     if mp["isVariableSpeed"] or mps["loop"] != "none" or is_rife_used:
         mps["audio"] = False
@@ -620,6 +632,9 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         video_filter += f",setpts=N/FR/TB" # probably should not be set here
 
     video_filter += f',{mp["cropFilter"]}'
+
+    if mirror_enabled:
+        video_filter += ",hflip"
 
     if mps["subsFilePath"] != "":
         video_filter += getSubsFilter(cs, mp, mps, markerPairIndex)
