@@ -57,7 +57,8 @@ function cloneClipSettingsOverrides(overrides: ClipSettingsOverrides): ClipSetti
 function cloneClipSettingsState(state: ClipSettingsState): ClipSettingsState {
   return {
     speed: state.speed,
-    overrides: cloneClipSettingsOverrides(state.overrides)
+    overrides: cloneClipSettingsOverrides(state.overrides),
+    effectiveOverrides: cloneClipSettingsOverrides(state.effectiveOverrides)
   }
 }
 
@@ -102,29 +103,52 @@ function areClipSettingsEqual(a: ClipSettingsState, b: ClipSettingsState): boole
   return deepEqual(normalizeOverrides(a.overrides), normalizeOverrides(b.overrides))
 }
 
-function extractClipSettingsStateFromClip(clip: ClipInfo): ClipSettingsState {
+function extractClipSettingsStateFromClip(clip: ClipInfo, defaults: ClipSettingsOverrides): ClipSettingsState {
   const baseOverrides = (clip.overrides || {}) as Record<string, unknown>
   const overrides: ClipSettingsOverrides = {}
+  const effective: ClipSettingsOverrides = {}
+  const defaultsRecord = defaults as Record<string, unknown>
   for (const key of CLIP_SETTINGS_KEYS) {
     const value = baseOverrides[key as string]
     if (value !== undefined) {
-      ;(overrides as Record<string, unknown>)[key as string] = typeof value === 'object' && value !== null ? cloneSimple(value) : value
+      const cloned = typeof value === 'object' && value !== null ? cloneSimple(value) : value
+      ;(overrides as Record<string, unknown>)[key as string] = cloned
+      ;(effective as Record<string, unknown>)[key as string] = cloned
+      continue
+    }
+    const inherited = defaultsRecord[key as string]
+    if (inherited !== undefined) {
+      ;(effective as Record<string, unknown>)[key as string] = typeof inherited === 'object' && inherited !== null ? cloneSimple(inherited) : inherited
     }
   }
   return {
     speed: typeof clip.speed === 'number' ? clip.speed : 1,
-    overrides
+    overrides,
+    effectiveOverrides: effective
   }
 }
 
-function buildClipSettingsSnapshot(clips: ClipInfo[]): Record<number, ClipSettingsState> {
+function buildClipSettingsSnapshot(clips: ClipInfo[], defaults: ClipSettingsOverrides): Record<number, ClipSettingsState> {
   const snapshot: Record<number, ClipSettingsState> = {}
   for (const clip of clips) {
     if (typeof clip.number === 'number') {
-      snapshot[clip.number] = cloneClipSettingsState(extractClipSettingsStateFromClip(clip))
+      snapshot[clip.number] = cloneClipSettingsState(extractClipSettingsStateFromClip(clip, defaults))
     }
   }
   return snapshot
+}
+
+function extractGlobalClipDefaults(markup: MarkupData | null): ClipSettingsOverrides {
+  const defaults: ClipSettingsOverrides = {}
+  if (!markup) return defaults
+  const record = markup as unknown as Record<string, unknown>
+  for (const key of CLIP_SETTINGS_KEYS) {
+    const rawValue = record[key as string]
+    if (rawValue !== undefined) {
+      ;(defaults as Record<string, unknown>)[key as string] = typeof rawValue === 'object' && rawValue !== null ? cloneSimple(rawValue) : rawValue
+    }
+  }
+  return defaults
 }
 
 function applyOverrideChanges(target: Record<string, unknown>, changes: Partial<ClipSettingsOverrides>): Record<string, unknown> {
@@ -143,6 +167,45 @@ function applyOverrideChanges(target: Record<string, unknown>, changes: Partial<
     }
   }
   return updated
+}
+
+function pruneBooleanOverrides(
+  overrides: Record<string, unknown>,
+  baseline: ClipSettingsOverrides | undefined,
+  defaults: ClipSettingsOverrides
+): Record<string, unknown> {
+  const baselineRecord = baseline ? { ...(baseline as Record<string, unknown>) } : {}
+  const defaultsRecord = defaults ? { ...(defaults as Record<string, unknown>) } : {}
+  const pruned: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(overrides)) {
+    if (
+      typeof value === 'boolean' &&
+      value === false &&
+      !(key in baselineRecord) &&
+      (!defaultsRecord[key] || defaultsRecord[key] === false)
+    ) {
+      continue
+    }
+    pruned[key] = value
+  }
+  return pruned
+}
+
+function pruneOverridesMatchingDefaults(
+  overrides: Record<string, unknown>,
+  defaults: ClipSettingsOverrides
+): Record<string, unknown> {
+  if (!defaults || Object.keys(defaults).length === 0) return overrides
+  const defaultsRecord = defaults as Record<string, unknown>
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(overrides)) {
+    const defaultValue = defaultsRecord[key]
+    if (defaultValue !== undefined && deepEqual(value, defaultValue)) {
+      continue
+    }
+    result[key] = value
+  }
+  return result
 }
 
 export const useClipperStore = defineStore('clipper', () => {
@@ -412,7 +475,8 @@ export const useClipperStore = defineStore('clipper', () => {
     }))
     selectedClips.value = clips.map((_, i) => i)
     activeColorGradingClip.value = clips.length ? 0 : null
-    originalClipSettings.value = buildClipSettingsSnapshot(parsedClips.value)
+    const defaults = extractGlobalClipDefaults(parsedMarkupData.value)
+    originalClipSettings.value = buildClipSettingsSnapshot(parsedClips.value, defaults)
     clipSettingsDirty.value = {}
   }
 
@@ -436,6 +500,19 @@ export const useClipperStore = defineStore('clipper', () => {
 
   function setParsedMarkupData(data: MarkupData | null) {
     parsedMarkupData.value = data
+    if (!parsedClips.value.length) return
+    const defaults = extractGlobalClipDefaults(parsedMarkupData.value)
+    originalClipSettings.value = buildClipSettingsSnapshot(parsedClips.value, defaults)
+    const dirtyMap: Record<number, boolean> = {}
+    for (const clip of parsedClips.value) {
+      if (typeof clip.number !== 'number') continue
+      const current = cloneClipSettingsState(extractClipSettingsStateFromClip(clip, defaults))
+      const baseline = originalClipSettings.value[clip.number]
+      if (current && baseline && !areClipSettingsEqual(current, baseline)) {
+        dirtyMap[clip.number] = true
+      }
+    }
+    clipSettingsDirty.value = dirtyMap
   }
 
   function resetMarkupState() {
@@ -523,7 +600,8 @@ export const useClipperStore = defineStore('clipper', () => {
   function getClipSettingsState(clipNumber: number): ClipSettingsState | null {
     const clip = parsedClips.value.find(c => c.number === clipNumber)
     if (!clip) return null
-    return cloneClipSettingsState(extractClipSettingsStateFromClip(clip))
+    const defaults = extractGlobalClipDefaults(parsedMarkupData.value)
+    return cloneClipSettingsState(extractClipSettingsStateFromClip(clip, defaults))
   }
 
   function getOriginalClipSettingsState(clipNumber: number): ClipSettingsState | null {
@@ -550,6 +628,7 @@ export const useClipperStore = defineStore('clipper', () => {
 
     const existingClip = parsedClips.value[clipIndex]
     const baseline = originalClipSettings.value[clipNumber]
+    const globalDefaults = extractGlobalClipDefaults(parsedMarkupData.value)
 
     let nextSpeed = existingClip.speed
     if (payload.speed !== undefined) {
@@ -563,11 +642,13 @@ export const useClipperStore = defineStore('clipper', () => {
     const currentOverrides = { ...(existingClip.overrides || {}) }
     const overridesChanges = payload.overrides as Partial<ClipSettingsOverrides> | undefined
     const nextOverrides = overridesChanges ? applyOverrideChanges(currentOverrides, overridesChanges) : currentOverrides
+  const booleanPruned = pruneBooleanOverrides(nextOverrides, baseline?.overrides, globalDefaults)
+    const prunedOverrides = pruneOverridesMatchingDefaults(booleanPruned, globalDefaults)
 
     const updatedClip: ClipInfo = {
       ...existingClip,
       speed: nextSpeed,
-      overrides: nextOverrides
+      overrides: prunedOverrides
     }
     parsedClips.value.splice(clipIndex, 1, updatedClip)
 
@@ -578,7 +659,9 @@ export const useClipperStore = defineStore('clipper', () => {
       }
       if (overridesChanges) {
         const existingOverrides = markerPair.overrides || {}
-        markerPair.overrides = applyOverrideChanges(existingOverrides, overridesChanges)
+        const mergedOverrides = applyOverrideChanges(existingOverrides, overridesChanges)
+  const mergedBooleanPruned = pruneBooleanOverrides(mergedOverrides, baseline?.overrides, globalDefaults)
+        markerPair.overrides = pruneOverridesMatchingDefaults(mergedBooleanPruned, globalDefaults) as Record<string, unknown>
       }
     }
 

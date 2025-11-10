@@ -245,14 +245,14 @@ const videoStabilizationPresets: VideoStabilizationPreset[] = [
 const videoEnhancementModels: VideoEnhancementModel[] = ['Proteus', 'Iris']
 
 const videoEnhancementNumericFields = [
-  { key: 'videoEnhancementCompression', label: 'Compression', min: -1, max: 100, step: 1 },
-  { key: 'videoEnhancementDetails', label: 'Details', min: -1, max: 100, step: 1 },
-  { key: 'videoEnhancementBlur', label: 'Blur', min: -50, max: 50, step: 1 },
-  { key: 'videoEnhancementNoise', label: 'Noise', min: -50, max: 50, step: 1 },
-  { key: 'videoEnhancementHalo', label: 'Halo', min: -50, max: 50, step: 1 },
-  { key: 'videoEnhancementPreblur', label: 'Preblur', min: -50, max: 50, step: 1 },
+  { key: 'videoEnhancementCompression', label: 'Compression', min: -1, max: 100, step: 0.05 },
+  { key: 'videoEnhancementDetails', label: 'Details', min: -1, max: 100, step: 0.05 },
+  { key: 'videoEnhancementBlur', label: 'Blur', min: -50, max: 50, step: 0.05 },
+  { key: 'videoEnhancementNoise', label: 'Noise', min: -50, max: 50, step: 0.05 },
+  { key: 'videoEnhancementHalo', label: 'Halo', min: -50, max: 50, step: 0.05 },
+  { key: 'videoEnhancementPreblur', label: 'Preblur', min: -50, max: 50, step: 0.05 },
   { key: 'videoEnhancementBlend', label: 'Blend', min: 0, max: 1, step: 0.05 },
-  { key: 'videoEnhancementPrenoise', label: 'Prenoise', min: 0, max: 1, step: 0.01 }
+  { key: 'videoEnhancementPrenoise', label: 'Prenoise', min: 0, max: 1, step: 0.05 }
 ] as const
 
 type VideoEnhancementFieldKey = typeof videoEnhancementNumericFields[number]['key']
@@ -348,27 +348,27 @@ function applySettings(settings: ClipSettingsState | null) {
   resetForm()
   if (!settings) return
   form.speed = settings.speed ?? form.speed
-  const overrides = settings.overrides || {}
-  form.loop = (overrides.loop as LoopOption | undefined) ?? null
-  form.minterpMode = normalizeMinterpMode(overrides.minterpMode)
-  form.minterpProvider = (overrides.minterpProvider as string | undefined) ?? null
-  form.mirror = overrides.mirror ?? false
+  const effective = settings.effectiveOverrides || {}
+  form.loop = (effective.loop as LoopOption | undefined) ?? null
+  form.minterpMode = normalizeMinterpMode(effective.minterpMode)
+  form.minterpProvider = (effective.minterpProvider as string | undefined) ?? null
+  form.mirror = effective.mirror ?? false
 
-  const presetValue = findPresetValueFromConfig(overrides.videoStabilization as VideoStabilizationOverride | undefined)
+  const presetValue = findPresetValueFromConfig(effective.videoStabilization as VideoStabilizationOverride | undefined)
   form.videoStabilizationPreset = presetValue
-  form.videoStabilizationRollingShutter = overrides.videoStabilizationRollingShutter ?? false
-  form.videoStabilizationJitteryMotion = overrides.videoStabilizationJitteryMotion ?? false
+  form.videoStabilizationRollingShutter = effective.videoStabilizationRollingShutter ?? false
+  form.videoStabilizationJitteryMotion = effective.videoStabilizationJitteryMotion ?? false
 
-  form.videoEnhancementEnabled = overrides.videoEnhancementEnabled ?? false
-  form.videoEnhancementModel = (overrides.videoEnhancementModel as VideoEnhancementModel | undefined) ?? null
-  form.videoEnhancementCompression = overrides.videoEnhancementCompression ?? null
-  form.videoEnhancementDetails = overrides.videoEnhancementDetails ?? null
-  form.videoEnhancementBlur = overrides.videoEnhancementBlur ?? null
-  form.videoEnhancementNoise = overrides.videoEnhancementNoise ?? null
-  form.videoEnhancementHalo = overrides.videoEnhancementHalo ?? null
-  form.videoEnhancementPreblur = overrides.videoEnhancementPreblur ?? null
-  form.videoEnhancementBlend = overrides.videoEnhancementBlend ?? null
-  form.videoEnhancementPrenoise = overrides.videoEnhancementPrenoise ?? null
+  form.videoEnhancementEnabled = effective.videoEnhancementEnabled ?? false
+  form.videoEnhancementModel = (effective.videoEnhancementModel as VideoEnhancementModel | undefined) ?? null
+  form.videoEnhancementCompression = typeof effective.videoEnhancementCompression === 'number' ? effective.videoEnhancementCompression : 0
+  form.videoEnhancementDetails = typeof effective.videoEnhancementDetails === 'number' ? effective.videoEnhancementDetails : 0
+  form.videoEnhancementBlur = typeof effective.videoEnhancementBlur === 'number' ? effective.videoEnhancementBlur : 0
+  form.videoEnhancementNoise = typeof effective.videoEnhancementNoise === 'number' ? effective.videoEnhancementNoise : 0
+  form.videoEnhancementHalo = typeof effective.videoEnhancementHalo === 'number' ? effective.videoEnhancementHalo : 0
+  form.videoEnhancementPreblur = typeof effective.videoEnhancementPreblur === 'number' ? effective.videoEnhancementPreblur : 0
+  form.videoEnhancementBlend = typeof effective.videoEnhancementBlend === 'number' ? effective.videoEnhancementBlend : 0
+  form.videoEnhancementPrenoise = typeof effective.videoEnhancementPrenoise === 'number' ? effective.videoEnhancementPrenoise : 0
 }
 
 watch(currentSettings, (settings) => {

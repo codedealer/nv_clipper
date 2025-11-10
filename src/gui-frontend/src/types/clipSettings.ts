@@ -33,6 +33,7 @@ export interface ClipSettingsOverrides {
 export interface ClipSettingsState {
   speed: number
   overrides: ClipSettingsOverrides
+  effectiveOverrides: ClipSettingsOverrides
 }
 
 export interface ClipSettingsUpdatePayload {
