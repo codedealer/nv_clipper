@@ -614,7 +614,8 @@ export const useClipperStore = defineStore('clipper', () => {
     const current = getClipSettingsState(clipNumber)
     const baseline = originalClipSettings.value[clipNumber]
     if (!current || !baseline) {
-      const { [clipNumber]: _removed, ...rest } = clipSettingsDirty.value
+      const rest = { ...clipSettingsDirty.value }
+      delete rest[clipNumber]
       clipSettingsDirty.value = rest
       return
     }
