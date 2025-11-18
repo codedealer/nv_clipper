@@ -245,14 +245,14 @@ const videoStabilizationPresets: VideoStabilizationPreset[] = [
 const videoEnhancementModels: VideoEnhancementModel[] = ['Proteus', 'Iris']
 
 const videoEnhancementNumericFields = [
-  { key: 'videoEnhancementCompression', label: 'Compression', min: -1, max: 100, step: 0.05 },
-  { key: 'videoEnhancementDetails', label: 'Details', min: -1, max: 100, step: 0.05 },
-  { key: 'videoEnhancementBlur', label: 'Blur', min: -50, max: 50, step: 0.05 },
-  { key: 'videoEnhancementNoise', label: 'Noise', min: -50, max: 50, step: 0.05 },
-  { key: 'videoEnhancementHalo', label: 'Halo', min: -50, max: 50, step: 0.05 },
-  { key: 'videoEnhancementPreblur', label: 'Preblur', min: -50, max: 50, step: 0.05 },
-  { key: 'videoEnhancementBlend', label: 'Blend', min: 0, max: 1, step: 0.05 },
-  { key: 'videoEnhancementPrenoise', label: 'Prenoise', min: 0, max: 1, step: 0.05 }
+  { key: 'videoEnhancementCompression', label: 'Fix Compression', min: 0, max: 1, step: 0.05 },
+  { key: 'videoEnhancementDetails', label: 'Improve Detail', min: 0, max: 1, step: 0.05 },
+  { key: 'videoEnhancementBlur', label: 'Sharpen', min: 0, max: 1, step: 0.05 },
+  { key: 'videoEnhancementNoise', label: 'Reduce Noise', min: 0, max: 1, step: 0.05 },
+  { key: 'videoEnhancementHalo', label: 'Dehalo', min: 0, max: 1, step: 0.05 },
+  { key: 'videoEnhancementPreblur', label: 'Anti-alias/Deblur', min: -1, max: 1, step: 0.1 },
+  { key: 'videoEnhancementBlend', label: 'Recover detail', min: 0, max: 1, step: 0.05 },
+  { key: 'videoEnhancementPrenoise', label: 'Add Noise', min: 0, max: 1, step: 0.05 }
 ] as const
 
 type VideoEnhancementFieldKey = typeof videoEnhancementNumericFields[number]['key']
