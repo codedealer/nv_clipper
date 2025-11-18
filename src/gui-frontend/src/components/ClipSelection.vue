@@ -26,7 +26,7 @@
           <el-checkbox :value="index" />
           <div class="clip-info" @click="handleClipClick(index)">
             <div class="clip-info-row">
-              <div class="clip-duration">{{ `${clip.number || index + 1} - ${formatDuration(clip)}` }}</div>
+              <div class="clip-duration">{{ `${clip.number || index + 1} - ${formatDuration(clip, index)}` }}</div>
               <el-tag v-if="isClipModified(clip, index)" type="warning" size="small" effect="plain" class="clip-modified-tag">Modified</el-tag>
             </div>
           </div>
@@ -39,6 +39,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { VideoPlay } from '@element-plus/icons-vue'
+import { useClipperStore } from '@/stores/counter'
+import type { ClipSettingsState } from '@/types/clipSettings'
 
 interface Clip {
   title?: string
@@ -68,11 +70,24 @@ const emit = defineEmits<{
 
 // Local state
 const selectAllClips = ref(true)
+const clipperStore = useClipperStore()
 
 // Computed
 const selectedClips = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
+})
+
+const clipSettingsByNumber = computed<Record<number, ClipSettingsState>>(() => {
+  const map: Record<number, ClipSettingsState> = {}
+  for (const clip of props.clips) {
+    if (typeof clip.number !== 'number') continue
+    const state = clipperStore.getClipSettingsState(clip.number)
+    if (state) {
+      map[clip.number] = state
+    }
+  }
+  return map
 })
 
 const isIndeterminate = computed(() =>
@@ -106,8 +121,16 @@ const INTERPOLATION_DURATION_FACTORS: Record<string, number> = {
   x8slow: 8
 }
 
-function getInterpolationFactor(clip: Clip): number {
-  const raw = clip.overrides?.minterpMode as string | boolean | undefined
+function resolveInterpolationMode(clip: Clip, settings?: ClipSettingsState): string | boolean | undefined {
+  if (settings?.effectiveOverrides?.minterpMode !== undefined) {
+    return settings.effectiveOverrides.minterpMode
+  }
+  const overrides = clip.overrides as { minterpMode?: string | boolean } | undefined
+  return overrides?.minterpMode
+}
+
+function getInterpolationFactor(clip: Clip, settings?: ClipSettingsState): number {
+  const raw = resolveInterpolationMode(clip, settings)
   if (raw === false || raw === undefined || raw === null) {
     return 1
   }
@@ -117,16 +140,21 @@ function getInterpolationFactor(clip: Clip): number {
   return 1
 }
 
-function getProjectedDuration(clip: Clip, baseDuration: number): number {
-  const speedMultiplier = clip.speed && clip.speed > 0 ? clip.speed : 1
-  const interpolationFactor = getInterpolationFactor(clip)
+function getSpeedMultiplier(clip: Clip, settings?: ClipSettingsState): number {
+  const rawSpeed = settings?.speed ?? clip.speed
+  return rawSpeed && rawSpeed > 0 ? rawSpeed : 1
+}
+
+function getProjectedDuration(clip: Clip, baseDuration: number, settings?: ClipSettingsState): number {
+  const speedMultiplier = getSpeedMultiplier(clip, settings)
+  const interpolationFactor = getInterpolationFactor(clip, settings)
   const rawProjected = baseDuration * interpolationFactor
   return rawProjected / (speedMultiplier || 1)
 }
 
-function getEffectiveSpeed(clip: Clip): number {
-  const speedMultiplier = clip.speed && clip.speed > 0 ? clip.speed : 1
-  const interpolationFactor = getInterpolationFactor(clip)
+function getEffectiveSpeed(clip: Clip, settings?: ClipSettingsState): number {
+  const speedMultiplier = getSpeedMultiplier(clip, settings)
+  const interpolationFactor = getInterpolationFactor(clip, settings)
   const effective = speedMultiplier / (interpolationFactor || 1)
   return effective > 0 ? effective : 1
 }
@@ -140,14 +168,16 @@ function handleSelectAllClips(value: boolean) {
   }
 }
 
-function formatDuration(clip: Clip): string {
+function formatDuration(clip: Clip, index: number): string {
   if (typeof clip.start === 'number' && typeof clip.end === 'number') {
+    const clipNumber = typeof clip.number === 'number' ? clip.number : index + 1
+    const settings = clipSettingsByNumber.value[clipNumber]
     const baseDuration = typeof clip.duration === 'number'
       ? clip.duration
       : Math.max(clip.end - clip.start, 0)
-    const projectedDuration = getProjectedDuration(clip, baseDuration)
+    const projectedDuration = getProjectedDuration(clip, baseDuration, settings)
     const durationChanged = Math.abs(projectedDuration - baseDuration) > 1e-2
-    const effectiveSpeed = getEffectiveSpeed(clip)
+    const effectiveSpeed = getEffectiveSpeed(clip, settings)
     const speedChanged = Math.abs(effectiveSpeed - 1) > 1e-3
     const range = `${formatTime(clip.start)} - ${formatTime(clip.end)}`
     const baseText = formatTime(baseDuration)
