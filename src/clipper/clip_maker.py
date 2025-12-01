@@ -1470,13 +1470,14 @@ def mergeClips(cs: ClipperState) -> None:  # noqa: PLR0912
         ffmpegConcatFlags = f"{overwriteArg} -hide_banner -f concat -safe 0"
         ffmpegConcatCmd = f' "{cp.ffmpegPath}" {ffmpegConcatFlags}  -i "{inputsTxtPath}" -c copy "{mergedFilePath}"'
 
+        mergedFileNameEscaped = rich.markup.escape(mergedFileName)
         if not mergeFileExists or settings["overwrite"]:
             logger.info(f"Using ffmpeg command: {ffmpegConcatCmd}")
             ffmpegProcess = subprocess.run(shlex.split(ffmpegConcatCmd), check=False)
             if ffmpegProcess.returncode == 0:
-                logger.success(f'Successfuly generated: "{mergedFileName}"\n')
+                logger.success(f'Successfuly generated: "{mergedFileNameEscaped}"\n')
             else:
-                logger.info(f'Failed to generate: "{mergedFileName}"\n')
+                logger.info(f'Failed to generate: "{mergedFileNameEscaped}"\n')
                 logger.error(f"ffmpeg error code: {ffmpegProcess.returncode}\n")
 
         with contextlib.suppress(OSError, FileNotFoundError):
