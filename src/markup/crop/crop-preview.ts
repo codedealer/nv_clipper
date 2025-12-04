@@ -80,7 +80,7 @@ function drawZoomedRegion(
 
     ctx.drawImage(video, x, y, w, h, 0, 0, canvas.width, canvas.height);
 
-    requestAnimationFrame(() => drawZoomedRegion(getZoomRegion, canvas, ctx, modal, modalContent));
+    video.requestVideoFrameCallback(() => drawZoomedRegion(getZoomRegion, canvas, ctx, modal, modalContent));
   }
 }
 

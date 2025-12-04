@@ -473,7 +473,13 @@ In `zoompan` mode crops can change size for a zooming effect, but their aspect r
 **Ctrl+Shift+Click:** Toggle crop point easing between auto and instant.
 
 - Points with instant easing enabled are darkened.
-- Instant easing means that any pan or zoom from a previous point will happen instantly, causing the crop to jump. This is useful if there is a scene change in the video or very fast movement.
+- Instant easing means that any pan or zoom from a previous point will happen instantly, causing the crop to jump.
+- This is useful if there is a scene change in the video or very fast movement.
+- Before version 5.37.0, instant easeing would transition to the next (right) crop immediately.
+  Typically you would want to hold the previous crop and then transition on the last frame.
+  This meant you would need to add an extra point to hold the previous crop.
+- Since version 5.37.0, instant easing holds the previous crop and on the last frame instantly transitions to the the next crop.
+  The recommendation now is to just add a point on the first frame that the scene changes and adjust the crop to match the new scene.
 
 **A/Shift+A:** Set target crop component of all points following/preceding the currently selected point. Select crop components by placing your cursor in the crop input field in the marker pair settings.
 

@@ -196,12 +196,12 @@ export function getEasedValue(
 ) {
   const elapsed = currentTime - startTime;
   const duration = endTime - startTime;
-  const change = endValue - startValue;
+  const valueDelta = endValue - startValue;
 
-  let easedTimePercentage: number;
-  easedTimePercentage = easingFunc(elapsed / duration);
+  let easedValuePercentage: number;
+  easedValuePercentage = easingFunc(elapsed / duration);
 
-  const easedValue = startValue + change * easedTimePercentage;
+  const easedValue = startValue + valueDelta * easedValuePercentage;
   return easedValue;
 }
 

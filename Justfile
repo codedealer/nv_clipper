@@ -20,10 +20,13 @@ pretty-py:
 pretty-py-check:
   uv run ruff format --check src/clipper
 
-test-py:
-  uv run pytest src/clipper -s --cov=src/clipper --cov-report=html -m "not slow"
+test-py update="false":
+  uv run pytest src/clipper -s --cov=src/clipper --cov-report=html -m "not slow" \
+    {{ if update == "true" { "--snapshot-update" } else { "" } }}
 test-py-slow:
   uv run pytest src/clipper --cov=src/clipper --cov-report=html
+test-py-update:
+  just test-py true
 
 lint-py:
   uv run ruff check src/clipper

@@ -1864,15 +1864,24 @@ async function loadytClipper() {
     return fps;
   }
 
-  function getCurrentFrameTime(roughCurrentTime: number): number {
+  function getCurrentFrameTimeOrCurrentTime(currentTime: number): number {
     let currentFrameTime: number;
     let fps = getFPS(null);
     // If fps cannot be detected use precise time reported by video player
     // instead of estimating nearest frame time
     fps
-      ? (currentFrameTime = Math.floor(roughCurrentTime * fps) / fps)
-      : (currentFrameTime = roughCurrentTime);
+      ? (currentFrameTime = Math.floor(currentTime * fps) / fps)
+      : (currentFrameTime = currentTime);
     return currentFrameTime;
+  }
+
+  function getFrameTimeBetweenLeftFrames(currentTime: number): number {
+    let fps = getFPS();
+
+    const leftFrameIndex = Math.floor(currentTime * fps);
+    const midpointTime = (leftFrameIndex - 0.5) / fps;
+
+    return midpointTime;
   }
 
   function pushMarkerPairsArray(currentTime: number, markerPairConfig: MarkerConfig) {
@@ -5717,7 +5726,7 @@ async function loadytClipper() {
 
       updateDynamicCropOverlays(chartData, time, isDynamicCrop);
     }
-    requestAnimationFrame(cropChartPreviewHandler);
+    video.requestVideoFrameCallback(cropChartPreviewHandler);
   }
 
   function setCurrentCropPointWithCurrentTime() {
@@ -5757,26 +5766,35 @@ async function loadytClipper() {
     return null;
   }
 
-  function getEasedCropComponents(sectStart, sectEnd) {
+  function getEasedCropComponents(sectStart: CropPoint, sectEnd: CropPoint) {
     const [startX, startY, startW, startH] = getCropComponents(sectStart.crop);
     const [endX, endY, endW, endH] = getCropComponents(sectEnd.crop);
 
-    const currentTime = video.currentTime;
-    const clampedTime = clampNumber(currentTime, sectStart.x, sectEnd.x);
+    const currentTime = video.getCurrentTime();
+
+    const clampedCurrentTime = clampNumber(currentTime, sectStart.x, sectEnd.x);
     const easingFunc = sectEnd.easeIn == 'instant' ? easeInInstant : easeSinInOut;
+
+    const startTime = sectStart.x;
+    const endTime = getFrameTimeBetweenLeftFrames(sectEnd.x);
+
     const [easedX, easedY, easedW, easedH] = [
       [startX, endX],
       [startY, endY],
       [startW, endW],
       [startH, endH],
     ].map((pair) =>
-      getEasedValue(easingFunc, pair[0], pair[1], sectStart.x, sectEnd.x, clampedTime)
+      getEasedValue(easingFunc, pair[0], pair[1], startTime, endTime, clampedCurrentTime)
     );
 
     return [easedX, easedY, easedW, easedH];
   }
 
-  const easeInInstant = (nt) => (nt === 0 ? 0 : 1);
+  // Hold the left point and then instantly transition to the right point once we reach it
+  const easeInInstant = (timePercentage: number) => {
+    return timePercentage >= 1 ? 1 : 0;
+  };
+
   function updateDynamicCropOverlays(
     chartData: CropPoint[],
     currentTime: number,
@@ -5829,6 +5847,10 @@ async function loadytClipper() {
 
     const clampedTime = clampNumber(time, sectStart.x, sectEnd.x);
     const easingFunc = sectEnd.easeIn == 'instant' ? easeInInstant : easeSinInOut;
+
+    const startTime = sectStart.x;
+    const endTime = getFrameTimeBetweenLeftFrames(sectEnd.x);
+
     const [x, y, w, h] = [
       [startX, endX],
       [startY, endY],
@@ -5839,8 +5861,8 @@ async function loadytClipper() {
         easingFunc,
         startValue,
         endValue,
-        sectStart.x,
-        sectEnd.x,
+        startTime,
+        endTime,
         clampedTime
       );
       return eased;

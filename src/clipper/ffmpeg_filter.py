@@ -455,10 +455,22 @@ def getCropFilter(
         startTime = left["x"] - firstTime
         startX, startY, _startW, _startH = left["crop"].split(":")
         endTime = right["x"] - firstTime
+        adjustedEndTime = getFrameTimeBetweenLeftFrames(endTime, float(fps))
+
         endX, endY, _endW, _endH = right["crop"].split(":")
 
-        sectDuration = endTime - startTime
-        if sectDuration == 0:
+        # We adjust the end time to account for the imprecision in the desired end time
+        # Typically the user will overshoot the frame time
+        # We could try to be precise and get the closest left frame time
+        # But it is easier to get a time between the left frame and second left frame and avoid precision issues
+        # This may slightly accelerate the filter timeline
+        # The input time will be equal to the second left frame, and normalized time will be close to 1
+        # (it may be slightly closer if we did not adjust the end time)
+        # Then the input time will be equal to the left frame, and normalized time will be 1
+        # If we did not adjust the end time, then when the input time is equal to the left frame, normalized time
+        # may not be 1, which is what we want to avoid, especially in the instant ease in case
+        sectDuration = adjustedEndTime - startTime
+        if sectDuration <= 0:
             continue
 
         currEaseType = easeType if not right.get("easeIn", False) else right["easeIn"]
@@ -466,6 +478,8 @@ def getCropFilter(
         easeP = f"((t-{startTime})/{sectDuration})"
         easeX = getEasingExpression(currEaseType, f"({startX})", f"({endX})", easeP)
         easeY = getEasingExpression(currEaseType, f"({startY})", f"({endY})", easeP)
+
+        # We use endTime and not adjustedEndTime otherwise the timeline may have a gap
         easingsX.append((startTime, endTime, easeX))
         easingsY.append((startTime, endTime, easeY))
 
@@ -488,7 +502,7 @@ def getEaseFilterExpr(easings: List, timeExpr: Literal["t", "it"]) -> str:
     return "+".join(easeFilterExpr)
 
 
-# zoompan's time variable is time instead of t
+# it for input time
 ZOOM_PAN_TIME_EXPR = "it"
 
 
@@ -528,6 +542,8 @@ def getZoomPanFilter(
         startTime = left["x"] - firstTime
         startX, startY, startW, startH = left["crop"].split(":")
         endTime = right["x"] - firstTime
+        adjustedEndTime = getFrameTimeBetweenLeftFrames(endTime, float(fps))
+
         endX, endY, endW, endH = right["crop"].split(":")
         startRight = float(startX) + float(startW)
         startBottom = float(startY) + float(startH)
@@ -537,8 +553,8 @@ def getZoomPanFilter(
         startZoom = maxWidth / float(startW)
         endZoom = maxWidth / float(endW)
 
-        sectDuration = endTime - startTime
-        if sectDuration == 0:
+        sectDuration = adjustedEndTime - startTime
+        if sectDuration <= 0:
             continue
 
         currEaseType = easeType if not right.get("easeIn", False) else right["easeIn"]
@@ -654,6 +670,12 @@ def floorToEven(x: Union[int, str, float]) -> int:
     x = int(x)
     return x & ~1
 
+def getFrameTimeBetweenLeftFrames(time: float, fps: float) -> float:
+  leftFrameIndex = floor(time * fps)
+
+  midpointTime = (leftFrameIndex - 0.5) / fps
+
+  return midpointTime
 
 def getEasingExpression(
     easingFunc: str,
@@ -665,8 +687,9 @@ def getEasingExpression(
     easeT = f"(2*{easeP})"
     easeM = f"({easeP}-1)"
 
+    # Hold the left point and then instantly transition to the right point once we reach it
     if easingFunc == "instant":
-        return f"if(lte({easeP},0),{easeA},{easeB})"
+        return f"if(gte({easeP},1),{easeB},{easeA})"
     if easingFunc == "linear":
         return f"lerp({easeA}, {easeB}, {easeP})"
 
