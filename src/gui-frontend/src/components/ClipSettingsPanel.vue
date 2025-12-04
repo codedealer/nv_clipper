@@ -416,8 +416,7 @@ function handleLoopChange(value: LoopOption | undefined) {
 function handleMinterpModeChange(value: MinterpModeOption) {
   const number = ensureClip()
   if (number === null) return
-  const resolved = value === 'None' ? false : value
-  markupOps.updateClipSettings(number, { overrides: { minterpMode: resolved } })
+  markupOps.updateClipSettings(number, { overrides: { minterpMode: value } })
 }
 
 function handleMinterpProviderChange(value: string | undefined) {

@@ -65,6 +65,9 @@ def getMarkerPairSettings(  # noqa: PLR0912
     # marker pair settings
     mps: Dict[str, Any] = {**settings, **(mp["overrides"])}
 
+    if mps.get("minterpMode") is False:
+        mps["minterpMode"] = "None"
+
     # organize video enhancement settings
     if "videoEnhancementEnabled" in mps:
         # VideoEnhancement interface defaults from yt_clipper.d.ts
