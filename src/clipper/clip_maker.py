@@ -50,6 +50,17 @@ _RIFE_CACHE: Dict[str, Any] = {
     "run_rife_interpolation": None,
 }
 
+# Default colorspace to use when not detected
+DEFAULT_COLOR_SPACE = "bt709"
+
+
+def _get_color_space(mps: DictStrAny) -> str:
+    """Get the colorspace from settings, defaulting to bt709 if not available."""
+    color_space = mps.get("color_space")
+    if not color_space:
+        return DEFAULT_COLOR_SPACE
+    return color_space
+
 
 def getMarkerPairSettings(  # noqa: PLR0912
     cs: ClipperState,
@@ -821,10 +832,18 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             vidstabdetectFilter += loop_filter
             vidstabtransformFilter += loop_filter
 
-         # mjpeg encoding requires full range pixel format
+         # mjpeg encoding requires full range pixel format and 8-bit depth
         if is_rife_used:
-            vidstabdetectFilter = f"{vidstabdetectFilter},scale=in_range=tv:out_range=pc"
-            vidstabtransformFilter = f"{vidstabtransformFilter},scale=in_range=tv:out_range=pc"
+            # For 10-bit input, we need to convert to 8-bit yuv444p with proper colorspace handling
+            input_pix_fmt = mps.get("pix_fmt", "")
+            is_10bit_input = "10" in input_pix_fmt.lower()
+            color_space = _get_color_space(mps)
+            if is_10bit_input:
+                vidstabdetectFilter = f"{vidstabdetectFilter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
+                vidstabtransformFilter = f"{vidstabtransformFilter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
+            else:
+                vidstabdetectFilter = f"{vidstabdetectFilter},scale=in_range=tv:out_range=pc"
+                vidstabtransformFilter = f"{vidstabtransformFilter},scale=in_range=tv:out_range=pc"
 
         vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
             vidstabtransformFilter,
@@ -882,9 +901,20 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         if mps["loop"] != "none":
             video_filter += loop_filter
 
-        # mjpeg encoding requires full range pixel format
+        # mjpeg encoding requires full range pixel format and 8-bit depth
         if is_rife_used:
-            video_filter = f"{video_filter},scale=in_range=tv:out_range=pc"
+            # For 10-bit input, we need to convert to 8-bit yuv444p with proper colorspace handling
+            # before the range conversion. The format filter handles bit-depth conversion correctly
+            # while respecting the source colorspace.
+            input_pix_fmt = mps.get("pix_fmt", "")
+            is_10bit_input = "10" in input_pix_fmt.lower()
+            color_space = _get_color_space(mps)
+            if is_10bit_input:
+                # Use scale filter with explicit color matrix for proper 10-bit to 8-bit conversion
+                # This ensures the color values are correctly mapped during bit-depth reduction
+                video_filter = f"{video_filter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
+            else:
+                video_filter = f"{video_filter},scale=in_range=tv:out_range=pc"
 
         video_filter = wrapVideoFilterForHardwareAcceleration(
             video_filter,
@@ -1035,7 +1065,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     mp: DictStrAny,
     mps: DictStrAny,
 ) -> str:
-    color_space = mps.get("color_space")
+    color_space = _get_color_space(mps)
     decoder_args = f"-hwaccel cuvid -hwaccel_output_format cuda -c:v {mps['decoder_codec']}" if mps["is_hw_decode"] else ""
     return " ".join(
         (
@@ -1053,7 +1083,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
             # "-aspect 1:1", # force square pixels
             "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
             "-color_range pc", # full range for mjpeg
-            f"-colorspace {color_space}" if color_space else "",
+            f"-colorspace {color_space}",
             # "-threads 3",
             "-video_track_timescale 82882800",
             f"-r {mps['minterpFPS']}",
@@ -1080,6 +1110,12 @@ def getRIFEFfmpegEncodeCommand(
         qmin=qmin,
     )
     frame_rate = getExpectedFrameRate(mp, mps)
+    color_space = _get_color_space(mps)
+
+    # Build video filter with proper colorspace handling for the encode side
+    # Input from RIFE is BGR24 full range, we need to convert back to YUV TV range
+    # while respecting the original colorspace
+    vf_encode = f'scale=in_range=full:out_range=limited:in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv420p,hwupload_cuda'
 
     return " ".join(
         (
@@ -1090,9 +1126,7 @@ def getRIFEFfmpegEncodeCommand(
             f"-framerate {frame_rate}" if frame_rate is not None else "",
             "<__RIFE_placeholder>", # some of the flags will be determined by RIFE
             "-i -",  # read from stdin
-            # f'-vf "scale=in_range=full:out_range=limited,format=yuv444p,hwupload_cuda"',
-            f'-vf "scale=in_range=full:out_range=limited,format=yuv420p,hwupload_cuda"',
-            # f'-vf "format=yuv420p,hwupload_cuda"',
+            f'-vf "{vf_encode}"',
             f"-benchmark",
             video_codec_args,
             (
@@ -1102,6 +1136,7 @@ def getRIFEFfmpegEncodeCommand(
             ),
             video_codec_output_args,
             "-color_range tv",
+            f"-colorspace {color_space}" if color_space else "",
             f'{mps["extraFfmpegArgs"]}',
             f'"{mp["filePath"]}"',
         ),
