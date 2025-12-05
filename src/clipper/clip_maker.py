@@ -53,9 +53,48 @@ _RIFE_CACHE: Dict[str, Any] = {
 # Default colorspace to use when not detected
 DEFAULT_COLOR_SPACE = "bt709"
 
+# Mapping from ffprobe color_space values to ffmpeg scale filter color matrix names
+# ffprobe returns values like "bt470bg", "smpte170m", etc. but scale filter expects
+# different names like "bt470", "smpte170m", etc.
+# Note: The -colorspace output option uses the original ffprobe names (bt470bg, not bt470)
+_FFPROBE_TO_SCALE_COLOR_MATRIX: Dict[str, str] = {
+    "bt709": "bt709",
+    "bt470bg": "bt470",  # BT.470 System B/G -> bt470
+    "bt470m": "bt470",   # BT.470 System M -> bt470
+    "smpte170m": "smpte170m",
+    "smpte240m": "smpte240m",
+    "bt2020nc": "bt2020nc",
+    "bt2020c": "bt2020c",
+    "fcc": "fcc",
+    "smpte428": "smpte428",
+    "smpte431": "smpte431",
+    "smpte432": "smpte432",
+    "ycgco": "ycgco",
+    "gbr": "gbr",
+    "chroma-derived-nc": "chroma-derived-nc",
+    "chroma-derived-c": "chroma-derived-c",
+    "ictcp": "ictcp",
+}
 
-def _get_color_space(mps: DictStrAny) -> str:
-    """Get the colorspace from settings, defaulting to bt709 if not available."""
+
+def _get_color_space_for_scale_filter(mps: DictStrAny) -> str:
+    """Get the colorspace for use in scale filter's in_color_matrix/out_color_matrix.
+
+    Translates ffprobe color_space values to ffmpeg scale filter compatible names.
+    """
+    color_space = mps.get("color_space")
+    if not color_space:
+        return DEFAULT_COLOR_SPACE
+    # Translate to scale filter compatible name, fall back to original if not in mapping
+    translated = _FFPROBE_TO_SCALE_COLOR_MATRIX.get(color_space)
+    return translated if translated else color_space
+
+
+def _get_color_space_for_output(mps: DictStrAny) -> str:
+    """Get the colorspace for use in -colorspace output option.
+
+    Returns the original ffprobe value since -colorspace expects names like bt470bg, not bt470.
+    """
     color_space = mps.get("color_space")
     if not color_space:
         return DEFAULT_COLOR_SPACE
@@ -837,7 +876,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             # For 10-bit input, we need to convert to 8-bit yuv444p with proper colorspace handling
             input_pix_fmt = mps.get("pix_fmt", "")
             is_10bit_input = "10" in input_pix_fmt.lower()
-            color_space = _get_color_space(mps)
+            color_space = _get_color_space_for_scale_filter(mps)
             if is_10bit_input:
                 vidstabdetectFilter = f"{vidstabdetectFilter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
                 vidstabtransformFilter = f"{vidstabtransformFilter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
@@ -908,7 +947,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             # while respecting the source colorspace.
             input_pix_fmt = mps.get("pix_fmt", "")
             is_10bit_input = "10" in input_pix_fmt.lower()
-            color_space = _get_color_space(mps)
+            color_space = _get_color_space_for_scale_filter(mps)
             if is_10bit_input:
                 # Use scale filter with explicit color matrix for proper 10-bit to 8-bit conversion
                 # This ensures the color values are correctly mapped during bit-depth reduction
@@ -1065,7 +1104,7 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     mp: DictStrAny,
     mps: DictStrAny,
 ) -> str:
-    color_space = _get_color_space(mps)
+    color_space = _get_color_space_for_output(mps)
     decoder_args = f"-hwaccel cuvid -hwaccel_output_format cuda -c:v {mps['decoder_codec']}" if mps["is_hw_decode"] else ""
     return " ".join(
         (
@@ -1110,12 +1149,14 @@ def getRIFEFfmpegEncodeCommand(
         qmin=qmin,
     )
     frame_rate = getExpectedFrameRate(mp, mps)
-    color_space = _get_color_space(mps)
+    # Use different colorspace formats for scale filter vs output option
+    color_space_scale = _get_color_space_for_scale_filter(mps)
+    color_space_output = _get_color_space_for_output(mps)
 
     # Build video filter with proper colorspace handling for the encode side
     # Input from RIFE is BGR24 full range, we need to convert back to YUV TV range
     # while respecting the original colorspace
-    vf_encode = f'scale=in_range=full:out_range=limited:in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv420p,hwupload_cuda'
+    vf_encode = f'scale=in_range=full:out_range=limited:in_color_matrix={color_space_scale}:out_color_matrix={color_space_scale},format=yuv420p,hwupload_cuda'
 
     return " ".join(
         (
@@ -1136,7 +1177,7 @@ def getRIFEFfmpegEncodeCommand(
             ),
             video_codec_output_args,
             "-color_range tv",
-            f"-colorspace {color_space}" if color_space else "",
+            f"-colorspace {color_space_output}",
             f'{mps["extraFfmpegArgs"]}',
             f'"{mp["filePath"]}"',
         ),
