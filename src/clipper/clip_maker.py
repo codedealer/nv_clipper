@@ -796,8 +796,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     rifeCommands: List[str] = []
 
     MAX_VFILTER_SIZE = 10_000
-    filterPathPass1 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass1.txt"
-    filterPathPass2 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass2.txt"
+    filterPathPass1 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass1.txt".replace("\\", "/")
+    filterPathPass2 = f"{cp.clipsPath}/temp/vfilter-{markerPairIndex+1}-pass2.txt".replace("\\", "/")
 
     if "minterpMode" in mps and mps["minterpMode"].lower() != "none":
         minterpFilter = getMinterpFilter(mp, mps)
@@ -821,8 +821,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         vidstab = mps["videoStabilization"]
         shakyPath = f"{cp.clipsPath}/shaky"
         os.makedirs(shakyPath, exist_ok=True)
-        transformPath = str(f'{shakyPath}/{mp["fileNameStem"]}.json')
-        transformPathEscaped = escapeSingleQuotesFFmpeg(transformPath)
+        transformPath = str(f'{shakyPath}/{mp["fileNameStem"]}.json').replace("\\", "/")
+        transformPathEscaped = escapeSingleQuotesFFmpeg(transformPath.replace(":", "\\:"))
 
         if not containsValidCharsForVidStab(transformPath):
             # TODO: Write titleSuffix to text file in safe temp work dir for reverse lookup from titleSuffix to hash
@@ -836,8 +836,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
                 f"Using temp directory for intermediate video stabilization transform files: '{safeShakyPath}'.",
             )
             os.makedirs(safeShakyPath, exist_ok=True)
-            transformPath = str(f"{safeShakyPath}/{markerPairIndex+1}.json")
-            transformPathEscaped = escapeSingleQuotesFFmpeg(transformPath)
+            transformPath = str(f"{safeShakyPath}/{markerPairIndex+1}.json").replace("\\", "/")
+            transformPathEscaped = escapeSingleQuotesFFmpeg(transformPath.replace(":", "\\:"))
 
         vidstabdetectFilter = (
             f"{video_filter},tvai_cpe=model=cpe-1:filename='{transformPathEscaped}':device=0"
