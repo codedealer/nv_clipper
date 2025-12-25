@@ -1251,9 +1251,13 @@ async function loadytClipper() {
             seekToSafe(video, chartLoop.start);
           }
         } else if (
-          (isCropChartLoopingOn && isCurrentChartVisible && currentChartInput.type === 'crop') ||
-          (cropChartInput.chart && (isMouseManipulatingCrop || isDrawingCrop))
+          isCropChartLoopingOn && isCurrentChartVisible && currentChartInput.type === 'crop'
         ) {
+          // Note: When isMouseManipulatingCrop or isDrawingCrop is true, we let
+          // cropChartPreviewHandler (which uses requestVideoFrameCallback) handle the section
+          // looping. This avoids a race condition where this setTimeout-based loop (4ms interval)
+          // could seek the video before the video frame callback has a chance to update the display,
+          // causing the timeline cursor to jump to the previous keyframe unexpectedly.
           shouldTriggerCropChartLoop = false;
           cropChartSectionLoop();
         } else if (isMarkerLoopPreviewOn) {
