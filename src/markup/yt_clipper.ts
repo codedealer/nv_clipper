@@ -384,7 +384,8 @@ async function loadytClipper() {
     injectToggleShortcutsTableButton();
     addCropMouseManipulationListener();
     addScrubVideoHandler();
-    loopMarkerPair();
+    // Start the unified video frame handler for all looping functionality
+    video.requestVideoFrameCallback(videoLoopHandler);
   }
 
   let autoSaveIntervalId;
@@ -1231,13 +1232,27 @@ async function loadytClipper() {
     }
   }
 
-  function loopMarkerPair() {
+  /**
+   * Unified video frame handler for all video-time-based looping functionality.
+   * Uses requestVideoFrameCallback instead of setTimeout for better synchronization
+   * with video frames, eliminating race conditions caused by the old 4ms polling loop.
+   *
+   * This handles:
+   * - Chart loop (speed/crop chart with custom loop markers)
+   * - Marker pair looping (when isMarkerLoopPreviewOn is enabled)
+   *
+   * Note: Crop chart section looping is handled by cropChartPreviewHandler
+   * when isMouseManipulatingCrop or isDrawingCrop is true.
+   */
+  function videoLoopHandler() {
     if (isSettingsEditorOpen && !wasGlobalSettingsEditorOpen) {
       if (prevSelectedMarkerPairIndex != null) {
         const markerPair = markerPairs[prevSelectedMarkerPairIndex];
         const chartLoop: ChartLoop = currentChartInput
           ? markerPair[currentChartInput.chartLoopKey]
           : null;
+
+        // Priority 1: Custom chart loop markers (speed or crop chart)
         if (
           chartLoop &&
           chartLoop.enabled &&
@@ -1245,24 +1260,30 @@ async function loadytClipper() {
           chartLoop.end < markerPair.end &&
           chartLoop.start < chartLoop.end
         ) {
+          const currentTime = video.getCurrentTime();
           const isTimeBetweenChartLoop =
-            chartLoop.start <= video.getCurrentTime() && video.getCurrentTime() <= chartLoop.end;
+            chartLoop.start <= currentTime && currentTime <= chartLoop.end;
           if (!isTimeBetweenChartLoop) {
             seekToSafe(video, chartLoop.start);
           }
-        } else if (
-          isCropChartLoopingOn && isCurrentChartVisible && currentChartInput.type === 'crop'
+        }
+        // Priority 2: Crop chart section looping (only when chart is visible and not manipulating crop)
+        // Note: When isMouseManipulatingCrop or isDrawingCrop is true, cropChartPreviewHandler
+        // handles the section looping to avoid race conditions.
+        else if (
+          isCropChartLoopingOn &&
+          isCurrentChartVisible &&
+          currentChartInput?.type === 'crop' &&
+          !isMouseManipulatingCrop &&
+          !isDrawingCrop
         ) {
-          // Note: When isMouseManipulatingCrop or isDrawingCrop is true, we let
-          // cropChartPreviewHandler (which uses requestVideoFrameCallback) handle the section
-          // looping. This avoids a race condition where this setTimeout-based loop (4ms interval)
-          // could seek the video before the video frame callback has a chance to update the display,
-          // causing the timeline cursor to jump to the previous keyframe unexpectedly.
-          shouldTriggerCropChartLoop = false;
           cropChartSectionLoop();
-        } else if (isMarkerLoopPreviewOn) {
+        }
+        // Priority 3: Marker pair looping
+        else if (isMarkerLoopPreviewOn) {
+          const currentTime = video.getCurrentTime();
           const isTimeBetweenMarkerPair =
-            markerPair.start <= video.getCurrentTime() && video.getCurrentTime() <= markerPair.end;
+            markerPair.start <= currentTime && currentTime <= markerPair.end;
           if (!isTimeBetweenMarkerPair) {
             seekToSafe(video, markerPair.start);
           }
@@ -1270,7 +1291,7 @@ async function loadytClipper() {
       }
     }
 
-    setTimeout(loopMarkerPair, 4);
+    video.requestVideoFrameCallback(videoLoopHandler);
   }
 
   let gammaFilterDiv: HTMLDivElement;
@@ -5708,12 +5729,13 @@ async function loadytClipper() {
       const chartData = chart?.data.datasets[0].data as CropPoint[];
       const time = video.getCurrentTime();
       const isDynamicCrop = !isStaticCrop(chartData);
-      const isCropChartVisible =
-        currentChartInput && currentChartInput.type == 'crop' && isCurrentChartVisible;
+
+      // Crop chart section looping is handled by:
+      // - videoLoopHandler when isCropChartLoopingOn is true and not manipulating crop
+      // - This handler (cropChartPreviewHandler) when actively manipulating crop
+      // This separation ensures proper synchronization with video frames.
       if (
         shouldTriggerCropChartLoop ||
-        // assume auto time-based update not required for crop chart section if looping section
-        (isCropChartLoopingOn && isCropChartVisible) ||
         (cropChartInput.chart && (isMouseManipulatingCrop || isDrawingCrop))
       ) {
         shouldTriggerCropChartLoop = false;
@@ -5776,11 +5798,15 @@ async function loadytClipper() {
 
     const currentTime = video.getCurrentTime();
 
-    const clampedCurrentTime = clampNumber(currentTime, sectStart.x, sectEnd.x);
-    const easingFunc = sectEnd.easeIn == 'instant' ? easeInInstant : easeSinInOut;
-
+    // For preview calculations, use exact keyframe times so the yellow frame
+    // (end keyframe indicator) and the calculated crop position (transparent window)
+    // match exactly when the cursor is at the keyframe position.
+    // Note: The clipper uses getFrameTimeBetweenLeftFrames for FFmpeg filter generation
+    // to account for frame timing, but preview should show what the user expects.
     const startTime = sectStart.x;
-    const endTime = getFrameTimeBetweenLeftFrames(sectEnd.x);
+    const endTime = sectEnd.x;
+    const clampedCurrentTime = clampNumber(currentTime, startTime, endTime);
+    const easingFunc = sectEnd.easeIn == 'instant' ? easeInInstant : easeSinInOut;
 
     const [easedX, easedY, easedW, easedH] = [
       [startX, endX],
@@ -5849,11 +5875,11 @@ async function loadytClipper() {
     const [startX, startY, startW, startH] = getCropComponents(sectStart.crop);
     const [endX, endY, endW, endH] = getCropComponents(sectEnd.crop);
 
-    const clampedTime = clampNumber(time, sectStart.x, sectEnd.x);
-    const easingFunc = sectEnd.easeIn == 'instant' ? easeInInstant : easeSinInOut;
-
+    // For preview calculations, use exact keyframe times (see comment in getEasedCropComponents)
     const startTime = sectStart.x;
-    const endTime = getFrameTimeBetweenLeftFrames(sectEnd.x);
+    const endTime = sectEnd.x;
+    const clampedTime = clampNumber(time, startTime, endTime);
+    const easingFunc = sectEnd.easeIn == 'instant' ? easeInInstant : easeSinInOut;
 
     const [x, y, w, h] = [
       [startX, endX],

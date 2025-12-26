@@ -118,17 +118,18 @@ export const addCropPoint = function (time: number) {
 
     const cropPointIndex = draft.cropMap.map((cropPoint) => cropPoint.x).indexOf(time);
 
-    // console.log(currentCropPointIndex, cropPointIndex);
-    if (currentCropPointIndex >= cropPointIndex) {
-      setCurrentCropPoint(this, currentCropPointIndex + 1);
-    }
-
     if (cropPointIndex > 0) {
       const prevCropPointIndex = cropPointIndex - 1;
       draft.cropMap[cropPointIndex].crop = draft.cropMap[prevCropPointIndex].crop;
     }
 
     saveMarkerPairHistory(draft, markerPair);
+
+    // Always select the newly added crop point - this ensures the user can immediately
+    // manipulate the crop for the new keyframe without having to manually select it.
+    // Use End mode since the new point typically becomes the end of a new section.
+    setCurrentCropPoint(this, cropPointIndex, cropChartMode.End);
+
     this.renderSpeedAndCropUI(true);
   }
 };
