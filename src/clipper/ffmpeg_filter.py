@@ -470,10 +470,23 @@ def getCropFilter(
         # If we did not adjust the end time, then when the input time is equal to the left frame, normalized time
         # may not be 1, which is what we want to avoid, especially in the instant ease in case
         sectDuration = adjustedEndTime - startTime
+
+        # Handle adjacent frame edge case: when keyframes are very close together,
+        # adjustedEndTime can be less than startTime due to the frame midpoint calculation.
+        # In this case, force instant easing with raw duration - we can't meaningfully ease
+        # between adjacent frames anyway.
+        forceInstant = False
         if sectDuration <= 0:
-            continue
+            sectDuration = endTime - startTime
+            # If truly the same keyframe time, skip this redundant section
+            if sectDuration <= 0:
+                continue
+            # Force instant transition for adjacent frames
+            forceInstant = True
 
         currEaseType = easeType if not right.get("easeIn", False) else right["easeIn"]
+        if forceInstant:
+            currEaseType = "instant"
 
         easeP = f"((t-{startTime})/{sectDuration})"
         easeX = getEasingExpression(currEaseType, f"({startX})", f"({endX})", easeP)
@@ -554,10 +567,23 @@ def getZoomPanFilter(
         endZoom = maxWidth / float(endW)
 
         sectDuration = adjustedEndTime - startTime
+
+        # Handle adjacent frame edge case: when keyframes are very close together,
+        # adjustedEndTime can be less than startTime due to the frame midpoint calculation.
+        # In this case, force instant easing with raw duration - you can't meaningfully ease
+        # between adjacent frames anyway, so we just teleport the crop from one to another.
+        forceInstant = False
         if sectDuration <= 0:
-            continue
+            sectDuration = endTime - startTime
+            # If truly the same keyframe time, skip this redundant section
+            if sectDuration <= 0:
+                continue
+            # Force instant transition for adjacent frames
+            forceInstant = True
 
         currEaseType = easeType if not right.get("easeIn", False) else right["easeIn"]
+        if forceInstant:
+            currEaseType = "instant"
 
         # zoompan does not support zooming out or changing aspect ratio without stretching.
         # By cropping the video first we can get the desired aspect ratio.
