@@ -2634,6 +2634,19 @@ async function loadytClipper() {
       showChart();
     }
 
+    // When auto marker looping is enabled, seek to marker pair start if current time is outside bounds.
+    // This is needed because videoLoopHandler uses requestVideoFrameCallback which only fires
+    // when video is playing and a new frame is rendered, not when the video is paused.
+    if (isMarkerLoopPreviewOn) {
+      const markerPair = markerPairs[selectedMarkerPairIndex];
+      const currentTime = video.getCurrentTime();
+      const isTimeBetweenMarkerPair =
+        markerPair.start <= currentTime && currentTime <= markerPair.end;
+      if (!isTimeBetweenMarkerPair) {
+        seekToSafe(video, markerPair.start);
+      }
+    }
+
     targetMarker.classList.add('selected-marker');
     targetMarker.previousElementSibling.classList.add('selected-marker');
     const markerPair = markerPairs[prevSelectedMarkerPairIndex];
