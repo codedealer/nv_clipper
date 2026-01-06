@@ -1217,6 +1217,10 @@ class ClipperGUI:
                     'width': video_properties.get('width'),
                     'height': video_properties.get('height'),
                     'codec_name': video_properties.get('codec_name'),
+                    # ffprobe stream fields used by the GUI to detect >8-bit ("HDR" in a loose sense)
+                    'pix_fmt': video_properties.get('pix_fmt'),
+                    'bits_per_raw_sample': video_properties.get('bits_per_raw_sample'),
+                    'color_transfer': video_properties.get('color_transfer'),
                     'bit_rate': video_properties.get('bit_rate'),
                     'frame_rate': video_properties.get('r_frame_rate'),
                     'path': str(video_file),

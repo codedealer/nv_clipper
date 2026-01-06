@@ -130,6 +130,9 @@ export interface VideoInfo {
   width?: number
   height?: number
   codec_name?: string
+  pix_fmt?: string
+  bits_per_raw_sample?: number | string
+  color_transfer?: string
   bit_rate?: number
   frame_rate?: string
   path: string

@@ -142,6 +142,32 @@ const formatFrameRate = (frameRate: string): string => {
   } catch { return `${frameRate}fps` }
 }
 
+const getBitDepth = (info: VideoInfo): number | null => {
+  const raw = info.bits_per_raw_sample
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string') {
+    const n = Number.parseInt(raw, 10)
+    if (Number.isFinite(n)) return n
+  }
+
+  // Fall back to parsing ffprobe pixel format strings like "yuv420p10le".
+  const pixFmt = info.pix_fmt
+  if (typeof pixFmt === 'string' && pixFmt.length) {
+    const m = pixFmt.match(/p(\d{2})/i) || pixFmt.match(/(\d{2})(?:le|be)?$/i)
+    if (m?.[1]) {
+      const n = Number.parseInt(m[1], 10)
+      if (Number.isFinite(n)) return n
+    }
+  }
+
+  return null
+}
+
+const isLooseHdr = (info: VideoInfo): boolean => {
+  const bitDepth = getBitDepth(info)
+  return bitDepth !== null && bitDepth > 8
+}
+
 const videoInfoDisplay = computed(() => {
   if (!props.videoInfo) return null
   const info = props.videoInfo
@@ -153,6 +179,7 @@ const videoInfoDisplay = computed(() => {
     parts.push(`Preview: ${pw}×${ph}`)
   }
   if (info.frame_rate) parts.push(formatFrameRate(info.frame_rate))
+  if (isLooseHdr(info)) parts.push('HDR')
   return parts.length ? parts.join(' • ') : null
 })
 
