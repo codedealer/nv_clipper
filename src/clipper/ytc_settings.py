@@ -301,7 +301,9 @@ def _getVideoInfo(cs: ClipperState) -> Tuple[Dict[str, Any], Dict[str, Any], str
     logger.debug(f"videoInfo={json.dumps(videoInfo)}")
 
     dynamic_range: str = videoInfo.get("dynamic_range", "")
-    settings["inputIsHDR"] = settings.get("inputIsHDR") or dynamic_range.lower().startswith("hdr")
+    settings["inputIsHDR"] = settings.get("inputIsHDR") or (
+        dynamic_range and dynamic_range.lower() != "sdr"
+    )
 
     return videoInfo, audioInfo, formats_table
 
@@ -390,7 +392,7 @@ def _log_video_info(settings: Settings, videoFormat: str, videoFormatID: str,
         f'Video FPS: {settings["r_frame_rate"]}, Video Bitrate: {settings["bit_rate"]}kbps',
     )
     logger.report(
-        f'Video Dynamic Range: {videoInfo.get("dynamic_range")}',
+        f'Video Dynamic Range: {videoInfo.get("dynamic_range")}, Pixel Format: {settings.get("inputPixelFormat")}, Bit Depth: {settings.get("inputBitDepth")}',
     )
 
 
@@ -424,6 +426,21 @@ def getMoreVideoInfo(
     original_fps = _determine_original_fps(settings, videoInfo)
     settings["originalFPS"] = original_fps
     _handle_target_fps(settings, original_fps, target_fps)
+
+    if not settings["inputBitDepth"]:
+        #  "SDR", "HDR10", "HDR10+, "HDR12", "HLG, "DV"
+        dynamic_range: str = videoInfo.get("dynamic_range", "").lower()
+        if "12" in dynamic_range:
+            settings["inputBitDepth"] = 12
+        elif dynamic_range != "sdr":
+            # HLG and Dolby Vision is >= 10-bit, assume lower bound for now
+            settings["inputBitDepth"] = 10
+        else:
+            logger.notice(
+                "Could not determine input video color bit depth from yt-dlp or ffprobe. Assuming 8 bits",
+            )
+            settings["inputBitDepth"] = 8
+
 
     # Extract format information
     videoFormat = util.dictTryGetKeys(videoInfo, "vcodec", "format", default=UNKNOWN_PROPERTY)
