@@ -37,10 +37,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage, ElButton, ElTooltip, ElIcon } from 'element-plus'
 import { Download, CopyDocument, Warning } from '@element-plus/icons-vue'
 import { useCacheStore } from '@/stores/cache'
+import type { CachedVideo, CacheDownloadProgress } from '@/types/cache'
 
 // Props
 interface Props {
@@ -53,6 +54,7 @@ const props = defineProps<Props>()
 // Emits
 const emit = defineEmits<{
   downloadRequested: [url: string, title?: string]
+  videoSelected: [video: CachedVideo]
 }>()
 
 // Store
@@ -81,6 +83,13 @@ const isDownloading = computed(() => {
   return cacheStore.isDownloading
 })
 
+const pendingDownloadId = ref<string | null>(null)
+
+const currentDownload = computed(() => {
+  if (!pendingDownloadId.value) return null
+  return cacheStore.downloadProgress.get(pendingDownloadId.value) ?? null
+})
+
 // Methods
 async function downloadFromUrl() {
   if (!videoUrl.value) return
@@ -94,6 +103,20 @@ async function downloadFromUrl() {
     })
 
     if (result.status === 'success') {
+      if (result.video) {
+        ElMessage.info(`Video already in cache: ${result.video.title}`)
+
+        if (!props.hasVideoSource) {
+          emit('videoSelected', result.video)
+        }
+
+        return
+      }
+
+      if (result.video_id) {
+        pendingDownloadId.value = result.video_id
+      }
+
       ElMessage.success('Download started. Check the cache manager for progress.')
       emit('downloadRequested', videoUrl.value, videoTitle.value)
     } else {
@@ -114,6 +137,36 @@ async function copyUrlToClipboard() {
     ElMessage.error('Failed to copy URL')
   }
 }
+
+async function handleDownloadComplete() {
+  if (props.hasVideoSource || !pendingDownloadId.value) {
+    pendingDownloadId.value = null
+    return
+  }
+
+  try {
+    await cacheStore.loadCacheInfo()
+    const completedVideo = cacheStore.cachedVideos.find(video => video.id === pendingDownloadId.value)
+
+    if (completedVideo && !props.hasVideoSource) {
+      emit('videoSelected', completedVideo)
+    }
+  } catch (error) {
+    console.error('Failed to auto-select downloaded video:', error)
+  } finally {
+    pendingDownloadId.value = null
+  }
+}
+
+watch(currentDownload, (progress: CacheDownloadProgress | null) => {
+  if (!progress) return
+
+  if (progress.status === 'completed') {
+    void handleDownloadComplete()
+  } else if (progress.status === 'error' || progress.status === 'canceled') {
+    pendingDownloadId.value = null
+  }
+})
 </script>
 
 <style scoped>

@@ -22,6 +22,7 @@
               :markup-data="parsedMarkupData"
               :has-video-source="hasVideoFile"
               @download-requested="$emit('video-download-requested')"
+              @video-selected="$emit('video-selected', $event)"
             />
 
             <div class="sidebar-separator"></div>
@@ -93,6 +94,7 @@ interface Emits {
   (e: 'cancel-processing'): void
   (e: 'update-overwrite', value: boolean): void
   (e: 'video-download-requested'): void
+  (e: 'video-selected', video: import('@/types/cache').CachedVideo): void
   (e: 'update:selected-clips', clips: number[]): void
 }
 

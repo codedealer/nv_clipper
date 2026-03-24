@@ -37,6 +37,7 @@
         @cancel-processing="handleCancelProcessing"
         @update-overwrite="dialogManager.updateOverwriteSetting"
         @video-download-requested="handleVideoDownloadRequest"
+        @video-selected="fileHandler.selectVideoAndUpdateUI"
         @update:selected-clips="(clips: number[]) => (markupOps.selectedClips.value = clips)"
       />
 
