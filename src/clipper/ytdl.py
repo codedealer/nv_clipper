@@ -3,10 +3,42 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from clipper.clipper_types import ClipperPaths, ClipperState
 from clipper.ytc_logger import logger
+
+
+def _get_format_selector(settings: Dict[str, Any]) -> str | None:
+    format_selector = settings.get("format")
+    if not isinstance(format_selector, str):
+        return None
+
+    format_selector = format_selector.strip()
+    if format_selector == "":
+        return None
+
+    return format_selector
+
+
+def _get_format_sort_selector(settings: Dict[str, Any]) -> str | None:
+    format_sort = settings.get("formatSort")
+
+    if isinstance(format_sort, list):
+        normalized_sort = [
+            item.strip()
+            for item in format_sort
+            if isinstance(item, str) and item.strip() != ""
+        ]
+        if normalized_sort:
+            return ",".join(normalized_sort)
+
+    if isinstance(format_sort, str):
+        format_sort = format_sort.strip()
+        if format_sort != "":
+            return format_sort
+
+    return None
 
 
 def ytdl_bin_get_version(cp: ClipperPaths) -> str:
@@ -34,13 +66,13 @@ def ytdl_bin_get_args_base(cs: ClipperState) -> List[str]:
     ]
     # fmt: on
 
-    # Only add --format if set
-    if settings.get("format"):
-        ytdl_args.extend(["--format", settings["format"]])
+    format_selector = _get_format_selector(settings)
+    if format_selector is not None:
+        ytdl_args.extend(["--format", format_selector])
 
-    # Only add --format-sort if set
-    if settings.get("formatSort"):
-        ytdl_args.extend(["--format-sort", shlex.quote(",".join(settings["formatSort"]))])
+    format_sort_selector = _get_format_sort_selector(settings)
+    if format_sort_selector is not None:
+        ytdl_args.extend(["--format-sort", shlex.quote(format_sort_selector)])
 
     ytdl_args.extend(["--output", shlex.quote(f'{settings["downloadVideoPath"]}')])
 

@@ -20,7 +20,7 @@ class GeneralSettings:
 
     # === INPUT OPTIONS ===
     download_video: bool = False
-    format: str = "(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best"
+    format: str = ""
     format_sort: Optional[List[str]] = None  # Will be initialized in __post_init__
     no_auto_find_input_video: bool = False
     enable_video_streaming_protocol_hls: bool = False

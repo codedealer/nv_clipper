@@ -452,13 +452,13 @@ def getSettingsSchema() -> Dict[str, Any]:
             "format": {
                 "type": "string",
                 "description": "Format string passed to yt-dlp",
-                "default": "(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best",
+                "default": "",
                 "cli_args": ["--format", "-f"],
             },
             "format_sort": {
                 "type": "string_list",
                 "description": "Sorting criteria for yt-dlp format selection",
-                "default": ["hasvid,ie_pref,lang,quality,res,fps,br,size,hdr:1,vcodec:vp9.2,vcodec:vp9,asr,proto,ext,hasaud,source,id"],
+                "default": [""],
                 "cli_args": ["--format-sort", "-S"],
             },
             "no_auto_find_input_video": {

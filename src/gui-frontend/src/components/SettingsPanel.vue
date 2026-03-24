@@ -47,7 +47,7 @@
             </el-form-item>
                         <el-form-item label="Format">
               <el-input
-                :model-value="getCurrentTextValue('format', '(bestvideo+(bestaudio[acodec=opus]/bestaudio))/best')"
+                :model-value="getCurrentTextValue('format', '')"
                 @input="(value) => handleTextInput('format', value)"
                 @blur="() => handleTextBlur('format')"
                 @keyup.enter="() => handleTextEnter('format')"
