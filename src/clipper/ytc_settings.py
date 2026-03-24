@@ -266,10 +266,7 @@ def getVideoInfo(cs: ClipperState) -> None:
 def disableVideoStreamingProtocols(settings: Settings, protocols: List[str]) -> None:
     disableClause = "".join(f"[protocol!={protocol}]" for protocol in protocols)
     format_selector = settings.get("format")
-    if isinstance(format_selector, str):
-        format_selector = format_selector.strip()
-    else:
-        format_selector = ""
+    format_selector = format_selector.strip() if isinstance(format_selector, str) else ""
 
     if format_selector == "":
         settings["format"] = disableClause
