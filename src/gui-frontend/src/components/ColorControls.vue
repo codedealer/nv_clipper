@@ -35,7 +35,7 @@
 
         <div class="filter-output-card">
           <div class="filter-card-header">
-            <h5>Generated Filter</h5>
+            <h6>Generated Filter</h6>
             <div class="filter-header-controls">
               <el-checkbox v-model="previewEnabledLocal" @change="$emit('toggle-preview', previewEnabledLocal)" size="small">Preview</el-checkbox>
             </div>
@@ -53,10 +53,6 @@
                 <el-icon><Document /></el-icon>
                 Paste Filter
               </el-button>
-              <el-button size="small" @click="copyFilterString" :disabled="!generatedFilter || isNeutral" plain>
-                <el-icon><DocumentCopy /></el-icon>
-                Copy String
-              </el-button>
             </div>
             <div class="action-group secondary-actions">
               <el-button size="small" type="success" @click="$emit('copy-to-all-clips', gradingState)" :disabled="isNeutral || isMockMarkup" plain v-if="!isMockMarkup">
@@ -66,6 +62,10 @@
               <el-button size="small" type="warning" @click="reset" plain>
                 <el-icon><RefreshLeft /></el-icon>
                 Reset
+              </el-button>
+              <el-button size="small" @click="copyFilterString" :disabled="!generatedFilter || isNeutral" plain>
+                <el-icon><DocumentCopy /></el-icon>
+                Copy String
               </el-button>
             </div>
           </div>
@@ -231,8 +231,8 @@ watch(
 .control-label { font-size: 13px; color: var(--el-text-color-regular); margin-bottom: 8px; font-weight: 500; }
 .filter-display { border-top: 1px solid var(--el-border-color); padding-top: 16px; }
 .filter-output-card { border: 1px solid var(--el-border-color); border-radius: 8px; padding: 16px; background: var(--el-bg-color); margin-top: 16px; }
-.filter-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.filter-card-header h5 { margin: 0; font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); }
+.filter-card-header { display: flex; justify-content: space-between; align-items: center; }
+.filter-card-header h6 { margin: 0; font-size: 11px; font-weight: 400; color: var(--el-text-color-primary); }
 .filter-header-controls { display: flex; align-items: center; gap: 8px; }
 .filter-textarea { margin-bottom: 16px; }
 .filter-textarea :deep(.el-textarea__inner) { font-family: monospace; font-size: 12px; line-height: 1.4; background: var(--el-fill-color-lighter); }
