@@ -1,8 +1,9 @@
 import pytest
 
 from clipper import util
+from clipper.clip_maker import getDefaultEncodeSettings
 from clipper.clipper_types import ClipperPaths, ClipperState
-from clipper.ytc_settings import disableVideoStreamingProtocols
+from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo
 from clipper.ytdl import ytdl_bin_get_args_base
 
 
@@ -72,3 +73,153 @@ def test_ytdl_bin_get_args_base_normalizes_format_inputs() -> None:
     assert "best/bv+ba" in ytdl_args
     assert "--format-sort" in ytdl_args
     assert "res,fps,proto" in ytdl_args
+
+
+# ---------------------------------------------------------------------------
+# ffprobe fallback tests (getMoreVideoInfo with _probe_video_settings → None)
+# ---------------------------------------------------------------------------
+
+def _make_cs_for_fallback(**settings_overrides) -> ClipperState:
+    """Create a minimal ClipperState suitable for getMoreVideoInfo tests."""
+    base = {
+        "inputVideo": "",
+        "videoDownloadURL": "https://example.com/video.mp4",
+        "audioDownloadURL": "https://example.com/audio.mp4",
+        "noRichLogs": True,
+        "cropResWidth": 1920,
+        "cropResHeight": 1080,
+        "noAutoScaleCropRes": False,
+        "videoTitle": "test-video",
+    }
+    base.update(settings_overrides)
+    return ClipperState(settings=base)
+
+
+class TestGetMoreVideoInfo_FfprobeFallback:
+    """Tests for getMoreVideoInfo when ffprobe fails (_probe_video_settings → None)."""
+
+    def test_successful_fallback_with_complete_ytdlp_metadata(self, monkeypatch):
+        """When ffprobe fails but yt-dlp provides all fields, processing succeeds."""
+        monkeypatch.setattr(
+            "clipper.ytc_settings._probe_video_settings", lambda cs: None,
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "width": 1920,
+            "height": 1080,
+            "tbr": 5000,
+            "fps": 30,
+            "dynamic_range": "SDR",
+        }
+
+        getMoreVideoInfo(cs, video_info, video_info, "")
+
+        assert cs.settings["width"] == 1920
+        assert cs.settings["height"] == 1080
+        assert cs.settings["bit_rate"] == 5000
+        assert cs.settings["inputBitDepth"] == 8
+
+    def test_fallback_missing_width_height_raises(self, monkeypatch):
+        """When both ffprobe and yt-dlp lack width/height, a clear error is raised."""
+        monkeypatch.setattr(
+            "clipper.ytc_settings._probe_video_settings", lambda cs: None,
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "tbr": 3000,
+            "fps": 24,
+            "dynamic_range": "SDR",
+        }
+
+        with pytest.raises(RuntimeError, match="required properties.*width.*height"):
+            getMoreVideoInfo(cs, video_info, video_info, "")
+
+    def test_fallback_missing_bitrate_defaults_to_none(self, monkeypatch):
+        """When bitrate is unavailable from both sources, bit_rate is set to None."""
+        monkeypatch.setattr(
+            "clipper.ytc_settings._probe_video_settings", lambda cs: None,
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "width": 1280,
+            "height": 720,
+            "fps": 60,
+            "dynamic_range": "SDR",
+        }
+
+        getMoreVideoInfo(cs, video_info, video_info, "")
+
+        assert cs.settings["bit_rate"] is None
+
+    def test_fallback_hdr_bit_depth_inferred(self, monkeypatch):
+        """When ffprobe fails, bit depth is inferred from yt-dlp dynamic_range."""
+        monkeypatch.setattr(
+            "clipper.ytc_settings._probe_video_settings", lambda cs: None,
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "width": 3840,
+            "height": 2160,
+            "tbr": 15000,
+            "fps": 30,
+            "dynamic_range": "HDR10",
+        }
+
+        getMoreVideoInfo(cs, video_info, video_info, "")
+
+        assert cs.settings["inputBitDepth"] == 10
+
+    def test_fallback_none_bitrate_defaults_to_none(self, monkeypatch):
+        """When yt-dlp returns tbr=None, bit_rate falls back to None (constant-quality)."""
+        monkeypatch.setattr(
+            "clipper.ytc_settings._probe_video_settings", lambda cs: None,
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "width": 1920,
+            "height": 1080,
+            "tbr": None,
+            "fps": 30,
+            "dynamic_range": "SDR",
+        }
+
+        getMoreVideoInfo(cs, video_info, video_info, "")
+
+        assert cs.settings["bit_rate"] is None
+
+    @pytest.mark.parametrize(
+        "video_info",
+        [
+            pytest.param({"width": None, "height": 1080, "fps": 30, "dynamic_range": "SDR"}, id="width-None"),
+            pytest.param({"width": 1920, "height": None, "fps": 30, "dynamic_range": "SDR"}, id="height-None"),
+            pytest.param({"width": None, "height": None, "fps": 30, "dynamic_range": "SDR"}, id="both-None"),
+        ],
+    )
+    def test_fallback_none_width_height_raises(self, monkeypatch, video_info):
+        """yt-dlp returning explicit None for width/height triggers RuntimeError."""
+        monkeypatch.setattr(
+            "clipper.ytc_settings._probe_video_settings", lambda cs: None,
+        )
+        cs = _make_cs_for_fallback()
+
+        with pytest.raises(RuntimeError, match="required properties"):
+            getMoreVideoInfo(cs, video_info, video_info, "")
+
+
+class TestGetDefaultEncodeSettings_NullBitrate:
+    """Ensure getDefaultEncodeSettings handles None bitrate (constant-quality fallback)."""
+
+    def test_none_bitrate_returns_constant_quality(self):
+        result = getDefaultEncodeSettings(None)
+        assert result["crf"] == 30
+        assert result["autoTargetMaxBitrate"] == 0
+        assert result["twoPass"] is False
+
+    def test_none_bitrate_times_factor_passthrough(self):
+        """Simulates the clip_maker guard: None * factor should not be called."""
+        bit_rate = None
+        factor = 0.8
+        adjusted = bit_rate * factor if bit_rate is not None else None
+        result = getDefaultEncodeSettings(adjusted)
+        assert result["crf"] == 30
+        assert result["autoTargetMaxBitrate"] == 0

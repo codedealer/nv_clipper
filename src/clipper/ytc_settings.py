@@ -395,8 +395,9 @@ def _log_video_info(settings: Settings, videoFormat: str, videoFormatID: str,
     logger.report(
         f'Video Width: {settings["width"]}, Video Height: {settings["height"]}',
     )
+    bit_rate_display = f'{settings["bit_rate"]}kbps' if settings.get("bit_rate") is not None else "unknown"
     logger.report(
-        f'Video FPS: {settings["r_frame_rate"]}, Video Bitrate: {settings["bit_rate"]}kbps',
+        f'Video FPS: {settings["r_frame_rate"]}, Video Bitrate: {bit_rate_display}',
     )
     logger.report(
         f'Video Dynamic Range: {videoInfo.get("dynamic_range")}, Pixel Format: {settings.get("inputPixelFormat")}, Bit Depth: {settings.get("inputBitDepth")}',
@@ -427,14 +428,21 @@ def getMoreVideoInfo(
         logger.warning("Defaulting to video info fetched with youtube-dl")
 
     if "bit_rate" not in settings:
-        settings["bit_rate"] = int(videoInfo["tbr"])
+        if videoInfo.get("tbr") is not None:
+            settings["bit_rate"] = int(videoInfo["tbr"])
+        else:
+            logger.warning(
+                "Could not determine video bitrate from ffprobe or yt-dlp. "
+                "Encoding will use constant-quality mode.",
+            )
+            settings["bit_rate"] = None
 
     # Determine and handle frame rate
     original_fps = _determine_original_fps(settings, videoInfo)
     settings["originalFPS"] = original_fps
     _handle_target_fps(settings, original_fps, target_fps)
 
-    if not settings["inputBitDepth"]:
+    if not settings.get("inputBitDepth"):
         #  "SDR", "HDR10", "HDR10+, "HDR12", "HLG, "DV"
         dynamic_range: str = videoInfo.get("dynamic_range", "").lower()
         if "12" in dynamic_range:
@@ -448,6 +456,16 @@ def getMoreVideoInfo(
             )
             settings["inputBitDepth"] = 8
 
+
+    # Validate required processing fields after merge
+    _REQUIRED_FIELDS = ["width", "height"]
+    missing = [f for f in _REQUIRED_FIELDS if not settings.get(f)]
+    if missing:
+        raise RuntimeError(
+            f"Cannot process video: required properties {missing} could not be determined "
+            f"from either ffprobe or yt-dlp. This may be caused by network issues or an "
+            f"unsupported video source. Try again or use --input-video with a local file.",
+        )
 
     # Extract format information
     videoFormat = util.dictTryGetKeys(videoInfo, "vcodec", "format", default=UNKNOWN_PROPERTY)
@@ -519,7 +537,7 @@ def getGlobalSettings(cs: ClipperState) -> None:  # noqa: PLR0912
     logger.info("-" * 80)
     unknownColorSpaceMsg = "unknown (bt709 will be assumed for color range operations)"
     globalColorSpaceMsg = (
-        f'{settings["color_space"] if settings["color_space"] else unknownColorSpaceMsg}'
+        f'{settings.get("color_space") or unknownColorSpaceMsg}'
     )
     logger.info(
         f'Automatically determined encoding settings: CRF: {encodeSettings["crf"]} (0-63), '
@@ -538,9 +556,14 @@ def getGlobalSettings(cs: ClipperState) -> None:  # noqa: PLR0912
         if "targetMaxBitrate" in encodeSettings
         else "Auto"
     )
+    detected_bitrate_msg = (
+        f'Detected Bitrate: {settings["bit_rate"]}kbps, '
+        if settings.get("bit_rate") is not None
+        else "Detected Bitrate: unknown, "
+    )
     logger.info(
         f'Global Encoding Settings: Video Codec: {settings["videoCodec"]}, CRF: {encodeSettings["crf"]} (0-63), '
-        + f'Detected Bitrate: {settings["bit_rate"]}kbps, '
+        + detected_bitrate_msg
         + f"Global Target Bitrate: {globalTargetBitrateMsg}, "
         + f'Two-pass Encoding Enabled: {encodeSettings["twoPass"]}, '
         + f'Audio Enabled: {settings["audio"]}, '

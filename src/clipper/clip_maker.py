@@ -313,7 +313,7 @@ def getMarkerPairSettings(  # noqa: PLR0912
 
     globalEncodeSettings = getDefaultEncodeSettings(mps["bit_rate"])
     autoMarkerPairEncodeSettings = getDefaultEncodeSettings(
-        mps["bit_rate"] * bitrateFactor,
+        mps["bit_rate"] * bitrateFactor if mps["bit_rate"] is not None else None,
     )
     mps = {**globalEncodeSettings, **autoMarkerPairEncodeSettings, **mps}
     if "targetMaxBitrate" not in mps:
