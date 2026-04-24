@@ -10,7 +10,6 @@ from clipper.pix_fmt_bit_depth import PIX_FMT_BIT_DEPTH_MAP
 from clipper.platforms import getFfmpegHeaders
 from clipper.ytc_logger import logger
 
-
 FFPROBE_ERROR_REASON_KEY = "_ffprobe_error"
 
 

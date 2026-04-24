@@ -1,10 +1,12 @@
+from pathlib import Path
+
 import pytest
 
 from clipper import util
 from clipper.clip_maker import getDefaultEncodeSettings
 from clipper.clipper_types import ClipperPaths, ClipperState
-from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo
 from clipper.yt_clipper import setupDepPaths
+from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo
 from clipper.ytdl import ytdl_bin_get_args_base
 
 
@@ -76,7 +78,10 @@ def test_ytdl_bin_get_args_base_normalizes_format_inputs() -> None:
     assert "res,fps,proto" in ytdl_args
 
 
-def test_setupDepPaths_uses_sibling_ff_tools_from_ytdl_location(tmp_path, monkeypatch) -> None:
+def test_setupDepPaths_uses_sibling_ff_tools_from_ytdl_location(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
 
@@ -100,7 +105,10 @@ def test_setupDepPaths_uses_sibling_ff_tools_from_ytdl_location(tmp_path, monkey
     assert cs.clipper_paths.ffplayPath == str(ffplay_path).replace("\\", "/")
 
 
-def test_setupDepPaths_leaves_ffprobe_when_no_sibling_binary_exists(tmp_path, monkeypatch) -> None:
+def test_setupDepPaths_leaves_ffprobe_when_no_sibling_binary_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
 
@@ -126,7 +134,7 @@ def test_setupDepPaths_leaves_ffprobe_when_no_sibling_binary_exists(tmp_path, mo
 # ffprobe fallback tests (getMoreVideoInfo with _probe_video_settings → None)
 # ---------------------------------------------------------------------------
 
-def _make_cs_for_fallback(**settings_overrides) -> ClipperState:
+def _make_cs_for_fallback(**settings_overrides: object) -> ClipperState:
     """Create a minimal ClipperState suitable for getMoreVideoInfo tests."""
     base = {
         "inputVideo": "",
@@ -146,7 +154,10 @@ def _make_cs_for_fallback(**settings_overrides) -> ClipperState:
 class TestGetMoreVideoInfo_FfprobeFallback:
     """Tests for getMoreVideoInfo when ffprobe fails (_probe_video_settings → None)."""
 
-    def test_successful_fallback_with_complete_ytdlp_metadata(self, monkeypatch):
+    def test_successful_fallback_with_complete_ytdlp_metadata(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """When ffprobe fails but yt-dlp provides all fields, processing succeeds."""
         monkeypatch.setattr(
             "clipper.ytc_settings._probe_video_settings", lambda cs: None,
@@ -167,7 +178,10 @@ class TestGetMoreVideoInfo_FfprobeFallback:
         assert cs.settings["bit_rate"] == 5000
         assert cs.settings["inputBitDepth"] == 8
 
-    def test_fallback_missing_width_height_raises(self, monkeypatch):
+    def test_fallback_missing_width_height_raises(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """When both ffprobe and yt-dlp lack width/height, a clear error is raised."""
         monkeypatch.setattr(
             "clipper.ytc_settings._probe_video_settings", lambda cs: None,
@@ -182,7 +196,10 @@ class TestGetMoreVideoInfo_FfprobeFallback:
         with pytest.raises(RuntimeError, match="required properties.*width.*height"):
             getMoreVideoInfo(cs, video_info, video_info, "")
 
-    def test_fallback_missing_bitrate_defaults_to_none(self, monkeypatch):
+    def test_fallback_missing_bitrate_defaults_to_none(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """When bitrate is unavailable from both sources, bit_rate is set to None."""
         monkeypatch.setattr(
             "clipper.ytc_settings._probe_video_settings", lambda cs: None,
@@ -199,7 +216,10 @@ class TestGetMoreVideoInfo_FfprobeFallback:
 
         assert cs.settings["bit_rate"] is None
 
-    def test_fallback_hdr_bit_depth_inferred(self, monkeypatch):
+    def test_fallback_hdr_bit_depth_inferred(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """When ffprobe fails, bit depth is inferred from yt-dlp dynamic_range."""
         monkeypatch.setattr(
             "clipper.ytc_settings._probe_video_settings", lambda cs: None,
@@ -217,7 +237,10 @@ class TestGetMoreVideoInfo_FfprobeFallback:
 
         assert cs.settings["inputBitDepth"] == 10
 
-    def test_fallback_none_bitrate_defaults_to_none(self, monkeypatch):
+    def test_fallback_none_bitrate_defaults_to_none(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """When yt-dlp returns tbr=None, bit_rate falls back to None (constant-quality)."""
         monkeypatch.setattr(
             "clipper.ytc_settings._probe_video_settings", lambda cs: None,
@@ -243,7 +266,11 @@ class TestGetMoreVideoInfo_FfprobeFallback:
             pytest.param({"width": None, "height": None, "fps": 30, "dynamic_range": "SDR"}, id="both-None"),
         ],
     )
-    def test_fallback_none_width_height_raises(self, monkeypatch, video_info):
+    def test_fallback_none_width_height_raises(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+        video_info: dict[str, object],
+    ) -> None:
         """yt-dlp returning explicit None for width/height triggers RuntimeError."""
         monkeypatch.setattr(
             "clipper.ytc_settings._probe_video_settings", lambda cs: None,
@@ -253,7 +280,10 @@ class TestGetMoreVideoInfo_FfprobeFallback:
         with pytest.raises(RuntimeError, match="required properties"):
             getMoreVideoInfo(cs, video_info, video_info, "")
 
-    def test_missing_ffprobe_binary_uses_ytdlp_fallback(self, monkeypatch):
+    def test_missing_ffprobe_binary_uses_ytdlp_fallback(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """A missing ffprobe executable should not abort yt-dlp-backed processing."""
         monkeypatch.setattr(
             "clipper.ffprobe.subprocess.check_output",
@@ -275,7 +305,10 @@ class TestGetMoreVideoInfo_FfprobeFallback:
         assert cs.settings["width"] == 3840
         assert cs.settings["bit_rate"] == 12000
 
-    def test_missing_ffprobe_binary_reports_actionable_error_when_fallback_insufficient(self, monkeypatch):
+    def test_missing_ffprobe_binary_reports_actionable_error_when_fallback_insufficient(
+        self: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """If ffprobe is unavailable and yt-dlp metadata is insufficient, raise a useful error."""
         monkeypatch.setattr(
             "clipper.ffprobe.subprocess.check_output",
@@ -297,13 +330,13 @@ class TestGetMoreVideoInfo_FfprobeFallback:
 class TestGetDefaultEncodeSettings_NullBitrate:
     """Ensure getDefaultEncodeSettings handles None bitrate (constant-quality fallback)."""
 
-    def test_none_bitrate_returns_constant_quality(self):
+    def test_none_bitrate_returns_constant_quality(self: object) -> None:
         result = getDefaultEncodeSettings(None)
         assert result["crf"] == 30
         assert result["autoTargetMaxBitrate"] == 0
         assert result["twoPass"] is False
 
-    def test_none_bitrate_times_factor_passthrough(self):
+    def test_none_bitrate_times_factor_passthrough(self: object) -> None:
         """Simulates the clip_maker guard: None * factor should not be called."""
         bit_rate = None
         factor = 0.8
@@ -311,3 +344,4 @@ class TestGetDefaultEncodeSettings_NullBitrate:
         result = getDefaultEncodeSettings(adjusted)
         assert result["crf"] == 30
         assert result["autoTargetMaxBitrate"] == 0
+

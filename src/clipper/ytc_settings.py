@@ -404,7 +404,7 @@ def _log_video_info(settings: Settings, videoFormat: str, videoFormatID: str,
     )
 
 
-def getMoreVideoInfo(
+def getMoreVideoInfo(  # noqa: PLR0912
     cs: ClipperState,
     videoInfo: Dict,
     audioInfo: Dict,
@@ -658,3 +658,4 @@ def filterDash(
         filteredDash.write(dashdom.toxml())
 
     return filteredDashPath
+
