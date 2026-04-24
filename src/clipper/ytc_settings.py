@@ -16,7 +16,7 @@ from clipper.clipper_types import (
     KnownPlatform,
     Settings,
 )
-from clipper.ffprobe import ffprobeVideoProperties
+from clipper.ffprobe import FFPROBE_ERROR_REASON_KEY, ffprobeVideoProperties
 from clipper.platforms import getVideoPageURL
 from clipper.ytc_logger import logger, printToLogFile
 from clipper.ytdl import ytdl_bin_get_subs, ytdl_bin_get_video_info
@@ -416,6 +416,7 @@ def getMoreVideoInfo(
     # TODO: merge properties fetched from ffprobe and ytdl into common namespace
     # TODO: improve compatibility between inputVideo mode and default stream mode
     probedSettings = _probe_video_settings(cs)
+    ffprobe_error = settings.get(FFPROBE_ERROR_REASON_KEY)
 
     # Store target FPS before it gets overwritten by merging
     target_fps = settings.get("targetFPS")
@@ -424,7 +425,10 @@ def getMoreVideoInfo(
     if probedSettings is not None:
         settings.update(probedSettings)
     else:
-        logger.warning("Could not fetch video info with ffprobe")
+        if ffprobe_error:
+            logger.warning(f"Could not fetch video info with ffprobe: {ffprobe_error}")
+        else:
+            logger.warning("Could not fetch video info with ffprobe")
         logger.warning("Defaulting to video info fetched with youtube-dl")
 
     if "bit_rate" not in settings:
@@ -461,9 +465,14 @@ def getMoreVideoInfo(
     _REQUIRED_FIELDS = ["width", "height"]
     missing = [f for f in _REQUIRED_FIELDS if not settings.get(f)]
     if missing:
+        ffprobe_detail = (
+            f" ffprobe failure details: {ffprobe_error}."
+            if ffprobe_error
+            else ""
+        )
         raise RuntimeError(
             f"Cannot process video: required properties {missing} could not be determined "
-            f"from either ffprobe or yt-dlp. This may be caused by network issues or an "
+            f"from either ffprobe or yt-dlp.{ffprobe_detail} This may be caused by network issues or an "
             f"unsupported video source. Try again or use --input-video with a local file.",
         )
 

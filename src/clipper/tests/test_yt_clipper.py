@@ -4,6 +4,7 @@ from clipper import util
 from clipper.clip_maker import getDefaultEncodeSettings
 from clipper.clipper_types import ClipperPaths, ClipperState
 from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo
+from clipper.yt_clipper import setupDepPaths
 from clipper.ytdl import ytdl_bin_get_args_base
 
 
@@ -75,6 +76,52 @@ def test_ytdl_bin_get_args_base_normalizes_format_inputs() -> None:
     assert "res,fps,proto" in ytdl_args
 
 
+def test_setupDepPaths_uses_sibling_ff_tools_from_ytdl_location(tmp_path, monkeypatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    ytdl_path = bin_dir / "yt-dlp.exe"
+    ffprobe_path = bin_dir / "ffprobe.exe"
+    ffmpeg_path = bin_dir / "ffmpeg.exe"
+    ffplay_path = bin_dir / "ffplay.exe"
+
+    for tool_path in (ytdl_path, ffprobe_path, ffmpeg_path, ffplay_path):
+        tool_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("clipper.yt_clipper.shutil.which", lambda path: path)
+
+    cs = ClipperState(settings={"ytdlLocation": str(ytdl_path)})
+
+    setupDepPaths(cs)
+
+    assert cs.clipper_paths.ytdlPath == str(ytdl_path).replace("\\", "/")
+    assert cs.clipper_paths.ffprobePath == str(ffprobe_path).replace("\\", "/")
+    assert cs.clipper_paths.ffmpegPath == str(ffmpeg_path).replace("\\", "/")
+    assert cs.clipper_paths.ffplayPath == str(ffplay_path).replace("\\", "/")
+
+
+def test_setupDepPaths_leaves_ffprobe_when_no_sibling_binary_exists(tmp_path, monkeypatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    ytdl_path = bin_dir / "yt-dlp.exe"
+    ytdl_path.write_text("", encoding="utf-8")
+
+    def fake_which(path: str) -> str | None:
+        if path == str(ytdl_path):
+            return path
+        return None
+
+    monkeypatch.setattr("clipper.yt_clipper.shutil.which", fake_which)
+
+    cs = ClipperState(settings={"ytdlLocation": str(ytdl_path)})
+
+    setupDepPaths(cs)
+
+    assert cs.clipper_paths.ytdlPath == str(ytdl_path).replace("\\", "/")
+    assert cs.clipper_paths.ffprobePath == "ffprobe"
+
+
 # ---------------------------------------------------------------------------
 # ffprobe fallback tests (getMoreVideoInfo with _probe_video_settings → None)
 # ---------------------------------------------------------------------------
@@ -83,6 +130,7 @@ def _make_cs_for_fallback(**settings_overrides) -> ClipperState:
     """Create a minimal ClipperState suitable for getMoreVideoInfo tests."""
     base = {
         "inputVideo": "",
+        "platform": "youtube",
         "videoDownloadURL": "https://example.com/video.mp4",
         "audioDownloadURL": "https://example.com/audio.mp4",
         "noRichLogs": True,
@@ -203,6 +251,46 @@ class TestGetMoreVideoInfo_FfprobeFallback:
         cs = _make_cs_for_fallback()
 
         with pytest.raises(RuntimeError, match="required properties"):
+            getMoreVideoInfo(cs, video_info, video_info, "")
+
+    def test_missing_ffprobe_binary_uses_ytdlp_fallback(self, monkeypatch):
+        """A missing ffprobe executable should not abort yt-dlp-backed processing."""
+        monkeypatch.setattr(
+            "clipper.ffprobe.subprocess.check_output",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                FileNotFoundError(2, "The system cannot find the file specified"),
+            ),
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "width": 3840,
+            "height": 2160,
+            "tbr": 12000,
+            "fps": 30,
+            "dynamic_range": "SDR",
+        }
+
+        getMoreVideoInfo(cs, video_info, video_info, "")
+
+        assert cs.settings["width"] == 3840
+        assert cs.settings["bit_rate"] == 12000
+
+    def test_missing_ffprobe_binary_reports_actionable_error_when_fallback_insufficient(self, monkeypatch):
+        """If ffprobe is unavailable and yt-dlp metadata is insufficient, raise a useful error."""
+        monkeypatch.setattr(
+            "clipper.ffprobe.subprocess.check_output",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                FileNotFoundError(2, "The system cannot find the file specified"),
+            ),
+        )
+        cs = _make_cs_for_fallback()
+        video_info = {
+            "tbr": 12000,
+            "fps": 30,
+            "dynamic_range": "SDR",
+        }
+
+        with pytest.raises(RuntimeError, match="ffprobe failure details: Could not start ffprobe"):
             getMoreVideoInfo(cs, video_info, video_info, "")
 
 

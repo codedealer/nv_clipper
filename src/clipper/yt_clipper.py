@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -118,6 +119,25 @@ def prepareTopazFFmpeg(cs: ClipperState) -> None:
     os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "2"
 
 
+def _normalize_executable_path(executable_path: str) -> str:
+    resolved_path = shutil.which(executable_path)
+    if resolved_path:
+        return resolved_path.replace("\\", "/")
+    return executable_path
+
+
+def _get_sibling_tool_path(reference_path: str, tool_name: str) -> str | None:
+    reference = Path(reference_path)
+    if not reference.parent or str(reference.parent) == ".":
+        return None
+
+    suffix = reference.suffix
+    sibling = reference.with_name(f"{tool_name}{suffix}" if suffix else tool_name)
+    if sibling.is_file():
+        return str(sibling).replace("\\", "/")
+    return None
+
+
 def setupDepPaths(cs: ClipperState) -> None:
     settings = cs.settings
     cp = cs.clipper_paths
@@ -143,6 +163,20 @@ def setupDepPaths(cs: ClipperState) -> None:
 
     if settings["ytdlLocation"]:
         cp.ytdlPath = settings["ytdlLocation"]
+
+        for attr_name, tool_name in (
+            ("ffmpegPath", "ffmpeg"),
+            ("ffprobePath", "ffprobe"),
+            ("ffplayPath", "ffplay"),
+        ):
+            sibling_tool_path = _get_sibling_tool_path(cp.ytdlPath, tool_name)
+            if sibling_tool_path:
+                setattr(cp, attr_name, sibling_tool_path)
+
+    cp.ffmpegPath = _normalize_executable_path(cp.ffmpegPath)
+    cp.ffprobePath = _normalize_executable_path(cp.ffprobePath)
+    cp.ffplayPath = _normalize_executable_path(cp.ffplayPath)
+    cp.ytdlPath = _normalize_executable_path(cp.ytdlPath)
 
     prepareTopazFFmpeg(cs)
 

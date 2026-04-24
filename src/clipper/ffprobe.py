@@ -11,9 +11,13 @@ from clipper.platforms import getFfmpegHeaders
 from clipper.ytc_logger import logger
 
 
+FFPROBE_ERROR_REASON_KEY = "_ffprobe_error"
+
+
 def ffprobeVideoProperties(cs: ClipperState, videoURL: str) -> Optional[DictStrAny]:
     cp = cs.clipper_paths
     settings = cs.settings
+    settings.pop(FFPROBE_ERROR_REASON_KEY, None)
 
     ffprobeRetries = 3
     done = False
@@ -30,6 +34,12 @@ def ffprobeVideoProperties(cs: ClipperState, videoURL: str) -> Optional[DictStrA
             ffprobeOutput = subprocess.check_output(shlex.split(ffprobeCommand))
             logger.success(f"Successfully fetched video properties with ffprobe")
             done = True
+        except OSError as exc:
+            settings[FFPROBE_ERROR_REASON_KEY] = (
+                f'Could not start ffprobe at "{cp.ffprobePath}": {exc}'
+            )
+            logger.warning(settings[FFPROBE_ERROR_REASON_KEY])
+            return None
         except subprocess.CalledProcessError:
             logger.warning(f"Could not fetch video properties with ffprobe")
             if ffprobeRetries > 0:
