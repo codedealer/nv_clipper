@@ -2,8 +2,9 @@ import { ChartConfiguration, ChartFontOptions, ChartOptions } from 'chart.js';
 import { createDraft } from 'immer';
 import { CropPoint } from '../../@types/yt_clipper';
 import { getMarkerPairHistory, saveMarkerPairHistory } from '../../util/undoredo';
-import { seekToSafe, timeRounder } from '../../util/util';
+import { createDragSeekScheduler, timeRounder } from '../../util/util';
 import {
+  frameDuration,
   markerPairs,
   prevSelectedMarkerPairIndex,
   triggerCropChartLoop,
@@ -137,13 +138,21 @@ export const addCropPoint = function (time: number) {
 export function scatterChartSpec(chartType: 'speed' | 'crop', inputId): ChartConfiguration {
   const updateInput = getInputUpdater(inputId);
 
+  let cropDragScheduler: ReturnType<typeof createDragSeekScheduler> | null = null;
+  function getCropDragScheduler() {
+    if (!cropDragScheduler) {
+      cropDragScheduler = createDragSeekScheduler(video, frameDuration);
+    }
+    return cropDragScheduler;
+  }
+
   const onDragStart = function (e, chartInstance, element, value) {
     // console.log(arguments);
     if (!e.ctrlKey && !e.altKey && !e.shiftKey) {
       chartInstance.options.plugins.zoom.pan.enabled = false;
       e.target.style.cursor = 'grabbing';
       if (chartType === 'crop') {
-        seekToSafe(video, timeRounder(value.x));
+        getCropDragScheduler().schedule(timeRounder(value.x));
       }
       chartInstance.update();
     }
@@ -176,7 +185,7 @@ export function scatterChartSpec(chartType: 'speed' | 'crop', inputId): ChartCon
       }
 
       if (chartType === 'crop' && shouldDrag.dragX && fromValue.x != toValue.x) {
-        seekToSafe(video, timeRounder(toValue.x));
+        getCropDragScheduler().schedule(timeRounder(toValue.x));
       }
       return shouldDrag;
     } else {
@@ -212,6 +221,11 @@ export function scatterChartSpec(chartType: 'speed' | 'crop', inputId): ChartCon
       }
       chartInstance.options.plugins.zoom.pan.enabled = true;
       e.target.style.cursor = 'default';
+
+      if (chartType === 'crop') {
+        cropDragScheduler?.flush();
+        cropDragScheduler = null;
+      }
 
       saveMarkerPairHistory(draft, markerPair);
       chartInstance.renderSpeedAndCropUI(true);

@@ -112,6 +112,7 @@ import {
   observeVideoElementChange,
   retryUntilTruthyResult,
   roundValue,
+  createDragSeekScheduler,
   seekBySafe,
   seekToSafe,
   setAttributes,
@@ -142,6 +143,7 @@ export let video: HTMLVideoElement;
 export let markerPairs: MarkerPair[] = [];
 export let prevSelectedMarkerPairIndex: number = null;
 export let isCropChartLoopingOn = false;
+export let frameDuration = 1 / 60;
 
 let shouldTriggerCropChartLoop = false;
 export function triggerCropChartLoop() {
@@ -570,6 +572,7 @@ async function loadytClipper() {
     const url = window.location.origin + window.location.pathname;
     videoInfo.videoUrl = url;
     videoInfo.fps = getFPS();
+    frameDuration = 1 / getFPS(60);
 
     video.seekTo = (time) => (video.currentTime = time);
     video.getCurrentTime = () => {
@@ -4370,27 +4373,30 @@ async function loadytClipper() {
         capture: true,
       });
       const videoRect = video.getBoundingClientRect();
-      let prevClickPosX = e.clientX - videoRect.left;
-      let prevClickPosY = e.clientY - videoRect.top;
+      const initClickPosX = e.clientX - videoRect.left;
+      const initTime = video.getCurrentTime();
       const pointerId = e.pointerId;
       video.setPointerCapture(pointerId);
 
       const baseWidth = 1920;
+      const fps = getFPS(60);
+      const scrubRate = 1 / fps;
+      const scrubScheduler = createDragSeekScheduler(video, scrubRate);
+
       function dragHandler(e: PointerEvent) {
         blockEvent(e);
         const pixelRatio = window.devicePixelRatio;
         const widthMultiple = baseWidth / screen.width;
         const dragPosX = e.clientX - videoRect.left;
-        const dragPosY = e.clientY - videoRect.top;
-        const changeX = (dragPosX - prevClickPosX) * pixelRatio * widthMultiple;
-        const seekBy = changeX * (1 / videoInfo.fps);
-        seekBySafe(video, seekBy);
-        prevClickPosX = e.clientX - videoRect.left;
+        const totalChangeX = (dragPosX - initClickPosX) * pixelRatio * widthMultiple;
+        const targetTime = initTime + totalChangeX * scrubRate;
+        scrubScheduler.schedule(targetTime);
       }
 
       function endDragHandler(e: PointerEvent) {
         blockEvent(e);
         document.removeEventListener('pointermove', dragHandler);
+        scrubScheduler.flush();
         video.releasePointerCapture(pointerId);
       }
 
@@ -5618,12 +5624,11 @@ async function loadytClipper() {
       blockEvent(e);
       // shift+right-click context menu opens screenshot tool in firefox 67.0.2
 
+      const cropPreviewScheduler = createDragSeekScheduler(video, frameDuration);
+
       function seekDragHandler(e) {
         const seekTime = timeRounder(getSeekTime(e));
-
-        if (Math.abs(video.getCurrentTime() - seekTime) >= 0.01) {
-          seekToSafe(video, seekTime);
-        }
+        cropPreviewScheduler.schedule(seekTime);
       }
 
       seekDragHandler(e);
@@ -5632,6 +5637,7 @@ async function loadytClipper() {
         blockEvent(e);
         modalContainer.releasePointerCapture(e.pointerId);
         document.removeEventListener('pointermove', seekDragHandler);
+        cropPreviewScheduler.flush();
       }
 
       modalContainer.setPointerCapture(e.pointerId);
@@ -5652,20 +5658,47 @@ async function loadytClipper() {
       const chartLoop = markerPairs[prevSelectedMarkerPairIndex][chartInput.chartLoopKey];
       // shift+right-click context menu opens screenshot tool in firefox 67.0.2
 
-      function chartTimeAnnotationDragHandler(e) {
-        const time = timeRounder(chart.scales['x-axis-1'].getValueForPixel(e.offsetX));
+      const fps = getFPS(60);
+      const minSeekDelta = 1 / fps;
+      let lastScheduledChartTime: number | null = null;
+      let pendingChartEvent: PointerEvent | null = null;
+      let chartDragRafId = 0;
+
+      function processChartDrag(force = false) {
+        chartDragRafId = 0;
+        const ev = pendingChartEvent;
+        if (!ev) return;
+        const time = timeRounder(chart.scales['x-axis-1'].getValueForPixel(ev.offsetX));
         chart.config.options.annotation.annotations[0].value = time;
-        if (Math.abs(video.getCurrentTime() - time) >= 0.01) {
+        const passesMinDelta =
+          force || lastScheduledChartTime == null || Math.abs(time - lastScheduledChartTime) >= minSeekDelta;
+        if (passesMinDelta) {
+          if (video.seeking) {
+            // Seek would be dropped; keep pending and retry next frame.
+            chartDragRafId = requestAnimationFrame(() => processChartDrag(force));
+            return;
+          }
+          pendingChartEvent = null;
+          lastScheduledChartTime = time;
           seekToSafe(video, time);
+          if (!ev.ctrlKey && !ev.altKey && ev.shiftKey) {
+            chart.config.options.annotation.annotations[1].value = time;
+            chartLoop.start = time;
+            chart.update();
+          } else if (!ev.ctrlKey && ev.altKey && !ev.shiftKey) {
+            chart.config.options.annotation.annotations[2].value = time;
+            chartLoop.end = time;
+            chart.update();
+          }
+        } else {
+          pendingChartEvent = null;
         }
-        if (!e.ctrlKey && !e.altKey && e.shiftKey) {
-          chart.config.options.annotation.annotations[1].value = time;
-          chartLoop.start = time;
-          chart.update();
-        } else if (!e.ctrlKey && e.altKey && !e.shiftKey) {
-          chart.config.options.annotation.annotations[2].value = time;
-          chartLoop.end = time;
-          chart.update();
+      }
+
+      function chartTimeAnnotationDragHandler(e) {
+        pendingChartEvent = e;
+        if (!chartDragRafId) {
+          chartDragRafId = requestAnimationFrame(() => processChartDrag());
         }
       }
 
@@ -5673,6 +5706,11 @@ async function loadytClipper() {
 
       function chartTimeAnnotationDragEnd(e) {
         blockEvent(e);
+        if (chartDragRafId) {
+          cancelAnimationFrame(chartDragRafId);
+          chartDragRafId = 0;
+        }
+        if (pendingChartEvent) processChartDrag(true);
         chart.ctx.canvas.releasePointerCapture(e.pointerId);
         document.removeEventListener('pointermove', chartTimeAnnotationDragHandler);
       }

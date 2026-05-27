@@ -219,6 +219,49 @@ export function seekBySafe(video: HTMLVideoElement, timeDelta: number) {
   const newTime = video.getCurrentTime() + timeDelta;
   seekToSafe(video, newTime);
 }
+
+export function createDragSeekScheduler(video: HTMLVideoElement, minSeekDelta = 1 / 60) {
+  let pendingTime: number | null = null;
+  let rafId = 0;
+  let lastScheduledTime: number | null = null;
+
+  function process(force = false) {
+    rafId = 0;
+    if (pendingTime == null) return;
+    const time = pendingTime;
+    const passesMinDelta =
+      force || lastScheduledTime == null || Math.abs(time - lastScheduledTime) >= minSeekDelta;
+    if (passesMinDelta) {
+      if (video.seeking) {
+        // Seek would be dropped; keep pending and retry next frame.
+        rafId = requestAnimationFrame(() => process(force));
+        return;
+      }
+      pendingTime = null;
+      lastScheduledTime = time;
+      seekToSafe(video, time);
+    } else {
+      pendingTime = null;
+    }
+  }
+
+  return {
+    schedule(time: number) {
+      pendingTime = time;
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => process());
+      }
+    },
+    flush() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      process(true);
+    },
+  };
+}
+
 export function blockEvent(e) {
   e.preventDefault();
   e.stopImmediatePropagation();
