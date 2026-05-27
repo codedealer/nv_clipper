@@ -5,8 +5,10 @@ import pytest
 from clipper import util
 from clipper.clip_maker import getDefaultEncodeSettings
 from clipper.clipper_types import ClipperPaths, ClipperState
+from clipper.ffprobe import ffprobeVideoProperties
+from clipper.platforms import getFfmpegHeaders
 from clipper.yt_clipper import setupDepPaths
-from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo
+from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo, getVideoInfo
 from clipper.ytdl import ytdl_bin_get_args_base
 
 
@@ -76,6 +78,86 @@ def test_ytdl_bin_get_args_base_normalizes_format_inputs() -> None:
     assert "best/bv+ba" in ytdl_args
     assert "--format-sort" in ytdl_args
     assert "res,fps,proto" in ytdl_args
+
+
+def test_getFfmpegHeaders_merges_platform_and_stream_headers() -> None:
+    headers = getFfmpegHeaders(
+        "youtube",
+        {
+            "User-Agent": "yt-dlp-agent",
+            "Referer": "https://www.youtube.com/watch?v=demo",
+        },
+    )
+
+    assert "-headers 'User-Agent: yt-dlp-agent'" in headers
+    assert "-headers 'Referer: https://www.youtube.com/watch?v=demo'" in headers
+
+
+def test_getVideoInfo_preserves_ytdlp_stream_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    cs = ClipperState(
+        settings={
+            "downloadVideo": False,
+            "enableVideoStreamingProtocolHLS": True,
+            "platform": "youtube",
+        },
+    )
+    ytdl_info = {
+        "_type": "video",
+        "requested_formats": [
+            {
+                "url": "https://example.com/video.mp4",
+                "http_headers": {
+                    "User-Agent": "video-agent",
+                    "Referer": "https://www.youtube.com/watch?v=demo",
+                },
+            },
+            {
+                "url": "https://example.com/audio.m4a",
+                "http_headers": {
+                    "User-Agent": "audio-agent",
+                },
+            },
+        ],
+    }
+
+    monkeypatch.setattr(
+        "clipper.ytc_settings.ytdl_bin_get_video_info",
+        lambda cs: (ytdl_info, ""),
+    )
+    monkeypatch.setattr("clipper.ytc_settings.getMoreVideoInfo", lambda *args: None)
+
+    getVideoInfo(cs)
+
+    assert cs.settings["videoDownloadURL"] == "https://example.com/video.mp4"
+    assert cs.settings["audioDownloadURL"] == "https://example.com/audio.m4a"
+    assert cs.settings["videoDownloadHeaders"] == {
+        "User-Agent": "video-agent",
+        "Referer": "https://www.youtube.com/watch?v=demo",
+    }
+    assert cs.settings["audioDownloadHeaders"] == {"User-Agent": "audio-agent"}
+
+
+def test_ffprobeVideoProperties_passes_headers_before_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    cs = ClipperState(
+        settings={
+            "platform": "youtube",
+            "inputVideo": "",
+            "videoDownloadHeaders": {"User-Agent": "probe-agent"},
+        },
+        clipper_paths=ClipperPaths(ffprobePath="ffprobe"),
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_check_output(args: list[str]) -> bytes:
+        captured["args"] = args
+        return b'{"streams":[{"r_frame_rate":"30/1","avg_frame_rate":"30/1"}],"format":{"bit_rate":"1000","duration":"1.0"}}'
+
+    monkeypatch.setattr("clipper.ffprobe.subprocess.check_output", fake_check_output)
+
+    ffprobeVideoProperties(cs, "https://example.com/video.mp4")
+
+    assert captured["args"].index("-headers") < captured["args"].index("https://example.com/video.mp4")
+    assert "User-Agent: probe-agent" in captured["args"]
 
 
 def test_setupDepPaths_uses_sibling_ff_tools_from_ytdl_location(

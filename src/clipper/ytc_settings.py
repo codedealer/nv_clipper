@@ -256,9 +256,13 @@ def getVideoInfo(cs: ClipperState) -> None:
 
     if settings["downloadVideo"]:
         settings["inputVideo"] = settings["downloadVideoPath"]
+        settings["videoDownloadHeaders"] = {}
+        settings["audioDownloadHeaders"] = {}
     else:
         settings["videoDownloadURL"] = videoInfo["url"]
         settings["audioDownloadURL"] = audioInfo["url"]
+        settings["videoDownloadHeaders"] = _getDownloadHeaders(videoInfo)
+        settings["audioDownloadHeaders"] = _getDownloadHeaders(audioInfo)
 
     getMoreVideoInfo(cs, videoInfo, audioInfo, formats_table)
 
@@ -273,6 +277,18 @@ def disableVideoStreamingProtocols(settings: Settings, protocols: List[str]) -> 
         return
 
     settings["format"] = f"({format_selector}){disableClause}"
+
+
+def _getDownloadHeaders(format_info: Dict[str, Any]) -> Dict[str, str]:
+    headers = format_info.get("http_headers")
+    if not isinstance(headers, dict):
+        return {}
+
+    return {
+        name: value
+        for name, value in headers.items()
+        if isinstance(name, str) and isinstance(value, str) and name.strip() and value.strip()
+    }
 
 
 def _getVideoInfo(cs: ClipperState) -> Tuple[Dict[str, Any], Dict[str, Any], str]:

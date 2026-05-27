@@ -17,6 +17,7 @@ def ffprobeVideoProperties(cs: ClipperState, videoURL: str) -> Optional[DictStrA
     cp = cs.clipper_paths
     settings = cs.settings
     settings.pop(FFPROBE_ERROR_REASON_KEY, None)
+    request_headers = None if settings.get("inputVideo") else settings.get("videoDownloadHeaders")
 
     ffprobeRetries = 3
     done = False
@@ -26,10 +27,10 @@ def ffprobeVideoProperties(cs: ClipperState, videoURL: str) -> Optional[DictStrA
             ffprobeFlags = " ".join(
                 (
                     "-v quiet -select_streams v -print_format json -show_streams -show_format",
-                    getFfmpegHeaders(settings["platform"]),
+                    getFfmpegHeaders(settings["platform"], request_headers),
                 ),
             )
-            ffprobeCommand = f'"{cp.ffprobePath}" "{videoURL}" {ffprobeFlags} '
+            ffprobeCommand = f'"{cp.ffprobePath}" {ffprobeFlags} "{videoURL}" '
             ffprobeOutput = subprocess.check_output(shlex.split(ffprobeCommand))
             logger.success(f"Successfully fetched video properties with ffprobe")
             done = True

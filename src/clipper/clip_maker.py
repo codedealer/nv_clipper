@@ -382,6 +382,27 @@ FFMPEG_NETWORK_INPUT_FLAGS = (
 )
 
 
+def _getFfmpegNetworkInputArgs(
+    platform: str,
+    input_url: str,
+    *,
+    headers: Optional[Dict[str, str]] = None,
+    start: Optional[float] = None,
+    end: Optional[float] = None,
+) -> str:
+    return " ".join(
+        part
+        for part in (
+            FFMPEG_NETWORK_INPUT_FLAGS,
+            getFfmpegHeaders(platform, headers),
+            f"-ss {start}" if start is not None else "",
+            f"-to {end}" if end is not None else "",
+            f'-i "{input_url}"',
+        )
+        if part
+    )
+
+
 def fastTrimClip(
     cs: ClipperState,
     markerPairIndex: int,
@@ -402,8 +423,13 @@ def fastTrimClip(
         # ffplay previewing does not support multiple inputs
         # if an input video is provided or previewing is on, there is only one input
         if not mps["inputVideo"] and not settings["preview"]:
-            inputs += FFMPEG_NETWORK_INPUT_FLAGS
-            inputs += f' -ss {aStart} -to {aEnd} -i "{mps["audioDownloadURL"]}" '
+            inputs += " " + _getFfmpegNetworkInputArgs(
+                mps["platform"],
+                mps["audioDownloadURL"],
+                headers=mps.get("audioDownloadHeaders"),
+                start=aStart,
+                end=aEnd,
+            ) + " "
         # when streaming the required chunks from the internet the video and audio inputs are separate
         else:
             mps["audio"] = False
@@ -411,18 +437,27 @@ def fastTrimClip(
                 "Audio disabled when previewing without an input video over non-dash protocol.",
             )
 
-    if not mps["inputVideo"]:
-        inputs += FFMPEG_NETWORK_INPUT_FLAGS
-
     videoStart = mp["start"]
     videoEnd = mp["end"]
     if mps["inputVideo"]:
         inputs += f' -ss {videoStart} -to {videoEnd} -i "{mps["inputVideo"]}" '
     elif mps["videoType"] != "multi_video":
-        inputs += f' -ss {videoStart} -to {videoEnd} -i "{mps["videoDownloadURL"]}" '
+        inputs += " " + _getFfmpegNetworkInputArgs(
+            mps["platform"],
+            mps["videoDownloadURL"],
+            headers=mps.get("videoDownloadHeaders"),
+            start=videoStart,
+            end=videoEnd,
+        ) + " "
     elif "videoPart" in mp:
         videoPart = mp["videoPart"]
-        inputs += f' -ss {videoStart} -to {videoEnd} -i "{videoPart["url"]}" '
+        inputs += " " + _getFfmpegNetworkInputArgs(
+            mps["platform"],
+            videoPart["url"],
+            headers=videoPart.get("http_headers"),
+            start=videoStart,
+            end=videoEnd,
+        ) + " "
     else:
         fileName = rich.markup.escape(mp["fileName"])
         logger.error(
@@ -559,8 +594,13 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         # ffplay previewing does not support multiple inputs
         # if an input video is provided or previewing is on, there is only one input
         if not mps["inputVideo"] and not settings["preview"]:
-            inputs += FFMPEG_NETWORK_INPUT_FLAGS
-            inputs += f' -ss {aStart} -to {aEnd} -i "{mps["audioDownloadURL"]}" '
+            inputs += " " + _getFfmpegNetworkInputArgs(
+                mps["platform"],
+                mps["audioDownloadURL"],
+                headers=mps.get("audioDownloadHeaders"),
+                start=aStart,
+                end=aEnd,
+            ) + " "
 
         # preview mode does not start each clip at time 0 unlike encoding mode
         if settings["preview"] and settings["inputVideo"]:
@@ -580,16 +620,23 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         if mps["extraAudioFilters"]:
             audio_filter += f',{mps["extraAudioFilters"]}'
 
-    if not mps["inputVideo"]:
-        inputs += FFMPEG_NETWORK_INPUT_FLAGS
-
     if mps["inputVideo"]:
         inputs += f' -ss {mp["start"]} -i "{mps["inputVideo"]}" '
     elif mps["videoType"] != "multi_video":
-        inputs += f' -ss {mp["start"]} -i "{mps["videoDownloadURL"]}" '
+        inputs += " " + _getFfmpegNetworkInputArgs(
+            mps["platform"],
+            mps["videoDownloadURL"],
+            headers=mps.get("videoDownloadHeaders"),
+            start=mp["start"],
+        ) + " "
     elif "videoPart" in mp:
         videoPart = mp["videoPart"]
-        inputs += f' -ss {mp["start"]} -i "{videoPart["url"]}" '
+        inputs += " " + _getFfmpegNetworkInputArgs(
+            mps["platform"],
+            videoPart["url"],
+            headers=videoPart.get("http_headers"),
+            start=mp["start"],
+        ) + " "
     else:
         fileName = rich.markup.escape(mp["fileName"])
         logger.error(
@@ -1035,7 +1082,6 @@ def getFfmpegCommandWithoutVideoFilter(
         (
             cp.ffmpegPath,
             f"-hide_banner",
-            getFfmpegHeaders(mps["platform"]),
             video_codec_input_args,
             inputs,
             f"-benchmark",
@@ -1087,7 +1133,6 @@ def getFfmpegCommandVidstab(
         (
             cp.ffmpegPath,
             f"-hide_banner",
-            getFfmpegHeaders(mps["platform"]),
             decoder_args,
             inputs,
             f"-benchmark",
@@ -1110,7 +1155,6 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
         (
             cp.ffmpegPath,
             f"-hide_banner",
-            getFfmpegHeaders(mps["platform"]),
             decoder_args,
             # "-thread_queue_size 512",
             inputs,
@@ -1162,7 +1206,6 @@ def getRIFEFfmpegEncodeCommand(
         (
             cp.ffmpegPath,
             f"-hide_banner",
-            getFfmpegHeaders(mps["platform"]),
             video_codec_input_args,
             f"-framerate {frame_rate}" if frame_rate is not None else "",
             "<__RIFE_placeholder>", # some of the flags will be determined by RIFE
@@ -1197,7 +1240,6 @@ def getFfmpegCommandFastTrim(
             cp.ffmpegPath,
             overwriteArg,
             f"-hide_banner",
-            getFfmpegHeaders(mps["platform"]),
             inputs,
             f"-benchmark",
             # f'-loglevel 56',

@@ -1,20 +1,46 @@
 import os
+import shlex
 import sys
+from typing import Any, Mapping
 
 from clipper.clipper_types import KnownPlatform, Settings
 from clipper.ytc_logger import logger
 
 
-def getFfmpegHeaders(platform: str) -> str:
+def _get_platform_headers(platform: str) -> dict[str, str]:
     if platform == KnownPlatform.afreecatv.name:
-        return " ".join(
-            (
-                f"-headers 'Referer: https://play.afreecatv.com/'",
-                f"-headers 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:75.0) Gecko/20100101 Firefox/75.0'",
-            ),
-        )
+        return {
+            "Referer": "https://play.afreecatv.com/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:75.0) Gecko/20100101 Firefox/75.0",
+        }
 
-    return ""
+    return {}
+
+
+def getFfmpegHeaders(platform: str, extra_headers: Mapping[str, Any] | None = None) -> str:
+    merged_headers: dict[str, tuple[str, str]] = {
+        name.lower(): (name, value)
+        for name, value in _get_platform_headers(platform).items()
+        if isinstance(name, str) and isinstance(value, str) and name and value
+    }
+
+    if extra_headers:
+        for name, value in extra_headers.items():
+            if not isinstance(name, str) or not isinstance(value, str):
+                continue
+            name = name.strip()
+            value = value.strip()
+            if not name or not value:
+                continue
+            merged_headers[name.lower()] = (name, value)
+
+    if not merged_headers:
+        return ""
+
+    return " ".join(
+        f"-headers {shlex.quote(f'{name}: {value}') }"
+        for name, value in merged_headers.values()
+    )
 
 
 def getVideoPageURL(settings: Settings, platform: str, videoID: str) -> str:
