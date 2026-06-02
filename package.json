@@ -2,7 +2,7 @@
   "name": "yt_clipper",
   "description": "Mark up YouTube videos and quickly generate clipped webms.",
   "author": "codedealer",
-  "version": "6.6.7",
+  "version": "6.6.8",
   "license": "MIT",
   "repository": {
     "type": "git",
