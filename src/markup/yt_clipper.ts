@@ -2790,7 +2790,7 @@ async function loadytClipper() {
           <br>
           <span id="crop-aspect-ratio">${cropAspectRatio}</span>
         </div>
-        <div class="settings-editor-input-div" title="${Tooltips.titlePrefixTooltip}">
+        <div class="settings-editor-input-div" title="${Tooltips.titlePrefixTooltip}" style="display:none">
           <span>Title Prefix</span>
           <input id="title-prefix-input" value="${
             overrides.titlePrefix != null ? overrides.titlePrefix : ''
