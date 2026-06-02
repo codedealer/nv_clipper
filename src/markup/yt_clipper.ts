@@ -823,10 +823,6 @@ async function loadytClipper() {
   }
 
   function setCropInputValue(cropString: string) {
-    const rotatedCropString = getRotatedCropString(cropString);
-    if (rotatedCropString !== cropString) {
-      cropInputLabel.textContent = `Crop (Rotated: ${rotatedCropString})`;
-    }
     cropInput.value = cropString;
   }
 
