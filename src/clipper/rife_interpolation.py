@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import PIPE, Popen
+import shlex
 from typing import Any, Dict, List
 
 import onnxruntime as ort
@@ -296,7 +297,7 @@ class AIInterpolation:
         return cache_info
 
 def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
-    process = Popen(ffmpeg_cmd, stdout=PIPE, bufsize=10**8)
+    process = Popen(shlex.split(ffmpeg_cmd), stdout=PIPE, bufsize=10**8)
     frames = []
     frame_count = 0
 
@@ -358,7 +359,7 @@ def pipe_frames_to_ffmpeg(
             f"-f rawvideo -vcodec rawvideo -pix_fmt bgr24 -s {width}x{height}",
         )
 
-    process = Popen(ffmpeg_cmd, stdin=PIPE)
+    process = Popen(shlex.split(ffmpeg_cmd), stdin=PIPE)
     if process.stdin is None:
         raise RuntimeError("Failed to open ffmpeg stdin pipe.")
 

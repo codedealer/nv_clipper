@@ -29,7 +29,7 @@ def getFfmpegHeaders(platform: str, extra_headers: Mapping[str, Any] | None = No
             if not isinstance(name, str) or not isinstance(value, str):
                 continue
             name = name.strip()
-            value = value.strip()
+            value = " ".join(value.split())
             if not name or not value:
                 continue
             merged_headers[name.lower()] = (name, value)
@@ -37,10 +37,8 @@ def getFfmpegHeaders(platform: str, extra_headers: Mapping[str, Any] | None = No
     if not merged_headers:
         return ""
 
-    return " ".join(
-        f"-headers {shlex.quote(f'{name}: {value}') }"
-        for name, value in merged_headers.values()
-    )
+    header_block = "\r\n".join(f"{name}: {value}" for name, value in merged_headers.values())
+    return f"-headers {shlex.quote(f'{header_block}\r\n')}"
 
 
 def getVideoPageURL(settings: Settings, platform: str, videoID: str) -> str:

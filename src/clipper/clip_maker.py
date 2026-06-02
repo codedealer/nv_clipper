@@ -1328,6 +1328,9 @@ def runffmpegCommand(
 
     input_redaction_pattern = r"(-i[\s]+\".*?\"[\s]+)+"
 
+    def _sanitize_command_for_log(command: str) -> str:
+        return command.replace("\r\n", "\\r\\n").replace("\r", "\\r").replace("\n", "\\n")
+
     # Redact input paths in all ffmpegCommands and rifeCommands
     printableFfmpegCommands = [
         re.sub(
@@ -1338,6 +1341,7 @@ def runffmpegCommand(
         )
         for cmd in ffmpegCommands
     ]
+    printableFfmpegCommands = [_sanitize_command_for_log(cmd) for cmd in printableFfmpegCommands]
     printableRifeCommands = []
     if rifeCommands:
         printableRifeCommands = [
@@ -1349,6 +1353,7 @@ def runffmpegCommand(
             )
             for cmd in rifeCommands
         ]
+        printableRifeCommands = [_sanitize_command_for_log(cmd) for cmd in printableRifeCommands]
 
     if len(ffmpegCommands) > 0:
         ffmpegPass1 = ffmpegCommands[0]

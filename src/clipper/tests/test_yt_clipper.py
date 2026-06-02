@@ -84,13 +84,15 @@ def test_getFfmpegHeaders_merges_platform_and_stream_headers() -> None:
     headers = getFfmpegHeaders(
         "youtube",
         {
-            "User-Agent": "yt-dlp-agent",
+            "User-Agent": "yt-dlp-agent\n  with extra spacing",
             "Referer": "https://www.youtube.com/watch?v=demo",
         },
     )
 
-    assert "-headers 'User-Agent: yt-dlp-agent'" in headers
-    assert "-headers 'Referer: https://www.youtube.com/watch?v=demo'" in headers
+    assert headers.startswith("-headers ")
+    assert "User-Agent: yt-dlp-agent with extra spacing\r\n" in headers
+    assert "Referer: https://www.youtube.com/watch?v=demo\r\n" in headers
+    assert headers.count("-headers") == 1
 
 
 def test_getVideoInfo_preserves_ytdlp_stream_headers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,7 +159,8 @@ def test_ffprobeVideoProperties_passes_headers_before_input(monkeypatch: pytest.
     ffprobeVideoProperties(cs, "https://example.com/video.mp4")
 
     assert captured["args"].index("-headers") < captured["args"].index("https://example.com/video.mp4")
-    assert "User-Agent: probe-agent" in captured["args"]
+    header_index = captured["args"].index("-headers") + 1
+    assert captured["args"][header_index] == "User-Agent: probe-agent\r\n"
 
 
 def test_setupDepPaths_uses_sibling_ff_tools_from_ytdl_location(
