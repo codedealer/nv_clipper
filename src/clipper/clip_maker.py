@@ -77,6 +77,30 @@ _FFPROBE_TO_SCALE_COLOR_MATRIX: Dict[str, str] = {
 }
 
 
+def _get_input_rotation_filter(mps: DictStrAny) -> str:
+    """Return the ffmpeg filter needed to match display-matrix rotation metadata."""
+    rotation = mps.get("display_rotation")
+    if rotation is None:
+        return ""
+
+    if rotation == -90:
+        return "transpose=clock"
+    if rotation == 90:
+        return "transpose=cclock"
+    if abs(rotation) == 180:
+        return "hflip,vflip"
+
+    return ""
+
+
+def _get_input_display_rotation_args(mps: DictStrAny) -> str:
+    """Neutralize input display rotation so the filter graph sees unrotated frames."""
+    if mps.get("display_rotation") is None:
+        return ""
+
+    return "-display_rotation:v:0 0"
+
+
 def _get_color_space_for_scale_filter(mps: DictStrAny) -> str:
     """Get the colorspace for use in scale filter's in_color_matrix/out_color_matrix.
 
@@ -99,7 +123,6 @@ def _get_color_space_for_output(mps: DictStrAny) -> str:
     if not color_space:
         return DEFAULT_COLOR_SPACE
     return color_space
-
 
 def getMarkerPairSettings(  # noqa: PLR0912
     cs: ClipperState,
@@ -387,6 +410,7 @@ def _getFfmpegNetworkInputArgs(
     input_url: str,
     *,
     headers: Optional[Dict[str, str]] = None,
+    input_display_rotation_args: str = "",
     start: Optional[float] = None,
     end: Optional[float] = None,
 ) -> str:
@@ -395,6 +419,7 @@ def _getFfmpegNetworkInputArgs(
         for part in (
             FFMPEG_NETWORK_INPUT_FLAGS,
             getFfmpegHeaders(platform, headers),
+            input_display_rotation_args,
             f"-ss {start}" if start is not None else "",
             f"-to {end}" if end is not None else "",
             f'-i "{input_url}"',
@@ -439,13 +464,17 @@ def fastTrimClip(
 
     videoStart = mp["start"]
     videoEnd = mp["end"]
+    input_display_rotation_args = _get_input_display_rotation_args(mps)
     if mps["inputVideo"]:
-        inputs += f' -ss {videoStart} -to {videoEnd} -i "{mps["inputVideo"]}" '
+        inputs += (
+            f' {input_display_rotation_args} -ss {videoStart} -to {videoEnd} -i "{mps["inputVideo"]}" '
+        )
     elif mps["videoType"] != "multi_video":
         inputs += " " + _getFfmpegNetworkInputArgs(
             mps["platform"],
             mps["videoDownloadURL"],
             headers=mps.get("videoDownloadHeaders"),
+            input_display_rotation_args=input_display_rotation_args,
             start=videoStart,
             end=videoEnd,
         ) + " "
@@ -455,6 +484,7 @@ def fastTrimClip(
             mps["platform"],
             videoPart["url"],
             headers=videoPart.get("http_headers"),
+            input_display_rotation_args=input_display_rotation_args,
             start=videoStart,
             end=videoEnd,
         ) + " "
@@ -620,13 +650,15 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         if mps["extraAudioFilters"]:
             audio_filter += f',{mps["extraAudioFilters"]}'
 
+    input_display_rotation_args = _get_input_display_rotation_args(mps)
     if mps["inputVideo"]:
-        inputs += f' -ss {mp["start"]} -i "{mps["inputVideo"]}" '
+        inputs += f' {input_display_rotation_args} -ss {mp["start"]} -i "{mps["inputVideo"]}" '
     elif mps["videoType"] != "multi_video":
         inputs += " " + _getFfmpegNetworkInputArgs(
             mps["platform"],
             mps["videoDownloadURL"],
             headers=mps.get("videoDownloadHeaders"),
+            input_display_rotation_args=input_display_rotation_args,
             start=mp["start"],
         ) + " "
     elif "videoPart" in mp:
@@ -635,6 +667,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             mps["platform"],
             videoPart["url"],
             headers=videoPart.get("http_headers"),
+            input_display_rotation_args=input_display_rotation_args,
             start=mp["start"],
         ) + " "
     else:
@@ -730,6 +763,13 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         logger.info("Duplicate frames will be removed.")
         video_filter += f",mpdecimate"
         video_filter += f",setpts=N/FR/TB" # probably should not be set here
+
+    input_rotation_filter = _get_input_rotation_filter(mps)
+    if input_rotation_filter:
+        logger.info(
+            f"Applying display-matrix rotation correction before crop: {mps['display_rotation']} degrees.",
+        )
+        video_filter += f",{input_rotation_filter}"
 
     video_filter += f',{mp["cropFilter"]}'
 
@@ -1065,7 +1105,6 @@ def getFfmpegCommandWithoutVideoFilter(
         qmax=qmax,
         qmin=qmin,
     )
-
     audio_codec_args = "-an"
     if mps["audio"]:
         audio_codec_args = " ".join(
@@ -1597,7 +1636,7 @@ def cleanFileName(fileName: str) -> str:
     return fileName
 
 
-def getDefaultEncodeSettings(videobr: int) -> DictStrAny:
+def getDefaultEncodeSettings(videobr: Optional[int]) -> DictStrAny:
     # switch to constant quality mode if no bitrate specified
     if videobr is None:
         encodeSettings = {

@@ -129,15 +129,23 @@ def getDisplayMatrixRotation(ffprobeStreamData: dict) -> Optional[int]:
     if not displayMatrix:
         return None
 
-    return displayMatrix.get("rotation")
+    rotation = displayMatrix.get("rotation")
+    if rotation is None:
+        return None
+
+    return int(round(rotation))
 
 
 def getInputRotationCorrection(rotation: int, ffprobeStreamData: dict) -> None:
+    ffprobeStreamData["display_rotation"] = rotation
+
     if rotation in (-90, 90):
         ffprobeStreamData["width"], ffprobeStreamData["height"] = (
             ffprobeStreamData["height"],
             ffprobeStreamData["width"],
         )
+    elif rotation in (-180, 180):
+        return
     else:
         logger.warning(
             "Input video has a non-orthogonal display-only rotation (neither 90 nor -90 degrees). This is not currently corrected for.",

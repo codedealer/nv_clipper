@@ -3,9 +3,14 @@ from pathlib import Path
 import pytest
 
 from clipper import util
-from clipper.clip_maker import getDefaultEncodeSettings
+from clipper.clip_maker import (
+    _get_input_display_rotation_args,
+    _getFfmpegNetworkInputArgs,
+    _get_input_rotation_filter,
+    getDefaultEncodeSettings,
+)
 from clipper.clipper_types import ClipperPaths, ClipperState
-from clipper.ffprobe import ffprobeVideoProperties
+from clipper.ffprobe import ffprobeVideoProperties, getInputRotationCorrection
 from clipper.platforms import getFfmpegHeaders
 from clipper.yt_clipper import setupDepPaths
 from clipper.ytc_settings import disableVideoStreamingProtocols, getMoreVideoInfo, getVideoInfo
@@ -429,4 +434,70 @@ class TestGetDefaultEncodeSettings_NullBitrate:
         result = getDefaultEncodeSettings(adjusted)
         assert result["crf"] == 30
         assert result["autoTargetMaxBitrate"] == 0
+
+
+@pytest.mark.parametrize(
+    ("rotation", "expected_filter"),
+    [
+        pytest.param(-90, "transpose=clock", id="clockwise-portrait"),
+        pytest.param(90, "transpose=cclock", id="counterclockwise-portrait"),
+        pytest.param(180, "hflip,vflip", id="upside-down"),
+        pytest.param(None, "", id="missing"),
+        pytest.param(45, "", id="unsupported-angle"),
+    ],
+)
+def test_get_input_rotation_filter(rotation: int | None, expected_filter: str) -> None:
+    assert _get_input_rotation_filter({"display_rotation": rotation}) == expected_filter
+
+
+def test_get_input_rotation_filter_ignores_missing_metadata() -> None:
+    assert _get_input_rotation_filter({}) == ""
+
+
+@pytest.mark.parametrize(
+    ("rotation", "expected_args"),
+    [
+        pytest.param(-90, "-display_rotation:v:0 0", id="metadata-minus-90"),
+        pytest.param(90, "-display_rotation:v:0 0", id="metadata-plus-90"),
+        pytest.param(180, "-display_rotation:v:0 0", id="metadata-180"),
+        pytest.param(None, "", id="missing"),
+    ],
+)
+def test_get_input_display_rotation_args(rotation: int | None, expected_args: str) -> None:
+    assert _get_input_display_rotation_args({"display_rotation": rotation}) == expected_args
+
+
+def test_get_ffmpeg_network_input_args_includes_input_display_rotation_args() -> None:
+    args = _getFfmpegNetworkInputArgs(
+        "youtube",
+        "https://example.com/video.mp4",
+        input_display_rotation_args="-display_rotation:v:0 0",
+        start=1.25,
+        end=3.5,
+    )
+
+    assert "-display_rotation:v:0 0" in args
+    assert '-i "https://example.com/video.mp4"' in args
+
+
+@pytest.mark.parametrize(
+    ("rotation", "expected_width", "expected_height"),
+    [
+        pytest.param(-90, 1080, 1920, id="minus-90-swaps-dimensions"),
+        pytest.param(90, 1080, 1920, id="plus-90-swaps-dimensions"),
+        pytest.param(180, 1920, 1080, id="180-preserves-dimensions"),
+    ],
+)
+def test_get_input_rotation_correction_persists_display_rotation(
+    rotation: int,
+    expected_width: int,
+    expected_height: int,
+) -> None:
+    ffprobe_stream_data = {"width": 1920, "height": 1080}
+
+    getInputRotationCorrection(rotation, ffprobe_stream_data)
+
+    assert ffprobe_stream_data["display_rotation"] == rotation
+    assert ffprobe_stream_data["width"] == expected_width
+    assert ffprobe_stream_data["height"] == expected_height
 
