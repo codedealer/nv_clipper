@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pytest
 
 from clipper.rife_interpolation import extract_video_frames, pipe_frames_to_ffmpeg
 
@@ -31,10 +32,10 @@ class _FakeProcess:
         return self.returncode
 
 
-def test_extract_video_frames_tokenizes_ffmpeg_command(monkeypatch) -> None:
+def test_extract_video_frames_tokenizes_ffmpeg_command(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_popen(args, stdout=None, bufsize=None):
+    def fake_popen(args: list[str], stdout: object | None = None, bufsize: int | None = None) -> _FakeProcess:
         captured["args"] = args
         captured["stdout"] = stdout
         captured["bufsize"] = bufsize
@@ -51,7 +52,7 @@ def test_extract_video_frames_tokenizes_ffmpeg_command(monkeypatch) -> None:
     assert captured["args"][2].endswith("\r\n")
 
 
-def test_pipe_frames_to_ffmpeg_tokenizes_ffmpeg_command(monkeypatch) -> None:
+def test_pipe_frames_to_ffmpeg_tokenizes_ffmpeg_command(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeStdin:
@@ -69,7 +70,7 @@ def test_pipe_frames_to_ffmpeg_tokenizes_ffmpeg_command(monkeypatch) -> None:
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(args, stdin=None):
+    def fake_popen(args: list[str], stdin: object | None = None) -> FakeProcess:
         captured["args"] = args
         captured["stdin"] = stdin
         return FakeProcess()

@@ -28,11 +28,11 @@ def getFfmpegHeaders(platform: str, extra_headers: Mapping[str, Any] | None = No
         for name, value in extra_headers.items():
             if not isinstance(name, str) or not isinstance(value, str):
                 continue
-            name = name.strip()
-            value = " ".join(value.split())
-            if not name or not value:
+            header_name = name.strip()
+            header_value = " ".join(value.split())
+            if not header_name or not header_value:
                 continue
-            merged_headers[name.lower()] = (name, value)
+            merged_headers[header_name.lower()] = (header_name, header_value)
 
     if not merged_headers:
         return ""

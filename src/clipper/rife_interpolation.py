@@ -1,9 +1,9 @@
+import shlex
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import PIPE, Popen
-import shlex
 from typing import Any, Dict, List
 
 import onnxruntime as ort

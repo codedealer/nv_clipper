@@ -5,8 +5,8 @@ import pytest
 from clipper import util
 from clipper.clip_maker import (
     _get_input_display_rotation_args,
-    _getFfmpegNetworkInputArgs,
     _get_input_rotation_filter,
+    _getFfmpegNetworkInputArgs,
     getDefaultEncodeSettings,
 )
 from clipper.clipper_types import ClipperPaths, ClipperState
