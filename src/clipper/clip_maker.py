@@ -63,8 +63,8 @@ _FFPROBE_TO_SCALE_COLOR_MATRIX: Dict[str, str] = {
     "bt470m": "bt470",   # BT.470 System M -> bt470
     "smpte170m": "smpte170m",
     "smpte240m": "smpte240m",
-    "bt2020nc": "bt2020nc",
-    "bt2020c": "bt2020c",
+    "bt2020nc": "bt2020",
+    "bt2020c": "bt2020",
     "fcc": "fcc",
     "smpte428": "smpte428",
     "smpte431": "smpte431",
