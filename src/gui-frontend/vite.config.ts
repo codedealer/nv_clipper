@@ -18,7 +18,8 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       port: 5173,
-      host: 'localhost',
+      // Bind all local interfaces so localhost resolves consistently for HTTP and HMR.
+      host: true,
       cors: true,
       // Don't open browser automatically since we're using pywebview
       open: false
