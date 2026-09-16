@@ -207,6 +207,6 @@ const generatePreviewFromUrl = async () => {
 .preview-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1; }
 .preview-header-right { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; min-width: 0; }
 .preview-meta { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.video-info, .gen-key { font-size: 11px; color: var(--el-text-color-secondary); font-family: monospace; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.video-info, .gen-key { font-size: 11px; color: var(--el-text-color-secondary); font-family: monospace; white-space: nowrap; max-width: 350px; overflow: hidden; text-overflow: ellipsis; }
 .preview-controls { display: flex; align-items: center; gap: 8px; }
 </style>
