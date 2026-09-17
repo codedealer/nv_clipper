@@ -20,6 +20,7 @@ const stateDump = computed(() => {
     selectedFiles: store.selectedFiles,
     hasMarkupFile: store.hasMarkupFile,
     hasVideoFile: store.hasVideoFile,
+    videoInfo: store.videoInfo,
   parsedClips: store.parsedClips.map(c => ({ n: c.number, start: c.start, end: c.end, cg: (c.overrides as { colorGrading?: string } | undefined)?.colorGrading })),
     selectedClips: store.selectedClips,
     activeColorGradingClip: store.activeColorGradingClip,

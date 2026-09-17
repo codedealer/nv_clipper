@@ -30,6 +30,7 @@
             <!-- Clip Selection Component -->
             <ClipSelection
               :clips="parsedClips"
+              :video-info="videoInfo"
               :model-value="selectedClips"
               :active-color-grading-clip="activeColorGradingClip"
               :clip-settings-dirty="clipSettingsDirty"
@@ -65,11 +66,12 @@ import FileSelection from './FileSelection.vue'
 import ClipSelection from './ClipSelection.vue'
 import ProcessingPanel from './ProcessingPanel.vue'
 import VideoUrlExtractor from './VideoUrlExtractor.vue'
-import type { SelectedFiles, ClipInfo, ProcessingResult } from '@/types/api'
+import type { SelectedFiles, ClipInfo, ProcessingResult, VideoInfo } from '@/types/api'
 
 interface Props {
   selectedFiles: SelectedFiles
   parsedClips: ClipInfo[]
+  videoInfo: VideoInfo | null
   selectedClips: number[]
   activeColorGradingClip: number | null
   isProcessing: boolean

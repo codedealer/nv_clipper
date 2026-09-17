@@ -27,6 +27,15 @@
           <div class="clip-info" @click="handleClipClick(index)">
             <div class="clip-info-row">
               <div class="clip-duration">{{ `${clip.number || index + 1} - ${formatDuration(clip, index)}` }}</div>
+              <el-tooltip
+                v-if="willToneMapToSdr(clip, index)"
+                content="HDR source: this clip will be tone-mapped to SDR before RIFE interpolation. The resulting output will be SDR."
+                placement="top"
+              >
+                <el-icon class="clip-tonemap-indicator" aria-label="HDR source will be tone-mapped to SDR">
+                  <WarningFilled />
+                </el-icon>
+              </el-tooltip>
               <el-tag v-if="isClipModified(clip, index)" type="warning" size="small" effect="plain" class="clip-modified-tag">Modified</el-tag>
             </div>
           </div>
@@ -38,9 +47,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { VideoPlay } from '@element-plus/icons-vue'
+import { VideoPlay, WarningFilled } from '@element-plus/icons-vue'
 import { useClipperStore } from '@/stores/counter'
 import type { ClipSettingsState } from '@/types/clipSettings'
+import type { VideoInfo } from '@/types/api'
 
 interface Clip {
   title?: string
@@ -56,6 +66,7 @@ interface Clip {
 
 interface Props {
   clips: Clip[]
+  videoInfo?: VideoInfo | null
   modelValue: number[]
   activeColorGradingClip?: number | null
   clipSettingsDirty?: Record<number, boolean>
@@ -127,6 +138,37 @@ function resolveInterpolationMode(clip: Clip, settings?: ClipSettingsState): str
   }
   const overrides = clip.overrides as { minterpMode?: string | boolean } | undefined
   return overrides?.minterpMode
+}
+
+function normalizeInterpolationProvider(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const provider = value.trim()
+  return provider.length > 0 && provider.toLowerCase() !== 'inherit' ? provider : undefined
+}
+
+function resolveInterpolationProvider(clip: Clip, settings?: ClipSettingsState): string {
+  const effectiveProvider = normalizeInterpolationProvider(settings?.effectiveOverrides?.minterpProvider)
+  if (effectiveProvider) return effectiveProvider
+
+  const overrides = clip.overrides as { minterpProvider?: string } | undefined
+  return normalizeInterpolationProvider(overrides?.minterpProvider) ?? 'RIFE'
+}
+
+function isHdrSource(): boolean {
+  const transfer = props.videoInfo?.color_transfer?.trim().toLowerCase()
+  return transfer === 'smpte2084' || transfer === 'arib-std-b67'
+}
+
+function willToneMapToSdr(clip: Clip, index: number): boolean {
+  if (!isHdrSource()) return false
+
+  const clipNumber = clip.number ?? index + 1
+  const settings = clipSettingsByNumber.value[clipNumber]
+  const mode = resolveInterpolationMode(clip, settings)
+  const provider = resolveInterpolationProvider(clip, settings)?.toLowerCase()
+
+  const interpolationEnabled = mode === true || (typeof mode === 'string' && mode.toLowerCase() !== 'none')
+  return interpolationEnabled && provider === 'rife'
 }
 
 function getInterpolationFactor(clip: Clip, settings?: ClipSettingsState): number {
@@ -297,5 +339,16 @@ function isClipModified(clip: Clip, index: number): boolean {
 
 .clip-modified-tag {
   flex-shrink: 0;
+}
+
+.clip-tonemap-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+  flex-shrink: 0;
+  color: var(--el-color-warning);
 }
 </style>

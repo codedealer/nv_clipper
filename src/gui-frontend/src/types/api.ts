@@ -47,16 +47,6 @@ export interface ClipInfo {
   overrides: Record<string, unknown>
 }
 
-export interface VideoInfo {
-  title: string
-  video_url: string
-  video_id: string
-  platform: string
-  is_vertical: boolean
-  crop_res: string
-  version: string
-}
-
 // Cache API interfaces
 export interface CacheApiResponse {
   status: 'success' | 'error'
@@ -126,16 +116,23 @@ export interface FramePreviewResult {
 
 // Video info API interfaces
 export interface VideoInfo {
-  duration?: number
-  width?: number
-  height?: number
-  codec_name?: string
-  pix_fmt?: string
-  bits_per_raw_sample?: number | string
-  color_transfer?: string
-  bit_rate?: number
-  frame_rate?: string
-  path: string
+  title?: string
+  video_url?: string
+  video_id?: string
+  platform?: string
+  is_vertical?: boolean
+  crop_res?: string
+  version?: string
+  duration?: number | null
+  width?: number | null
+  height?: number | null
+  codec_name?: string | null
+  pix_fmt?: string | null
+  bits_per_raw_sample?: number | string | null
+  color_transfer?: string | null
+  bit_rate?: number | null
+  frame_rate?: string | null
+  path?: string | null
 }
 
 export interface VideoInfoResult {

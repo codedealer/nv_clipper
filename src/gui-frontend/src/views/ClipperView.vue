@@ -16,6 +16,7 @@
       <ClipperSidebar
         :selected-files="fileHandler.selectedFiles.value"
         :parsed-clips="markupOps.parsedClips.value"
+        :video-info="videoOps.videoInfo.value"
         :selected-clips="markupOps.selectedClips.value"
         :active-color-grading-clip="colorGrading.activeColorGradingClip.value"
         :clip-settings-dirty="markupOps.clipSettingsDirty.value"

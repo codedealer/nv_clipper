@@ -629,6 +629,9 @@ class ClipperGUI:
                             'codec_name': video_properties.get('codec_name'),
                             'bit_rate': video_properties.get('bit_rate'),
                             'frame_rate': video_properties.get('r_frame_rate'),
+                            'pix_fmt': video_properties.get('pix_fmt'),
+                            'bits_per_raw_sample': video_properties.get('bits_per_raw_sample'),
+                            'color_transfer': video_properties.get('color_transfer'),
                             'path': str(video_file_path),
                         }
                         self.logger.info(f"Successfully probed video file: {video_file_path}")

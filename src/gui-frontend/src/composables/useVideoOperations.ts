@@ -1,5 +1,7 @@
 import { ref, computed, readonly } from 'vue'
 import { ElMessage } from 'element-plus'
+import { storeToRefs } from 'pinia'
+import { useClipperStore } from '@/stores/counter'
 import type { VideoInfo, ClipInfo } from '@/types/api'
 import type { MarkupData } from '@/utils/markup'
 import { SUPPORTED_VIDEO_EXTENSIONS, MOCK_MARKUP_DEFAULTS, UI_MESSAGES } from '@/constants'
@@ -10,8 +12,9 @@ import { SUPPORTED_VIDEO_EXTENSIONS, MOCK_MARKUP_DEFAULTS, UI_MESSAGES } from '@
  */
 export function useVideoOperations() {
   // State
-  const videoDuration = ref<number | null>(null)
-  const videoInfo = ref<VideoInfo | null>(null)
+  const clipperStore = useClipperStore()
+  const { videoInfo } = storeToRefs(clipperStore)
+  const videoDuration = computed(() => videoInfo.value?.duration ?? null)
   const isCreatingMockMarkup = ref(false)
 
   // Computed
@@ -27,8 +30,7 @@ export function useVideoOperations() {
       const response = await window.pywebview.api.get_video_info(videoPath)
 
       if (response.status === 'success' && response.video_info) {
-        videoInfo.value = response.video_info
-        videoDuration.value = response.video_info.duration ?? null
+        clipperStore.setVideoInfo(response.video_info)
         return response.video_info
       } else {
         throw new Error(response.message || 'Failed to get video information')
@@ -160,8 +162,7 @@ export function useVideoOperations() {
    * Clear all video-related state
    */
   function clearVideoState() {
-    videoDuration.value = null
-    videoInfo.value = null
+    clipperStore.clearVideoInfo()
   }
 
   /**

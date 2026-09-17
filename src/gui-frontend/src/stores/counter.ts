@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
-import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus, ClipInfo } from '@/types/api'
+import type { SelectedFiles, ProcessingResult, EngineStatus, ParseMarkupResult, JobStatus, ClipInfo, VideoInfo } from '@/types/api'
 import type { ColorGradingState } from '@/types/colorGrading'
 import type { ClipSettingsState, ClipSettingsOverrides, ClipSettingsUpdatePayload } from '@/types/clipSettings'
 import { waitForPywebview } from '@/utils/api'
@@ -223,15 +223,7 @@ export const useClipperStore = defineStore('clipper', () => {
   const engineStatus = ref<EngineStatus | null>(null)
 
   // New: video info (single source of truth for loaded video metadata)
-  const videoInfo = ref<null | {
-    duration: number | null
-    width: number | null
-    height: number | null
-    frame_rate?: string | null
-    codec_name?: string | null
-    bit_rate?: string | null
-    path: string | null
-  }>(null)
+  const videoInfo = ref<VideoInfo | null>(null)
 
   // Markup / clips state (single source of truth for UI)
   const parsedClips = ref<ClipInfo[]>([])

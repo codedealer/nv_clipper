@@ -51,6 +51,9 @@ export function useMarkupOperations() {
   const result = await clipperStore.parseMarkupFile(filePath)
 
       if (result.status === 'success' && result.clips) {
+        if (result.video_info) {
+          clipperStore.setVideoInfo(result.video_info)
+        }
   clipperStore.setParsedClips(result.clips)
   await loadFullMarkupData(filePath) // loads markup data
 
