@@ -24,6 +24,8 @@ class GeneralSettings:
     format_sort: Optional[List[str]] = None  # Will be initialized in __post_init__
     no_auto_find_input_video: bool = False
     enable_video_streaming_protocol_hls: bool = False
+    ffmpeg_network_timeout: int = 30
+    ffmpeg_network_retries: int = 3
 
     # === OUTPUT OPTIONS ===
     audio: bool = True  # Enable audio in output
@@ -232,6 +234,8 @@ class SettingsManager:
             'format_sort': 'formatSort',
             'no_auto_find_input_video': 'noAutoFindInputVideo',
             'enable_video_streaming_protocol_hls': 'enableVideoStreamingProtocolHLS',
+            'ffmpeg_network_timeout': 'ffmpegNetworkTimeout',
+            'ffmpeg_network_retries': 'ffmpegNetworkRetries',
 
             # Output options
             'fast_trim': 'fastTrim',
@@ -427,6 +431,8 @@ class SettingsManager:
                     'formatSort': 'format_sort',
                     'noAutoFindInputVideo': 'no_auto_find_input_video',
                     'enableVideoStreamingProtocolHLS': 'enable_video_streaming_protocol_hls',
+                    'ffmpegNetworkTimeout': 'ffmpeg_network_timeout',
+                    'ffmpegNetworkRetries': 'ffmpeg_network_retries',
 
                     # Output options
                     'audio': 'audio',

@@ -473,6 +473,20 @@ def getSettingsSchema() -> Dict[str, Any]:
                 "default": False,
                 "cli_args": ["--enable-video-streaming-protocol-hls", "-evsp-hls"],
             },
+            "ffmpeg_network_timeout": {
+                "type": "integer",
+                "description": "FFmpeg network read/write timeout in seconds (0 = unlimited)",
+                "min": 0,
+                "default": 30,
+                "cli_args": ["--ffmpeg-network-timeout"],
+            },
+            "ffmpeg_network_retries": {
+                "type": "integer",
+                "description": "Maximum number of FFmpeg network reconnect attempts",
+                "min": 0,
+                "default": 3,
+                "cli_args": ["--ffmpeg-network-retries"],
+            },
 
             # Output Options
             "audio": {
@@ -822,6 +836,8 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:  # noqa: PLR0912
         'format_sort': input_options,
         'no_auto_find_input_video': input_options,
         'enable_video_streaming_protocol_hls': input_options,
+        'ffmpeg_network_timeout': input_options,
+        'ffmpeg_network_retries': input_options,
 
         # Output Options
         'audio': output_options,
@@ -883,6 +899,8 @@ def getArgParserFromSchema() -> argparse.ArgumentParser:  # noqa: PLR0912
             'format_sort': 'formatSort',
             'no_auto_find_input_video': 'noAutoFindInputVideo',
             'enable_video_streaming_protocol_hls': 'enableVideoStreamingProtocolHLS',
+            'ffmpeg_network_timeout': 'ffmpegNetworkTimeout',
+            'ffmpeg_network_retries': 'ffmpegNetworkRetries',
             'fast_trim': 'fastTrim',
             'target_max_bitrate': 'targetMaxBitrate',
             'h264_disable_reduce_stutter': 'h264DisableReduceStutter',

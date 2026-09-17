@@ -11,6 +11,8 @@ export interface GeneralSettings {
   format_sort: string[]
   no_auto_find_input_video: boolean
   enable_video_streaming_protocol_hls: boolean
+  ffmpeg_network_timeout: number
+  ffmpeg_network_retries: number
 
   // === OUTPUT OPTIONS ===
   audio?: boolean

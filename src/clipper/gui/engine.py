@@ -319,6 +319,8 @@ class ClipperEngine:
             'format_sort': 'formatSort',
             'no_auto_find_input_video': 'noAutoFindInputVideo',
             'enable_video_streaming_protocol_hls': 'enableVideoStreamingProtocolHLS',
+            'ffmpeg_network_timeout': 'ffmpegNetworkTimeout',
+            'ffmpeg_network_retries': 'ffmpegNetworkRetries',
 
             # Output settings
             'audio': 'audio',

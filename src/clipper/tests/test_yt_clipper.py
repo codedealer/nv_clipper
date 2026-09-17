@@ -529,6 +529,19 @@ def test_get_ffmpeg_network_input_args_includes_input_display_rotation_args() ->
     assert '-i "https://example.com/video.mp4"' in args
 
 
+def test_get_ffmpeg_network_input_args_includes_network_timeout_and_retries() -> None:
+    args = _getFfmpegNetworkInputArgs(
+        "youtube",
+        "https://example.com/video.mp4",
+        network_timeout=30,
+        network_retries=3,
+    )
+
+    assert "-rw_timeout 30000000" in args
+    assert "-reconnect_max_retries 3" in args
+    assert "-reconnect_on_network_error 1" in args
+
+
 @pytest.mark.parametrize(
     ("rotation", "expected_width", "expected_height"),
     [

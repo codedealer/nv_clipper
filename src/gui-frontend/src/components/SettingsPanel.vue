@@ -82,6 +82,26 @@
               />
               <el-text class="setting-help" type="info">Enable HTTP Live Streaming (unreliable)</el-text>
             </el-form-item>
+            <el-form-item label="FFmpeg network timeout (seconds)">
+              <el-input-number
+                :model-value="props.settings?.ffmpeg_network_timeout ?? 30"
+                @change="(value) => handleNumberChange('ffmpeg_network_timeout', value)"
+                :min="0"
+                :disabled="isLoading"
+                style="width: 150px"
+              />
+              <el-text class="setting-help" type="info">Maximum wait for each network read/write; 0 = unlimited</el-text>
+            </el-form-item>
+            <el-form-item label="FFmpeg network retries">
+              <el-input-number
+                :model-value="props.settings?.ffmpeg_network_retries ?? 3"
+                @change="(value) => handleNumberChange('ffmpeg_network_retries', value)"
+                :min="0"
+                :disabled="isLoading"
+                style="width: 150px"
+              />
+              <el-text class="setting-help" type="info">Maximum reconnect attempts after a network error</el-text>
+            </el-form-item>
           </el-form>
         </div>
       </el-tab-pane>

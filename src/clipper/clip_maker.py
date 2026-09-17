@@ -494,8 +494,10 @@ def findVideoPart(mp: DictStrAny, mps: DictStrAny) -> Optional[DictStrAny]:
 
 
 FFMPEG_NETWORK_INPUT_FLAGS = (
-    r"-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    r"-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_delay_max 5"
 )
+DEFAULT_FFMPEG_NETWORK_TIMEOUT = 30
+DEFAULT_FFMPEG_NETWORK_RETRIES = 3
 
 
 def _getFfmpegNetworkInputArgs(
@@ -506,11 +508,17 @@ def _getFfmpegNetworkInputArgs(
     input_display_rotation_args: str = "",
     start: Optional[float] = None,
     end: Optional[float] = None,
+    network_timeout: int = DEFAULT_FFMPEG_NETWORK_TIMEOUT,
+    network_retries: int = DEFAULT_FFMPEG_NETWORK_RETRIES,
 ) -> str:
+    timeout_microseconds = max(0, int(network_timeout * 1_000_000))
+    retries = max(0, int(network_retries))
     return " ".join(
         part
         for part in (
             FFMPEG_NETWORK_INPUT_FLAGS,
+            f"-rw_timeout {timeout_microseconds}",
+            f"-reconnect_max_retries {retries}",
             getFfmpegHeaders(platform, headers),
             input_display_rotation_args,
             f"-ss {start}" if start is not None else "",
@@ -547,6 +555,8 @@ def fastTrimClip(
                 headers=mps.get("audioDownloadHeaders"),
                 start=aStart,
                 end=aEnd,
+                network_timeout=mps.get("ffmpegNetworkTimeout", DEFAULT_FFMPEG_NETWORK_TIMEOUT),
+                network_retries=mps.get("ffmpegNetworkRetries", DEFAULT_FFMPEG_NETWORK_RETRIES),
             ) + " "
         # when streaming the required chunks from the internet the video and audio inputs are separate
         else:
@@ -570,6 +580,8 @@ def fastTrimClip(
             input_display_rotation_args=input_display_rotation_args,
             start=videoStart,
             end=videoEnd,
+            network_timeout=mps.get("ffmpegNetworkTimeout", DEFAULT_FFMPEG_NETWORK_TIMEOUT),
+            network_retries=mps.get("ffmpegNetworkRetries", DEFAULT_FFMPEG_NETWORK_RETRIES),
         ) + " "
     elif "videoPart" in mp:
         videoPart = mp["videoPart"]
@@ -580,6 +592,8 @@ def fastTrimClip(
             input_display_rotation_args=input_display_rotation_args,
             start=videoStart,
             end=videoEnd,
+            network_timeout=mps.get("ffmpegNetworkTimeout", DEFAULT_FFMPEG_NETWORK_TIMEOUT),
+            network_retries=mps.get("ffmpegNetworkRetries", DEFAULT_FFMPEG_NETWORK_RETRIES),
         ) + " "
     else:
         fileName = rich.markup.escape(mp["fileName"])
@@ -723,6 +737,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
                 headers=mps.get("audioDownloadHeaders"),
                 start=aStart,
                 end=aEnd,
+                network_timeout=mps.get("ffmpegNetworkTimeout", DEFAULT_FFMPEG_NETWORK_TIMEOUT),
+                network_retries=mps.get("ffmpegNetworkRetries", DEFAULT_FFMPEG_NETWORK_RETRIES),
             ) + " "
 
         # preview mode does not start each clip at time 0 unlike encoding mode
@@ -753,6 +769,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             headers=mps.get("videoDownloadHeaders"),
             input_display_rotation_args=input_display_rotation_args,
             start=mp["start"],
+            network_timeout=mps.get("ffmpegNetworkTimeout", DEFAULT_FFMPEG_NETWORK_TIMEOUT),
+            network_retries=mps.get("ffmpegNetworkRetries", DEFAULT_FFMPEG_NETWORK_RETRIES),
         ) + " "
     elif "videoPart" in mp:
         videoPart = mp["videoPart"]
@@ -762,6 +780,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             headers=videoPart.get("http_headers"),
             input_display_rotation_args=input_display_rotation_args,
             start=mp["start"],
+            network_timeout=mps.get("ffmpegNetworkTimeout", DEFAULT_FFMPEG_NETWORK_TIMEOUT),
+            network_retries=mps.get("ffmpegNetworkRetries", DEFAULT_FFMPEG_NETWORK_RETRIES),
         ) + " "
     else:
         fileName = rich.markup.escape(mp["fileName"])
