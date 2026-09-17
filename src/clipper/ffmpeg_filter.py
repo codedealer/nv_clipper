@@ -752,11 +752,22 @@ def videoStabilizationGammaFixFilter(filter_to_wrap: str) -> str:
     return wrapped_filter
 
 
-def wrapVideoFilterForHardwareAcceleration(video_filter: str, pix_fmt: str = "yuv444p", do_not_download: bool = False, do_not_upload: bool = False) -> str:
+def wrapVideoFilterForHardwareAcceleration(
+    video_filter: str,
+    pix_fmt: str = "yuv444p",
+    do_not_download: bool = False,
+    do_not_upload: bool = False,
+    skip_input_format: bool = False,
+) -> str:
     """
     Wraps a given FFmpeg video filter string with hardware acceleration steps for CUDA.
     """
-    download = f"scale_cuda=format={pix_fmt},hwdownload,format={pix_fmt}," if not do_not_download else f"format={pix_fmt},"
+    if skip_input_format:
+        download = ""
+    elif not do_not_download:
+        download = f"scale_cuda=format={pix_fmt},hwdownload,format={pix_fmt},"
+    else:
+        download = f"format={pix_fmt},"
     upload = ",hwupload_cuda" if not do_not_upload else ""
     return f"{download}{video_filter}{upload}"
 

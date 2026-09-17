@@ -6,7 +6,6 @@ from clipper import util
 from clipper.clip_maker import (
     _get_input_display_rotation_args,
     _get_input_rotation_filter,
-    _get_rife_hdr_tonemap_command,
     _get_rife_hdr_tonemap_filter,
     _get_rife_image_boundary_filter,
     _get_rife_output_color_space,
@@ -52,7 +51,7 @@ def test_rife_hdr_tonemap_filter_converts_hdr_to_bt709() -> None:
     tonemap_filter = _get_rife_hdr_tonemap_filter(mps)
 
     assert tonemap_filter == (
-        ",setparams=range=tv:color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
+        "setparams=range=tv:color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc,"
         "zscale=rin=tv:tin=smpte2084:min=bt2020nc:pin=bt2020:t=linear:npl=100,format=gbrpf32le,"
         "tonemap=hable:desat=0,zscale=t=bt709:m=bt709:p=bt709:r=pc,format=rgb24"
     )
@@ -61,26 +60,6 @@ def test_rife_hdr_tonemap_filter_converts_hdr_to_bt709() -> None:
 
 def test_rife_hdr_tonemap_filter_is_disabled_for_sdr() -> None:
     assert _get_rife_hdr_tonemap_filter({"inputIsHDR": False}) == ""
-
-
-def test_rife_hdr_tonemap_command_is_a_standalone_sdr_pass() -> None:
-    command = _get_rife_hdr_tonemap_command(
-        ClipperPaths(ffmpegPath="ffmpeg"),
-        '-i "input.mkv"',
-        {"inputIsHDR": True},
-        1.25,
-        "temp/rife-tonemap.mkv",
-    )
-
-    assert '-i "input.mkv"' in command
-    assert ' -vf "setparams=' in command
-    assert "-map 0:v:0 -t 1.25" in command
-    assert "-c:v ffv1 -pix_fmt bgr0" in command
-    assert "-color_trc bt709" in command
-    assert "crop" not in command
-    assert "tvai" not in command
-    assert "stb" not in command
-    assert command.endswith('"temp/rife-tonemap.mkv"')
 
 
 def test_rife_hdr_tonemap_filter_uses_detected_hlg_metadata() -> None:

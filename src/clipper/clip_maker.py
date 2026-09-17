@@ -186,43 +186,11 @@ def _get_rife_hdr_tonemap_filter(mps: DictStrAny) -> str:
         matrix = "bt2020nc"
 
     return (
-        f",setparams=range=tv:color_primaries={primaries}:color_trc={transfer}:colorspace={matrix}"
+        f"setparams=range=tv:color_primaries={primaries}:color_trc={transfer}:colorspace={matrix}"
         f",zscale=rin=tv:tin={transfer}:min={matrix}:pin={primaries}:"
         f"t=linear:npl={npl:g},format=gbrpf32le,"
         f"tonemap={operator}:desat={desat:g},"
         "zscale=t=bt709:m=bt709:p=bt709:r=pc,format=rgb24"
-    )
-
-
-def _get_rife_hdr_tonemap_command(
-    cp: ClipperPaths,
-    inputs: str,
-    mps: DictStrAny,
-    duration: float,
-    output_path: str,
-) -> str:
-    """Build the standalone HDR-to-SDR preprocessing pass for RIFE."""
-    tonemap_filter = _get_rife_hdr_tonemap_filter(mps).lstrip(",")
-    return " ".join(
-        (
-            cp.ffmpegPath,
-            "-hide_banner",
-            inputs,
-            "-benchmark",
-            "-an",
-            "-map 0:v:0",
-            f"-t {duration:g}",
-            f'-vf "{tonemap_filter}"',
-            "-c:v ffv1",
-            "-pix_fmt bgr0",
-            "-color_range pc",
-            "-colorspace bt709",
-            "-color_primaries bt709",
-            "-color_trc bt709",
-            "-f matroska",
-            "-y",
-            f'"{output_path}"',
-        ),
     )
 
 
@@ -816,30 +784,13 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     is_hw_decode, decoder_codec = isHWDecodeSupported(mps)
     mps["is_hw_decode"] = is_hw_decode
     mps["decoder_codec"] = decoder_codec
-    # Keep RIFE preprocessing in 4:4:4 so the tonemapped SDR intermediate is
-    # not converted back to the source's subsampled HDR pixel format.
+    # Keep RIFE preprocessing in 4:4:4 so tonemapped SDR frames are not
+    # converted back to the source's subsampled HDR pixel format.
     mps["is_hw_encode"] = not is_rife_used
     pix_fmt = "yuv444p" if is_rife_used or mps["is_hw_encode"] else mps.get("pix_fmt", "yuv444p")
 
-    tonemapCommand = ""
-    rife_input = inputs
     if is_rife_used:
-        if _is_rife_hdr_tonemapping_enabled(mps):
-            tonemapPath = (
-                f'{cp.tempPath}/rife-tonemap-{markerPairIndex + 1}-'
-                f'{getTrimmedBase64Hash(mp["filePath"])}.mkv'
-            ).replace("\\", "/")
-            os.makedirs(cp.tempPath, exist_ok=True)
-            tonemapCommand = _get_rife_hdr_tonemap_command(
-                cp,
-                inputs,
-                mps,
-                mp["duration"],
-                tonemapPath,
-            )
-            rife_input = f'-i "{tonemapPath}"'
-
-        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, rife_input, mp, mps)
+        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)
     elif mps["is_hw_encode"]:
         ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
             audio_filter,
@@ -857,6 +808,10 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         )
         mp["returncode"] = 1
         return {**(settings["markerPairs"][markerPairIndex]), **mp}
+
+    if is_rife_used and _is_rife_hdr_tonemapping_enabled(mps):
+        video_filter += _get_rife_hdr_tonemap_filter(mps)
+        video_filter += ",format=yuv444p,"
 
     if not mps["preview"]:
         video_filter += f'trim=0:{mp["duration"]}'
@@ -1112,6 +1067,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             pix_fmt,
             not mps["is_hw_decode"],
             not mps["is_hw_encode"],
+            skip_input_format=_is_rife_hdr_tonemapping_enabled(mps),
         )
 
         vidstabdetectFilter = escapeBracketsFFmpeg(vidstabdetectFilter)
@@ -1126,10 +1082,10 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
                 f.write(vidstabdetectFilter)
             with open(filterPathPass2, "w", encoding="utf-8") as f:
                 f.write(vidstabtransformFilter)
-            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, rife_input, mp, mps) + f'-filter_script:v "{filterPathPass1}" '
+            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, inputs, mp, mps) + f'-filter_script:v "{filterPathPass1}" '
             ffmpegVidstabtransform = ffmpegCommand + f' -filter_script:v "{filterPathPass2}" '
         else:
-            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, rife_input, mp, mps) + f'-vf "{vidstabdetectFilter}" '
+            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, inputs, mp, mps) + f'-vf "{vidstabdetectFilter}" '
             ffmpegVidstabtransform = ffmpegCommand + f'-vf "{vidstabtransformFilter}" '
 
         ffmpegVidstabdetect += f" -y "
@@ -1138,8 +1094,6 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         ffmpegVidstabdetect += f' -f null "-"'
         if is_rife_used:
             ffmpegCommands = [ffmpegVidstabdetect]
-            if tonemapCommand:
-                ffmpegCommands.insert(0, tonemapCommand)
             rifePass1 = ffmpegVidstabtransform + "-"
             rifePass2 = getRIFEFfmpegEncodeCommand(
                 cbr,
@@ -1173,6 +1127,7 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             pix_fmt,
             not mps["is_hw_decode"],
             not mps["is_hw_encode"],
+            skip_input_format=_is_rife_hdr_tonemapping_enabled(mps),
         )
 
         video_filter = escapeBracketsFFmpeg(video_filter)
@@ -1187,8 +1142,6 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             ffmpegCommand += f' -vf "{video_filter}" '
 
         if is_rife_used:
-            if tonemapCommand:
-                ffmpegCommands = [tonemapCommand]
             ffmpegPass1 = ffmpegCommand + "-"
             ffmpegPass2 = getRIFEFfmpegEncodeCommand(
                 cbr,
