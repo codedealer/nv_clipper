@@ -234,6 +234,7 @@ export const useClipperStore = defineStore('clipper', () => {
   const previewMountKey = ref(0)
   const originalClipSettings = ref<Record<number, ClipSettingsState>>({})
   const clipSettingsDirty = ref<Record<number, boolean>>({})
+  let preserveMarkupStateForPath: string | null = null
 
   // Derived clip state
   const hasClips = computed(() => parsedClips.value.length > 0)
@@ -263,6 +264,12 @@ export const useClipperStore = defineStore('clipper', () => {
   }
 
   function setMarkupFile(path: string | null) {
+    selectedFiles.value.markup = path
+  }
+
+  function setMarkupFileAfterMove(path: string) {
+    if (selectedFiles.value.markup === path) return
+    preserveMarkupStateForPath = path
     selectedFiles.value.markup = path
   }
 
@@ -328,15 +335,7 @@ export const useClipperStore = defineStore('clipper', () => {
         // Only update if the currently stored markup matches the original path or is non-existent
         if (!selectedFiles.value.markup ||
             (result.original_markup_path && selectedFiles.value.markup === result.original_markup_path)) {
-          selectedFiles.value.markup = result.moved_markup_path
-          // Optionally re-parse to refresh UI if needed
-          try {
-            const api = await waitForPywebview()
-            const parseRes = await api.parse_markup_file(result.moved_markup_path)
-            if (parseRes.status === 'success' && parseRes.clips) {
-              setParsedClips(parseRes.clips)
-            }
-          } catch { /* best-effort refresh */ }
+          setMarkupFileAfterMove(result.moved_markup_path)
         }
       }
       return result
@@ -379,7 +378,7 @@ export const useClipperStore = defineStore('clipper', () => {
       if (payload.markup_moved && payload.moved_markup_path) {
         if (!selectedFiles.value.markup ||
             (payload.original_markup_path && selectedFiles.value.markup === payload.original_markup_path)) {
-          selectedFiles.value.markup = payload.moved_markup_path
+          setMarkupFileAfterMove(payload.moved_markup_path)
         }
       }
       // Show completion toast
@@ -539,6 +538,10 @@ export const useClipperStore = defineStore('clipper', () => {
   }
 
   watch(selectedFiles, (newVal) => {
+    const preserveMarkupState = preserveMarkupStateForPath === newVal.markup
+    preserveMarkupStateForPath = null
+    if (preserveMarkupState) return
+
     if (!newVal.markup && !newVal.video) {
       clearVideoInfo()
       resetMarkupState()
@@ -742,6 +745,7 @@ export const useClipperStore = defineStore('clipper', () => {
     // Actions
     setSelectedFiles,
     setMarkupFile,
+    setMarkupFileAfterMove,
     setVideoFile,
     clearSelectedFiles,
     setVideoInfo,
