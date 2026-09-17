@@ -3,7 +3,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from subprocess import PIPE, Popen
+from subprocess import DEVNULL, PIPE, Popen
 from typing import Any, Dict, List
 
 import onnxruntime as ort
@@ -297,16 +297,19 @@ class AIInterpolation:
         return cache_info
 
 def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
-    process = Popen(shlex.split(ffmpeg_cmd), stdout=PIPE, bufsize=10**8)
+    # Do not pipe stderr here: stdout is consumed synchronously, so an undrained
+    # FFmpeg stderr pipe can fill and deadlock the image stream.
+    process = Popen(shlex.split(ffmpeg_cmd), stdout=PIPE, stderr=DEVNULL, bufsize=10**8)
     frames = []
-    frame_count = 0
+    frame_shape = None
 
     if process.stdout is None or not process.stdout.readable():
         raise RuntimeError("Failed to start ffmpeg process or stdout is not a pipe.")
 
-    # JPEG magic markers for detecting boundaries
-    jpeg_start = b'\xff\xd8'
-    jpeg_end = b'\xff\xd9'
+    # PNG signatures and IEND chunks provide unambiguous boundaries for a
+    # lossless RGB image stream.
+    png_start = b'\x89PNG\r\n\x1a\n'
+    png_end = b'\x00\x00\x00\x00IEND\xaeB`\x82'
 
     buffer = b''
     while True:
@@ -317,29 +320,43 @@ def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
 
         buffer += chunk
 
-        # Find all complete JPEG images in the buffer
+        # Find all complete PNG images in the buffer
         while True:
-            start_idx = buffer.find(jpeg_start)
+            start_idx = buffer.find(png_start)
             if start_idx == -1:
-                break  # No start marker found
+                buffer = buffer[-(len(png_start) - 1):]
+                break
 
-            end_idx = buffer.find(jpeg_end, start_idx)
+            end_idx = buffer.find(png_end, start_idx)
             if end_idx == -1:
-                break  # No end marker found or incomplete JPEG
+                break
 
-            # Extract the JPEG image and decode
-            jpeg_data = buffer[start_idx:end_idx+2]  # Include the end marker
-            frame = imdecode(frombuffer(jpeg_data, dtype=uint8), IMREAD_UNCHANGED)
+            # Extract the complete PNG and decode it to OpenCV's BGR layout.
+            png_data = buffer[start_idx:end_idx + len(png_end)]
+            frame = imdecode(frombuffer(png_data, dtype=uint8), IMREAD_UNCHANGED)
 
-            if frame is not None:
-                frames.append(frame)
-                frame_count += 1
+            if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
+                raise RuntimeError("FFmpeg produced a PNG that OpenCV could not decode as a 3-channel frame.")
 
-            # Remove the processed JPEG from the buffer
-            buffer = buffer[end_idx+2:]
+            if frame_shape is None:
+                frame_shape = frame.shape
+            elif frame.shape != frame_shape:
+                raise RuntimeError(
+                    f"FFmpeg produced inconsistent frame dimensions: expected {frame_shape}, got {frame.shape}.",
+                )
+
+            frames.append(frame)
+
+            buffer = buffer[end_idx + len(png_end):]
 
     process.stdout.close()
-    process.wait()
+    returncode = process.wait()
+    if returncode != 0:
+        raise RuntimeError(f"FFmpeg frame extraction failed with exit code {returncode}.")
+
+    if buffer.find(png_start) != -1:
+        raise RuntimeError("FFmpeg ended with an incomplete PNG frame.")
+
     return frames
 
 def pipe_frames_to_ffmpeg(
@@ -396,7 +413,7 @@ def run_rife_interpolation(
         ai_model_path=config.ai_model_path,
         frame_gen_factor=config.generation_factor,
         gpu_id=config.gpu_id,
-        use_iobinding=config.use_iobinding,
+        use_iobinding=config.use_iobinding and config.workers <= 1,
     )
 
     if config.workers <= 1:

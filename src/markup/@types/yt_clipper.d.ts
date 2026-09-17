@@ -30,6 +30,10 @@ interface Settings {
   minterpMode?: string | boolean;
   minterpProvider?: 'RIFE' | 'TopazCHF' | 'TopazApollo' | 'TopazAion';
   minterpFPS?: number;
+  rifeHDRTonemap?: boolean;
+  rifeHDRTonemapOperator?: 'linear' | 'gamma' | 'clip' | 'reinhard' | 'hable' | 'mobius';
+  rifeHDRTonemapNpl?: number;
+  rifeHDRTonemapDesat?: number;
   loop?: Loop;
   fadeDuration?: number;
   videoEnhancementEnabled?: boolean;
@@ -108,6 +112,10 @@ interface MarkerPairOverrides {
   videoStabilizationJitteryMotion?: boolean;
   minterpMode?: string | boolean;
   minterpProvider?: string;
+  rifeHDRTonemap?: boolean;
+  rifeHDRTonemapOperator?: 'linear' | 'gamma' | 'clip' | 'reinhard' | 'hable' | 'mobius';
+  rifeHDRTonemapNpl?: number;
+  rifeHDRTonemapDesat?: number;
   loop?: Loop;
   fadeDuration?: number;
   colorGrading?: string;

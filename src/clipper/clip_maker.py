@@ -1,4 +1,5 @@
 import contextlib
+import math
 import os
 import re
 import shlex
@@ -76,6 +77,18 @@ _FFPROBE_TO_SCALE_COLOR_MATRIX: Dict[str, str] = {
     "ictcp": "ictcp",
 }
 
+_RIFE_HDR_TONEMAP_OPERATORS = {
+    "linear",
+    "gamma",
+    "clip",
+    "reinhard",
+    "hable",
+    "mobius",
+}
+_RIFE_HDR_TRANSFERS = {"smpte2084", "arib-std-b67"}
+_RIFE_HDR_PRIMARIES = {"bt2020", "bt709", "bt470m", "bt470bg", "smpte170m", "smpte240m"}
+_RIFE_HDR_MATRICES = {"bt2020nc", "bt2020c", "bt709", "bt470bg", "smpte170m", "smpte240m"}
+
 
 def _get_input_rotation_filter(mps: DictStrAny) -> str:
     """Return the ffmpeg filter needed to match display-matrix rotation metadata."""
@@ -123,6 +136,118 @@ def _get_color_space_for_output(mps: DictStrAny) -> str:
     if not color_space:
         return DEFAULT_COLOR_SPACE
     return color_space
+
+
+def _is_rife_hdr_tonemapping_enabled(mps: DictStrAny) -> bool:
+    return bool(mps.get("inputIsHDR", False)) and bool(mps.get("rifeHDRTonemap", True))
+
+
+def _get_rife_hdr_tonemap_filter(mps: DictStrAny) -> str:
+    """Convert HDR input to SDR before sending frames to the SDR-trained RIFE model."""
+    if not _is_rife_hdr_tonemapping_enabled(mps):
+        return ""
+
+    operator = str(mps.get("rifeHDRTonemapOperator", "hable")).lower()
+    if operator not in _RIFE_HDR_TONEMAP_OPERATORS:
+        logger.warning(
+            f"Unknown RIFE HDR tonemap operator {operator!r}; falling back to hable.",
+        )
+        operator = "hable"
+
+    try:
+        npl = float(mps.get("rifeHDRTonemapNpl", 100))
+    except (TypeError, ValueError):
+        npl = 100
+    if not math.isfinite(npl) or npl <= 0:
+        logger.warning("Invalid RIFE HDR tonemap NPL; falling back to 100.")
+        npl = 100
+
+    try:
+        desat = float(mps.get("rifeHDRTonemapDesat", 0))
+    except (TypeError, ValueError):
+        desat = 0
+    if not math.isfinite(desat) or desat < 0:
+        logger.warning("Invalid RIFE HDR tonemap desaturation; falling back to 0.")
+        desat = 0
+
+    transfer = str(mps.get("color_transfer", "smpte2084")).lower()
+    if transfer not in _RIFE_HDR_TRANSFERS:
+        logger.warning(
+            f"Unknown HDR transfer {transfer!r}; falling back to smpte2084.",
+        )
+        transfer = "smpte2084"
+
+    primaries = str(mps.get("color_primaries", "bt2020")).lower()
+    if primaries not in _RIFE_HDR_PRIMARIES:
+        primaries = "bt2020"
+
+    matrix = str(mps.get("color_space", "bt2020nc")).lower()
+    if matrix not in _RIFE_HDR_MATRICES:
+        matrix = "bt2020nc"
+
+    return (
+        f",setparams=range=tv:color_primaries={primaries}:color_trc={transfer}:colorspace={matrix}"
+        f",zscale=rin=tv:tin={transfer}:min={matrix}:pin={primaries}:"
+        f"t=linear:npl={npl:g},format=gbrpf32le,"
+        f"tonemap={operator}:desat={desat:g},"
+        "zscale=t=bt709:m=bt709:p=bt709:r=pc,format=rgb24"
+    )
+
+
+def _get_rife_hdr_tonemap_command(
+    cp: ClipperPaths,
+    inputs: str,
+    mps: DictStrAny,
+    duration: float,
+    output_path: str,
+) -> str:
+    """Build the standalone HDR-to-SDR preprocessing pass for RIFE."""
+    tonemap_filter = _get_rife_hdr_tonemap_filter(mps).lstrip(",")
+    return " ".join(
+        (
+            cp.ffmpegPath,
+            "-hide_banner",
+            inputs,
+            "-benchmark",
+            "-an",
+            "-map 0:v:0",
+            f"-t {duration:g}",
+            f'-vf "{tonemap_filter}"',
+            "-c:v ffv1",
+            "-pix_fmt bgr0",
+            "-color_range pc",
+            "-colorspace bt709",
+            "-color_primaries bt709",
+            "-color_trc bt709",
+            "-f matroska",
+            "-y",
+            f'"{output_path}"',
+        ),
+    )
+
+
+def _get_rife_output_color_space(mps: DictStrAny) -> str:
+    if _is_rife_hdr_tonemapping_enabled(mps):
+        return "bt709"
+    return _get_color_space_for_output(mps)
+
+
+def _get_rife_output_color_metadata(mps: DictStrAny) -> str:
+    if _is_rife_hdr_tonemapping_enabled(mps):
+        return "-color_primaries bt709 -color_trc bt709"
+    return ""
+
+
+def _get_rife_image_boundary_filter(mps: DictStrAny) -> str:
+    """Produce explicit SDR RGB pixels for the RIFE image boundary."""
+    if _is_rife_hdr_tonemapping_enabled(mps):
+        return ""
+
+    if "10" in str(mps.get("pix_fmt", "")).lower():
+        color_space = _get_color_space_for_scale_filter(mps)
+        return f",scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc,format=rgb24"
+
+    return ",scale=in_range=tv:out_range=pc,format=rgb24"
 
 def getMarkerPairSettings(  # noqa: PLR0912
     cs: ClipperState,
@@ -691,13 +816,30 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     is_hw_decode, decoder_codec = isHWDecodeSupported(mps)
     mps["is_hw_decode"] = is_hw_decode
     mps["decoder_codec"] = decoder_codec
-    # unless we are piping frames for RIFE in mjpeg, we always use h264_nvenc
+    # Keep RIFE preprocessing in 4:4:4 so the tonemapped SDR intermediate is
+    # not converted back to the source's subsampled HDR pixel format.
     mps["is_hw_encode"] = not is_rife_used
-    # avoid chroma subsampling with nvenc
-    pix_fmt = "yuv444p" if mps["is_hw_encode"] else mps.get("pix_fmt", "yuv444p")
+    pix_fmt = "yuv444p" if is_rife_used or mps["is_hw_encode"] else mps.get("pix_fmt", "yuv444p")
 
+    tonemapCommand = ""
+    rife_input = inputs
     if is_rife_used:
-        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, inputs, mp, mps)
+        if _is_rife_hdr_tonemapping_enabled(mps):
+            tonemapPath = (
+                f'{cp.tempPath}/rife-tonemap-{markerPairIndex + 1}-'
+                f'{getTrimmedBase64Hash(mp["filePath"])}.mkv'
+            ).replace("\\", "/")
+            os.makedirs(cp.tempPath, exist_ok=True)
+            tonemapCommand = _get_rife_hdr_tonemap_command(
+                cp,
+                inputs,
+                mps,
+                mp["duration"],
+                tonemapPath,
+            )
+            rife_input = f'-i "{tonemapPath}"'
+
+        ffmpegCommand = getRIFEFfmpegCommandWithoutVideoFilter(cp, rife_input, mp, mps)
     elif mps["is_hw_encode"]:
         ffmpegCommand = getFfmpegCommandWithoutVideoFilter(
             audio_filter,
@@ -948,7 +1090,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         # every time tvai filter is engaged, we need to convert back to specified pixel format because Topaz's native format is 10 bit which is not supported by h264_nvenc
         if mps.get("__needsTopazFormatFix"):
             vidstabtransformFilter += postprocess_filter
-            vidstabtransformFilter += f",format={pix_fmt}"
+            if not is_rife_used:
+                vidstabtransformFilter += f",format={pix_fmt}"
         else:
             # interpolation or enhance filter does not require a format conversion so we only convert transform filter
             vidstabtransformFilter += f",format={pix_fmt}"
@@ -958,18 +1101,11 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             vidstabdetectFilter += loop_filter
             vidstabtransformFilter += loop_filter
 
-         # mjpeg encoding requires full range pixel format and 8-bit depth
+        # RIFE receives lossless 8-bit RGB images through the pipe.
         if is_rife_used:
-            # For 10-bit input, we need to convert to 8-bit yuv444p with proper colorspace handling
-            input_pix_fmt = mps.get("pix_fmt", "")
-            is_10bit_input = "10" in input_pix_fmt.lower()
-            color_space = _get_color_space_for_scale_filter(mps)
-            if is_10bit_input:
-                vidstabdetectFilter = f"{vidstabdetectFilter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
-                vidstabtransformFilter = f"{vidstabtransformFilter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
-            else:
-                vidstabdetectFilter = f"{vidstabdetectFilter},scale=in_range=tv:out_range=pc"
-                vidstabtransformFilter = f"{vidstabtransformFilter},scale=in_range=tv:out_range=pc"
+            image_boundary_filter = _get_rife_image_boundary_filter(mps)
+            vidstabdetectFilter += image_boundary_filter
+            vidstabtransformFilter += image_boundary_filter
 
         vidstabtransformFilter = wrapVideoFilterForHardwareAcceleration(
             vidstabtransformFilter,
@@ -990,10 +1126,10 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
                 f.write(vidstabdetectFilter)
             with open(filterPathPass2, "w", encoding="utf-8") as f:
                 f.write(vidstabtransformFilter)
-            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, inputs, mp, mps) + f' -filter_script:v "{filterPathPass1}" '
+            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, rife_input, mp, mps) + f'-filter_script:v "{filterPathPass1}" '
             ffmpegVidstabtransform = ffmpegCommand + f' -filter_script:v "{filterPathPass2}" '
         else:
-            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, inputs, mp, mps) + f'-vf "{vidstabdetectFilter}" '
+            ffmpegVidstabdetect = getFfmpegCommandVidstab(cp, rife_input, mp, mps) + f'-vf "{vidstabdetectFilter}" '
             ffmpegVidstabtransform = ffmpegCommand + f'-vf "{vidstabtransformFilter}" '
 
         ffmpegVidstabdetect += f" -y "
@@ -1002,6 +1138,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
         ffmpegVidstabdetect += f' -f null "-"'
         if is_rife_used:
             ffmpegCommands = [ffmpegVidstabdetect]
+            if tonemapCommand:
+                ffmpegCommands.insert(0, tonemapCommand)
             rifePass1 = ffmpegVidstabtransform + "-"
             rifePass2 = getRIFEFfmpegEncodeCommand(
                 cbr,
@@ -1020,27 +1158,15 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
     if not vidstabEnabled:
         video_filter += postprocess_filter
 
-        if "__needsTopazFormatFix" in mps:
+        if "__needsTopazFormatFix" in mps and not is_rife_used:
             video_filter += f",format={pix_fmt}"
-
 
         if mps["loop"] != "none":
             video_filter += loop_filter
 
-        # mjpeg encoding requires full range pixel format and 8-bit depth
+        # RIFE receives lossless 8-bit RGB images through the pipe.
         if is_rife_used:
-            # For 10-bit input, we need to convert to 8-bit yuv444p with proper colorspace handling
-            # before the range conversion. The format filter handles bit-depth conversion correctly
-            # while respecting the source colorspace.
-            input_pix_fmt = mps.get("pix_fmt", "")
-            is_10bit_input = "10" in input_pix_fmt.lower()
-            color_space = _get_color_space_for_scale_filter(mps)
-            if is_10bit_input:
-                # Use scale filter with explicit color matrix for proper 10-bit to 8-bit conversion
-                # This ensures the color values are correctly mapped during bit-depth reduction
-                video_filter = f"{video_filter},scale=in_color_matrix={color_space}:out_color_matrix={color_space},format=yuv444p,scale=in_range=tv:out_range=pc"
-            else:
-                video_filter = f"{video_filter},scale=in_range=tv:out_range=pc"
+            video_filter += _get_rife_image_boundary_filter(mps)
 
         video_filter = wrapVideoFilterForHardwareAcceleration(
             video_filter,
@@ -1061,6 +1187,8 @@ def makeClip(cs: ClipperState, markerPairIndex: int) -> Optional[Dict[str, Any]]
             ffmpegCommand += f' -vf "{video_filter}" '
 
         if is_rife_used:
+            if tonemapCommand:
+                ffmpegCommands = [tonemapCommand]
             ffmpegPass1 = ffmpegCommand + "-"
             ffmpegPass2 = getRIFEFfmpegEncodeCommand(
                 cbr,
@@ -1188,7 +1316,6 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
     mp: DictStrAny,
     mps: DictStrAny,
 ) -> str:
-    color_space = _get_color_space_for_output(mps)
     decoder_args = f"-hwaccel cuvid -hwaccel_output_format cuda -c:v {mps['decoder_codec']}" if mps["is_hw_decode"] else ""
     return " ".join(
         (
@@ -1200,12 +1327,8 @@ def getRIFEFfmpegCommandWithoutVideoFilter(
             f"-benchmark",
             "-f image2pipe",
             "-an",
-            "-vcodec mjpeg",
-            "-q:v 1",
-            # "-aspect 1:1", # force square pixels
-            "-pix_fmt yuv444p", # force 4:4:4 to prevent subsampling artifacts
-            "-color_range pc", # full range for mjpeg
-            f"-colorspace {color_space}",
+            "-vcodec png",
+            "-pix_fmt rgb24",
             # "-threads 3",
             "-video_track_timescale 82882800",
             f"-r {mps['minterpFPS']}",
@@ -1233,13 +1356,13 @@ def getRIFEFfmpegEncodeCommand(
     )
     frame_rate = getExpectedFrameRate(mp, mps)
     # Use different colorspace formats for scale filter vs output option
-    color_space_scale = _get_color_space_for_scale_filter(mps)
-    color_space_output = _get_color_space_for_output(mps)
+    color_space_output = _get_rife_output_color_space(mps)
+    color_metadata = _get_rife_output_color_metadata(mps)
 
-    # Build video filter with proper colorspace handling for the encode side
-    # Input from RIFE is BGR24 full range, we need to convert back to YUV TV range
-    # while respecting the original colorspace
-    vf_encode = f'scale=in_range=full:out_range=limited:in_color_matrix={color_space_scale}:out_color_matrix={color_space_scale},format=yuv420p,hwupload_cuda'
+    # RIFE supplies full-range packed BGR frames. Let FFmpeg perform the
+    # standard BT.709 BGR-to-YUV conversion rather than applying YUV matrix
+    # parameters to the packed RGB input.
+    vf_encode = "format=yuv444p,hwupload_cuda"
 
     return " ".join(
         (
@@ -1260,6 +1383,7 @@ def getRIFEFfmpegEncodeCommand(
             video_codec_output_args,
             "-color_range tv",
             f"-colorspace {color_space_output}",
+            color_metadata,
             f'{mps["extraFfmpegArgs"]}',
             f'"{mp["filePath"]}"',
         ),
@@ -1360,8 +1484,8 @@ def runffmpegCommand(
     mp: DictStrAny,
     rifeCommands: Optional[List[str]] = None,
 ) -> DictStrAny:
-    if len(ffmpegCommands) == 2:
-        logger.info("Running first pass...")
+    if len(ffmpegCommands) > 1:
+        logger.info("Running FFmpeg preprocessing passes...")
 
     t0 = time.perf_counter()
 
@@ -1394,26 +1518,17 @@ def runffmpegCommand(
         ]
         printableRifeCommands = [_sanitize_command_for_log(cmd) for cmd in printableRifeCommands]
 
-    if len(ffmpegCommands) > 0:
-        ffmpegPass1 = ffmpegCommands[0]
-        printablePass1 = printableFfmpegCommands[0] if printableFfmpegCommands else ""
-
-        logger.verbose(f"Using ffmpeg command: {printablePass1}\n")
-
-        ffmpegProcess = subprocess.run(shlex.split(ffmpegPass1), check=False, cwd=Path.cwd())
+    for pass_index, ffmpeg_pass in enumerate(ffmpegCommands):
+        printable_pass = printableFfmpegCommands[pass_index] if pass_index < len(printableFfmpegCommands) else ""
+        if len(ffmpegCommands) > 1:
+            logger.info(f"Running FFmpeg preprocessing pass {pass_index + 1}...")
+        logger.verbose(f"Using ffmpeg command: {printable_pass}\n")
+        ffmpegProcess = subprocess.run(shlex.split(ffmpeg_pass), check=False, cwd=Path.cwd())
         mp["returncode"] = ffmpegProcess.returncode
+        if mp["returncode"] != 0:
+            break
 
-        if len(ffmpegCommands) == 2:
-            ffmpegPass2 = ffmpegCommands[1]
-
-            printablePass2 = printableFfmpegCommands[1] if printableFfmpegCommands else ""
-
-            logger.info("Running second pass...")
-            logger.verbose(f"Using ffmpeg command: {printablePass2}\n")
-            ffmpegProcess = subprocess.run(shlex.split(ffmpegPass2), check=False)
-            mp["returncode"] = ffmpegProcess.returncode
-
-    if rifeCommands and "__RIFE_pipe" in mp:
+    if mp.get("returncode", 0) == 0 and rifeCommands and "__RIFE_pipe" in mp:
         logger.info("Running RIFE interpolation in pipe mode...")
         mp["returncode"] = run_rife_pipe(rifeCommands, printableRifeCommands, mp, settings)
 
