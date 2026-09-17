@@ -97,10 +97,10 @@ def test_pipe_frames_to_ffmpeg_tokenizes_ffmpeg_command(monkeypatch: pytest.Monk
     assert captured["args"][2].endswith("\r\n")
 
 
-def test_extract_video_frames_decodes_png_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_extract_video_frames_decodes_mjpeg_stream(monkeypatch: pytest.MonkeyPatch) -> None:
     import cv2
 
-    success, encoded = cv2.imencode(".png", np.zeros((2, 3, 3), dtype=np.uint8))
+    success, encoded = cv2.imencode(".jpg", np.zeros((2, 3, 3), dtype=np.uint8))
     assert success
 
     class OnceStream(_FakeStream):
@@ -114,7 +114,7 @@ def test_extract_video_frames_decodes_png_stream(monkeypatch: pytest.MonkeyPatch
             self.consumed = True
             return self.data
 
-    class PngProcess:
+    class JpegProcess:
         def __init__(self) -> None:
             self.stdout = OnceStream(encoded.tobytes())
             self.stderr = None
@@ -123,9 +123,9 @@ def test_extract_video_frames_decodes_png_stream(monkeypatch: pytest.MonkeyPatch
         def wait(self) -> int:
             return self.returncode
 
-    monkeypatch.setattr("clipper.rife_interpolation.Popen", lambda *args, **kwargs: PngProcess())
+    monkeypatch.setattr("clipper.rife_interpolation.Popen", lambda *args, **kwargs: JpegProcess())
 
-    frames = extract_video_frames("ffmpeg -f image2pipe -vcodec png -")
+    frames = extract_video_frames("ffmpeg -f image2pipe -vcodec mjpeg -")
 
     assert len(frames) == 1
     assert frames[0].shape == (2, 3, 3)

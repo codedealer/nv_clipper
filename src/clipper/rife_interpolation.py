@@ -306,10 +306,9 @@ def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
     if process.stdout is None or not process.stdout.readable():
         raise RuntimeError("Failed to start ffmpeg process or stdout is not a pipe.")
 
-    # PNG signatures and IEND chunks provide unambiguous boundaries for a
-    # lossless RGB image stream.
-    png_start = b'\x89PNG\r\n\x1a\n'
-    png_end = b'\x00\x00\x00\x00IEND\xaeB`\x82'
+    # JPEG SOI/EOI markers frame the MJPEG stream emitted by FFmpeg.
+    jpeg_start = b'\xff\xd8'
+    jpeg_end = b'\xff\xd9'
 
     buffer = b''
     while True:
@@ -320,23 +319,23 @@ def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
 
         buffer += chunk
 
-        # Find all complete PNG images in the buffer
+        # Find all complete JPEG images in the buffer
         while True:
-            start_idx = buffer.find(png_start)
+            start_idx = buffer.find(jpeg_start)
             if start_idx == -1:
-                buffer = buffer[-(len(png_start) - 1):]
+                buffer = buffer[-(len(jpeg_start) - 1):]
                 break
 
-            end_idx = buffer.find(png_end, start_idx)
+            end_idx = buffer.find(jpeg_end, start_idx + len(jpeg_start))
             if end_idx == -1:
                 break
 
-            # Extract the complete PNG and decode it to OpenCV's BGR layout.
-            png_data = buffer[start_idx:end_idx + len(png_end)]
-            frame = imdecode(frombuffer(png_data, dtype=uint8), IMREAD_UNCHANGED)
+            # Extract the complete JPEG and decode it to OpenCV's BGR layout.
+            jpeg_data = buffer[start_idx:end_idx + len(jpeg_end)]
+            frame = imdecode(frombuffer(jpeg_data, dtype=uint8), IMREAD_UNCHANGED)
 
             if frame is None or frame.ndim != 3 or frame.shape[2] != 3:
-                raise RuntimeError("FFmpeg produced a PNG that OpenCV could not decode as a 3-channel frame.")
+                raise RuntimeError("FFmpeg produced a JPEG that OpenCV could not decode as a 3-channel frame.")
 
             if frame_shape is None:
                 frame_shape = frame.shape
@@ -347,15 +346,15 @@ def extract_video_frames(ffmpeg_cmd: str) -> List[numpy_ndarray]:
 
             frames.append(frame)
 
-            buffer = buffer[end_idx + len(png_end):]
+            buffer = buffer[end_idx + len(jpeg_end):]
 
     process.stdout.close()
     returncode = process.wait()
     if returncode != 0:
         raise RuntimeError(f"FFmpeg frame extraction failed with exit code {returncode}.")
 
-    if buffer.find(png_start) != -1:
-        raise RuntimeError("FFmpeg ended with an incomplete PNG frame.")
+    if buffer.find(jpeg_start) != -1:
+        raise RuntimeError("FFmpeg ended with an incomplete JPEG frame.")
 
     return frames
 
