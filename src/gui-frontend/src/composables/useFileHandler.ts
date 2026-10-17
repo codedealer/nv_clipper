@@ -146,7 +146,10 @@ export function useFileHandler(
     selectionOpId++
     clipperStore.setVideoFile(null)
     clearVideoState()
-  // Do NOT reset markup state; allow color grading with markup-only
+    if (!clipperStore.selectedFiles.markup) {
+      resetMarkupState()
+    }
+    // Preserve markup-backed clips for color grading when the video is removed
   }
 
   /**
